@@ -26,6 +26,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/cloud/observability/instrument"
+	"go-spring.org/stdlib/errutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -36,10 +37,9 @@ import (
 )
 
 // serverInstrumentSet is the inbound REQUEST plane's always-on signals: the
-// per-request duration and status counter. One set per process, resolved lazily
-// on first use so it binds to whichever providers are current then, and
-// immutable afterwards. It holds no per-route state — the system and service
-// labels travel with each observer, not here.
+// per-request duration and status counter. One set per observer, resolved when
+// the observer is constructed, and immutable afterwards. It holds no per-route
+// state — the system and service labels travel with each observer, not here.
 //
 // Governance organs' own state (rate budget, bulkhead) is deliberately absent:
 // each organ publishes its own state from its own package, by pull.
@@ -56,29 +56,42 @@ type serverInstrumentSet struct {
 	faultDelayed  metric.Int64Counter
 }
 
-// serverInstruments is the one inbound instrument set this package uses for the
-// whole process.
-var serverInstruments = sync.OnceValue(buildServerInstruments)
-
-func buildServerInstruments() *serverInstrumentSet {
+// buildServerInstruments resolves the inbound request-plane instruments against
+// the meter provider the otel starter installs before any bean is constructed.
+// The observer owns the set, so a failed registration fails construction instead
+// of silently dropping the whole metric family.
+func buildServerInstruments() (*serverInstrumentSet, error) {
 	m := otel.Meter(instrument.Scope)
 	in := &serverInstrumentSet{}
-	in.duration, _ = m.Float64Histogram("resilience.server.duration",
+	var err error
+	in.duration, err = m.Float64Histogram("resilience.server.duration",
 		metric.WithDescription("Duration of inbound requests under resilience governance"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	in.calls, _ = m.Int64Counter("resilience.server.calls",
+	if err != nil {
+		return nil, errutil.Explain(err, "observe: register resilience.server.duration")
+	}
+	in.calls, err = m.Int64Counter("resilience.server.calls",
 		metric.WithDescription("Number of inbound requests by inbound status"),
 		metric.WithUnit("{request}"))
+	if err != nil {
+		return nil, errutil.Explain(err, "observe: register resilience.server.calls")
+	}
 	// Fault counters are the experiment's per-rule result signal. run_id stays on
 	// spans/logs — it is high-cardinality and must not become a metric label.
-	in.faultInjected, _ = m.Int64Counter("resilience.server.fault.injected",
+	in.faultInjected, err = m.Int64Counter("resilience.server.fault.injected",
 		metric.WithDescription("Requests whose error was injected by a fault rule"),
 		metric.WithUnit("{request}"))
-	in.faultDelayed, _ = m.Int64Counter("resilience.server.fault.delayed",
+	if err != nil {
+		return nil, errutil.Explain(err, "observe: register resilience.server.fault.injected")
+	}
+	in.faultDelayed, err = m.Int64Counter("resilience.server.fault.delayed",
 		metric.WithDescription("Requests delayed by a fault rule"),
 		metric.WithUnit("{request}"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "observe: register resilience.server.fault.delayed")
+	}
+	return in, nil
 }
 
 // ServerObserver emits the standard inbound signals for ONE route: the request
@@ -99,12 +112,16 @@ type ServerObserver struct {
 
 // NewServerObserver builds the inbound observer for one route system/service.
 // system is the server's name ("gin", "grpc"); service is the route label.
-func NewServerObserver(system, service string) *ServerObserver {
+func NewServerObserver(system, service string) (*ServerObserver, error) {
+	ins, err := buildServerInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return &ServerObserver{serverEmitter: &serverEmitter{
 		system:  system,
 		service: service,
-		ins:     serverInstruments(),
-	}}
+		ins:     ins,
+	}}, nil
 }
 
 // Run is the PREFERRED form: it opens the span, hands fn the observed context and

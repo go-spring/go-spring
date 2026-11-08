@@ -14,26 +14,21 @@
  * limitations under the License.
  */
 
-// emitter_test.go exercises the OBSERVE layer composed over the resilience
-// engines — spans, metrics and the recorder hand-off. It is an EXTERNAL test
-// package (resilience_test) because the observe wrapper lives in
-// cloud/governance/dataplane/outbound/observe, which imports this package: an internal test importing it
-// would be an import cycle. Here the dependency direction is the natural one —
-// the observer reads the engine — so the package under test can be wrapped by
-// observability exactly as the center wraps it in production.
+// client_integration_test.go drives THIS package's observer over a scripted
+// chain node: the spans, metrics and recorder hand-off a client sees when the
+// emitter wraps the rest of the chain. The inner node is a stub on purpose —
+// this package owns emission, not retry or admission, so its tests must not
+// depend on the governance engine.
 
-package resilience_test
+package observe
 
 import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
-	"go-spring.org/cloud/governance/capability/ratelimit"
-	serverobserve "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
-	clientobserve "go-spring.org/cloud/governance/dataplane/outbound/observe"
-	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -46,31 +41,70 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// newBuiltin builds the bundled client engine for one service under p, which is
-// one capability's policy.
-func newBuiltin(t *testing.T, p any) chain.Executor {
-	t.Helper()
-	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
-	assert.That(t, err).Nil()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
-	switch v := p.(type) {
-	case resilience.Limits:
-		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
-	case resilience.BreakerPolicy:
-		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
-	case ratelimit.Policy:
-		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
-	default:
-		t.Fatalf("unsupported test policy %T", p)
-	}
-	return m.ExecutorFor("svc")
+// stubChain is the inner chain the emitter wraps in these tests. run scripts
+// what the chain does — one call, a retry, a refusal — and records the rounds a
+// real engine would have written, so the emitter is exercised against the
+// contract it actually consumes.
+type stubChain struct {
+	run func(context.Context, chain.Operation, *chain.Recorder, func(context.Context) error) error
 }
 
-// observedServer builds the inbound observer for one route — the object a
-// middleware drives, composed by the center in production.
-func observedServer(t *testing.T, system, service string) *serverobserve.ServerObserver {
-	t.Helper()
-	return serverobserve.NewServerObserver(system, service)
+func (s stubChain) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	return s.run(ctx, op, rec, fn)
+}
+
+func (stubChain) Close() error { return nil }
+
+// round runs fn once and records the round, the way a chain node does.
+func round(ctx context.Context, rec *chain.Recorder, fn func(context.Context) error) error {
+	start := time.Now()
+	err := fn(ctx)
+	rec.AddRound(chain.Round{
+		Start:    start,
+		Duration: time.Since(start),
+		Status:   chain.ClassifyStatus(err),
+		Error:    err,
+	})
+	return err
+}
+
+// oneRound is a chain node that runs fn once and records the round.
+var oneRound = stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	return round(ctx, rec, fn)
+}}
+
+// twoAttempts retries once, recording each attempt — the shape a retry leaves
+// in the recorder.
+var twoAttempts = stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	var err error
+	for i := 0; i < 2; i++ {
+		err = round(ctx, rec, fn)
+		if err == nil {
+			break
+		}
+	}
+	return err
+}}
+
+// firstServedThenRejected serves the first call and refuses the second before
+// it runs, recording the refusal as its own zero-duration round — what an
+// admission stage leaves behind.
+func firstServedThenRejected() stubChain {
+	calls := 0
+	return stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+		calls++
+		if calls == 1 {
+			return round(ctx, rec, fn)
+		}
+		err := chain.ErrRateLimited
+		rec.AddRound(chain.Round{
+			Start:     time.Now(),
+			Status:    chain.ClassifyStatus(err),
+			ErrorType: chain.ClassifyErrorType(err),
+			Error:     err,
+		})
+		return err
+	}}
 }
 
 // withTracer installs a recording tracer provider as the global one, so a test
@@ -84,16 +118,15 @@ func withTracer(t *testing.T) *tracetest.InMemoryExporter {
 	return exp
 }
 
-// withMeter installs a manual reader as the global meter provider and drops both
-// memoized instrument sets, so the signals a test drives resolve against this
+// withMeter installs a manual reader as the global meter provider and drops the
+// memoized instrument set, so the signals a test drives resolve against this
 // provider rather than one an earlier test installed.
 func withMeter(t *testing.T) *metric.ManualReader {
 	t.Helper()
 	rdr := metric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(metric.NewMeterProvider(metric.WithReader(rdr)))
-	clientobserve.ResetInstruments()
-	serverobserve.ResetInstruments()
+	ResetInstruments()
 	t.Cleanup(func() {
 		_ = rdr.Shutdown(context.Background())
 		otel.SetMeterProvider(prev)
@@ -174,29 +207,21 @@ func histAttrs(t *testing.T, m metricdata.Metrics) []map[string]string {
 	return out
 }
 
-// dbOperation is the identity a database client declares, mirroring what a
-// starter passes once it is migrated.
-func dbOperation() chain.Operation {
-	return chain.Operation{
-		Request: chain.Request{Action: "get"},
-		Observe: chain.Observe{
-			Metric: chain.Metric{
-				Name: "db.client",
-				Attrs: []attribute.KeyValue{
-					attribute.String("db.system", "memcached"),
-					attribute.String("db.operation", "get"),
-				},
-			},
-		},
-	}
-}
-
-// TestRoundPeersAreRecordedPerRound proves a retry that lands on a different
+// TestRoundsAreRecordedPerAttempt proves a retry that lands on a different
 // instance keeps the two rounds apart in the write-back: each entry of
 // rec.Rounds carries what happened on its own attempt, so "which node is
 // failing" stays answerable when the balancer moved the call between rounds.
 func TestRoundsAreRecordedPerAttempt(t *testing.T) {
-	e := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{Retry: chain.Retry{MaxRetries: 1}}), "redis", "redis:cache")
+	e := WrapClientExecutor(stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+		var err error
+		for i := 0; i < 2; i++ {
+			err = round(ctx, rec, fn)
+			if err == nil {
+				break
+			}
+		}
+		return err
+	}}, "redis", "redis:cache")
 	op := chain.Operation{Request: chain.Request{Action: "get"}}
 	rec := &chain.Recorder{}
 	var i int
@@ -223,7 +248,7 @@ func TestRoundsAreRecordedPerAttempt(t *testing.T) {
 func TestProducedObservabilityReachesEverySignal(t *testing.T) {
 	exp := withTracer(t)
 	rdr := withMeter(t)
-	exec := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{}), "memcached", "memcached:svc")
+	exec := WrapClientExecutor(oneRound, "memcached", "memcached:svc")
 	op := dbOperation()
 	rec := &chain.Recorder{}
 
@@ -266,26 +291,6 @@ func TestProducedObservabilityReachesEverySignal(t *testing.T) {
 	assert.Number(t, len(rec.Observed.LogFields)).Equal(1)
 }
 
-// TestNonIdempotentOperationIsNotRetried proves a caller that declares its call
-// non-idempotent (see [chain.Retry.NonIdempotent]) runs ONCE however many
-// retries its retry node asks for. The suppression must survive the wrapper in
-// between, which is the only executor a client ever holds.
-func TestNonIdempotentOperationIsNotRetried(t *testing.T) {
-	e := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{}), "mail", "mail:svc")
-	op := chain.Operation{
-		Request: chain.Request{Action: "send"},
-		Observe: chain.Observe{Metric: chain.Metric{Name: "email.client"}},
-		Retry:   chain.Retry{MaxRetries: 3, NonIdempotent: true},
-	}
-	var attempts int
-	err := e.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
-		attempts++
-		return errutil.Explain(nil, "transient")
-	})
-	assert.Error(t, err).NotNil()
-	assert.That(t, attempts).Equal(1)
-}
-
 // TestDeclaredSpanKind proves the emitter opens the call's span with the kind the
 // client declared — the producer edge a publish adds to a trace, the consumer
 // edge a consume adds — and that an ordinary call of a client falls back to the
@@ -293,7 +298,7 @@ func TestNonIdempotentOperationIsNotRetried(t *testing.T) {
 // edge on the other side.
 func TestDeclaredSpanKind(t *testing.T) {
 	exp := withTracer(t)
-	e := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{}), "kafka", "kafka:svc")
+	e := WrapClientExecutor(oneRound, "kafka", "kafka:svc")
 
 	declared := chain.Operation{
 		Request: chain.Request{Action: "publish"},
@@ -316,7 +321,7 @@ func TestDeclaredSpanKind(t *testing.T) {
 // prefix, and stops reporting the undeclared layer's generic duration.
 func TestDeclaredOperationEmitsTwoGrains(t *testing.T) {
 	rdr := withMeter(t)
-	exec := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{Retry: chain.Retry{MaxRetries: 1}}), "memcached", "svc")
+	exec := WrapClientExecutor(twoAttempts, "memcached", "svc")
 	op := dbOperation()
 
 	boom := errutil.Explain(nil, "transient")
@@ -349,7 +354,7 @@ func TestDeclaredOperationEmitsTwoGrains(t *testing.T) {
 // deployment on the pre-migration path sees no change.
 func TestUndeclaredOperationKeepsHistoricalSignals(t *testing.T) {
 	rdr := withMeter(t)
-	exec := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{}), "redis", "svc")
+	exec := WrapClientExecutor(oneRound, "redis", "svc")
 
 	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
 
@@ -370,7 +375,7 @@ func TestUndeclaredOperationKeepsHistoricalSignals(t *testing.T) {
 // volume is visible next to served volume instead of being silently absent.
 func TestRejectedCallStillEmits(t *testing.T) {
 	rdr := withMeter(t)
-	exec := clientobserve.WrapClientExecutor(newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}), "memcached", "svc")
+	exec := WrapClientExecutor(firstServedThenRejected(), "memcached", "svc")
 	op := dbOperation()
 
 	// First call spends the burst; the second is rejected before running fn.
@@ -390,64 +395,4 @@ func TestRejectedCallStillEmits(t *testing.T) {
 	// of its own, tagged with the gate's verdict.
 	assert.Slice(t, histPairs(t, attempts)).Equal([]string{"error|rate_limited", "ok|"})
 	assert.Slice(t, histStatuses(t, attempts)).Equal([]string{"error", "ok"})
-}
-
-// TestDeclaredServerOperationEmitsFamilySignals proves an inbound route that
-// declares its operation is served like a client is: its family metric under the
-// FAMILY's name (http.server.request.duration, not the client side's
-// .operation.duration) labelled by the route's bounded attributes, plus the one
-// thing only a server has — a response half the handler records after answering.
-func TestDeclaredServerOperationEmitsFamilySignals(t *testing.T) {
-	rdr := withMeter(t)
-	exec := observedServer(t, "http-server", "http-server::9090")
-
-	declared := serverobserve.ServerOperation{
-		Action: "GET /users",
-		Observe: serverobserve.ServerObserve{
-			Metric: serverobserve.ServerMetric{
-				Name: "http.server",
-				Attrs: []attribute.KeyValue{
-					attribute.String("http.request.method", "GET"),
-					attribute.String("http.route", "/users"),
-				},
-			},
-		},
-	}
-	err := exec.Run(context.Background(), declared, func(ctx context.Context, ob *serverobserve.Observation) error {
-		ob.Response().Add(attribute.Int("http.response.status_code", 200))
-		return nil
-	})
-	assert.Error(t, err).Nil()
-
-	got := collect(t, rdr)
-	fam, ok := got["http.server.request.duration"]
-	assert.That(t, ok).True("the family name must be kept, not renamed to .operation.duration")
-	pts := histAttrs(t, fam)
-	assert.Number(t, len(pts)).Equal(1)
-	assert.String(t, pts[0]["http.request.method"]).Equal("GET")
-	assert.String(t, pts[0]["http.route"]).Equal("/users")
-	// The response half reaches the metric because the metric is recorded after
-	// the handler answered — which is exactly why it is a carrier and not part of
-	// the declaration.
-	assert.String(t, pts[0]["http.response.status_code"]).Equal("200")
-	assert.String(t, pts[0]["status"]).Equal("ok")
-
-	_, ok = got["http.server.active_requests"]
-	assert.That(t, ok).True("the in-flight gauge must be emitted for a declared route")
-}
-
-// TestUndeclaredServerRouteKeepsItsSignals proves a route that declares nothing
-// still reports exactly what this layer always reported: the inbound metrics
-// under resilience.server.*, and no family metric invented on its behalf.
-func TestUndeclaredServerRouteKeepsItsSignals(t *testing.T) {
-	rdr := withMeter(t)
-	exec := observedServer(t, "http-server", "http-server::9090")
-
-	assert.Error(t, exec.Run(context.Background(), serverobserve.ServerOperation{}, func(context.Context, *serverobserve.Observation) error { return nil })).Nil()
-
-	got := collect(t, rdr)
-	_, ok := got["resilience.server.duration"]
-	assert.That(t, ok).True()
-	_, ok = got["http.server.request.duration"]
-	assert.That(t, ok).False("an undeclared route must not invent a family metric")
 }

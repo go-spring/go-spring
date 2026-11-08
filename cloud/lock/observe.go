@@ -19,12 +19,12 @@ package lock
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -60,10 +60,9 @@ import (
 // tag.
 var lockTag = log.RegisterAppTag("lock", "access")
 
-// instrumentSet is this package's metric set: one per process, resolved lazily
-// on first use so it binds to whichever meter provider is current then, and
-// immutable afterwards. It holds no per-locker state — the system label travels
-// with each wrapper, not here.
+// instrumentSet is this package's metric set: one per observed locker, resolved
+// when that locker is constructed. It holds no per-locker state — the system
+// label travels with each wrapper, not here.
 type instrumentSet struct {
 	total    metric.Int64Counter
 	duration metric.Float64Histogram
@@ -71,32 +70,40 @@ type instrumentSet struct {
 	held     metric.Int64UpDownCounter
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The
+// observed locker owns the set, so a failed registration fails construction
+// instead of silently dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
 	in := &instrumentSet{}
-	in.total, _ = m.Int64Counter("lock.operation.total",
+	var err error
+	in.total, err = m.Int64Counter("lock.operation.total",
 		metric.WithDescription("Lock operations executed, by operation and status"),
 		metric.WithUnit("{operation}"))
-	in.duration, _ = m.Float64Histogram("lock.operation.duration",
+	if err != nil {
+		return nil, errutil.Explain(err, "lock: register lock.operation.total")
+	}
+	in.duration, err = m.Float64Histogram("lock.operation.duration",
 		metric.WithDescription("Duration of lock operations; for acquire this includes the blocking wait and retry time"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	in.lost, _ = m.Int64Counter("lock.lost.total",
+	if err != nil {
+		return nil, errutil.Explain(err, "lock: register lock.operation.duration")
+	}
+	in.lost, err = m.Int64Counter("lock.lost.total",
 		metric.WithDescription("Locks lost while still in use, because the lease expired or renewal failed"))
-	in.held, _ = m.Int64UpDownCounter("lock.held",
+	if err != nil {
+		return nil, errutil.Explain(err, "lock: register lock.lost.total")
+	}
+	in.held, err = m.Int64UpDownCounter("lock.held",
 		metric.WithDescription("Locks currently held through this locker, by backend"),
 		metric.WithUnit("{lock}"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "lock: register lock.held")
+	}
+	return in, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // Observe returns a [Locker] that decorates inner with a client span per
 // operation, the lock.operation.total, lock.operation.duration,
@@ -105,20 +112,22 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // providers are no-ops, so the wrapper adds negligible overhead and changes no
 // behaviour.
 //
-// Instruments come from the package's process-wide set, resolved on first use —
-// here, at wiring time, not at package init — so an SDK installed after this
-// package's init still receives the records. The tracer is looked up per use for
-// the same reason.
+// Instruments are resolved when the wrapper is constructed, so construction
+// fails if they cannot be registered. The tracer is looked up per use.
 //
 // A lock starter installs it with its backend's system value:
 //
-//	locker = lock.Observe(inner, "redis")
-func Observe(inner Locker, system string) Locker {
+//	locker, err = lock.Observe(inner, "redis")
+func Observe(inner Locker, system string) (Locker, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return &observedLocker{
 		system: system,
 		inner:  inner,
-		ins:    instruments(),
-	}
+		ins:    ins,
+	}, nil
 }
 
 // componentName is the instrumentation componentName name every meter and tracer in this

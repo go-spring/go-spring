@@ -194,7 +194,7 @@ type Target struct {
 // decides whether the fault is applied, and there is no fall-through to the
 // next match.
 //
-// It is delivered PER ATTEMPT, not per call: [evaluate] runs once inside the
+// It is delivered PER ATTEMPT, not per call: [Manager.Fire] runs once inside the
 // resilience executor's retry loop, so a call that retried produces one Result
 // per attempt and nothing in this package aggregates them. A caller that needs
 // "what happened to this call" must read the rounds (which is what the client
@@ -202,7 +202,7 @@ type Target struct {
 // that captures only the LAST Result will miss a fire that happened on an
 // earlier attempt and lost nothing on the final one.
 //
-// It carries no error: whether the call may proceed is the ERROR [evaluate]
+// It carries no error: whether the call may proceed is the ERROR [Manager.Fire]
 // returns, so there is exactly one place to look and no second copy that could
 // disagree.
 type Result struct {
@@ -230,7 +230,7 @@ type Result struct {
 
 	// Delay is the latency the rule applied, already including the jitter draw.
 	// It is the sleep that was ASKED for: when the attempt's context is cancelled
-	// mid-sleep, the result still reports the requested delay and [evaluate]
+	// mid-sleep, the result still reports the requested delay and [Manager.Fire]
 	// returns the context error.
 	Delay time.Duration
 }
@@ -248,8 +248,91 @@ func (r Result) Fired() bool { return r.Inject || r.Delay > 0 }
 // reads as not-business.
 func (r Result) Business() bool { return r.Class == ClassBusiness }
 
+// Fire runs one attempt's roll-and-delay sequence against the kernel current
+// when it is called, and reports what it decided. It loads the atomic pointer
+// once, so the whole attempt is judged against one generation: the hot path is
+// one atomic load plus the rule scan, and a push landing mid-call cannot mix
+// two documents.
+//
+// It does NOT call the operation: the returned error is the whole "may I
+// proceed?" signal — nil means the caller should run the real fn, anything else
+// means it should return that error instead (an injected failure, or the
+// context error when the injected latency was cancelled mid-sleep).
+//
+// It is the ONE shared fault sequence — both directions run through it
+// ([Client.Fire] and [Server.Fire]) — so matching, guardrails and
+// cancellation semantics cannot drift apart. Splitting the callback out is
+// deliberate: whether to run the handler, and what a failure looks like on the
+// wire, is protocol knowledge the adapters own. The outbound adapter calls fn
+// and records the decision on the call; a server adapter returns a 503, a gRPC
+// status or a failing RPC result, choosing its own shape without having run the
+// handler first.
+//
+// t is the call being fired at, as the adapter named it: a rule is matched
+// against its Service, Action and Metadata ([Rule.Matches]) — a rule targets a
+// whole service by naming it, or one interface of it with an Action, or one
+// slice of its traffic with a Match. The FIRST matching rule governs the attempt
+// and evaluation stops there (see [Result]). Since every rule names a service,
+// a call that names none matches nothing: a target's Service comes from the
+// seam that built it, and this package never guesses one.
+//
+// The latency sleep is cancellable via ctx; on cancel it returns the context
+// error (with the decision intact) so the caller's own timeout/budget logic
+// reacts rather than retrying blindly. Fire does NOT retry — retry is a client
+// concern; for the full retry/timeout/breaker treatment on a client call use
+// the outbound fault Manager's WrapClientExecutor with a chain.Executor.
+//
+// It records nothing anywhere. A fire is meant to be visible to every other
+// layer — the observe kit tags a span and the access line with it — and that is
+// the outbound adapter's job: it writes the returned decision onto the call's
+// [chain.Recorder], which is what the other layers read (see the outbound fault
+// Manager's WrapClientExecutor). Keeping the write there is what leaves this
+// sequence free of any call state.
 func (m *Manager) Fire(ctx context.Context, t Target) (Result, error) {
-	return evaluate(ctx, m.core.Load(), t)
+	c := m.core.Load()
+	if c == nil { // nothing pushed yet: this direction is a transparent no-op
+		return Result{}, nil
+	}
+	// Rules are an ORDERED list and the FIRST one whose conditions match governs
+	// this attempt. Evaluation stops there: later rules never run, so one call is
+	// never affected by more than one experiment. Order is therefore precedence —
+	// specific rules go before a broader one.
+	//
+	// A matched rule that does not fire (Rate draw missed, guardrail tripped,
+	// blast radius full) leaves the attempt untouched and STILL terminates
+	// selection: matching decides governance, the draw decides whether the fault
+	// is applied. There is no fall-through to the next matching rule.
+	for _, r := range c.cfg.Rules {
+		if !r.Matches(t) {
+			continue
+		}
+		b := c.budgets[r.Name]
+		// The governing rule's own guardrails: a forgotten fire self-heals instead
+		// of running until the next deploy.
+		if b.durationExhausted(r) {
+			b.reportExhaustion(ctx, r, "max-duration")
+			return Result{}, nil
+		}
+		o := r.roll()
+		if !o.Inject && o.Delay == 0 {
+			return Result{}, nil // the draw missed, or the rule carries no effect
+		}
+		// Spend one unit of the blast-radius budget only after the rule actually
+		// drew a dose, so the cap is exact even under concurrency.
+		if !b.spend(r) {
+			b.reportExhaustion(ctx, r, "max-affected")
+			return Result{}, nil
+		}
+		o.RunID = c.cfg.RunID
+		if o.Delay > 0 && !timeutil.Sleep(ctx, o.Delay) {
+			return o, ctx.Err()
+		}
+		if o.Inject {
+			return o, newInjectedError(o.Error, o.Class)
+		}
+		return o, nil
+	}
+	return Result{}, nil
 }
 
 // core is one direction's replaceable kernel — what a push swaps in the
@@ -293,94 +376,6 @@ func buildCore(c Config, prev *core) *core {
 		nc.budgets[r.Name] = b
 	}
 	return nc
-}
-
-// evaluate runs one attempt's roll-and-delay sequence against the kernel the
-// caller loaded, and reports what it decided. It does NOT call the operation: the
-// returned error is the whole "may I proceed?" signal — nil means the caller
-// should run the real fn, anything else means it should return that error instead
-// (an injected failure, or the context error when the injected latency was
-// cancelled mid-sleep).
-//
-// It is the ONE shared fault sequence — both directions run through it
-// ([Client.Fire] and [Server.Fire]) — so matching, guardrails and
-// cancellation semantics cannot drift apart. Splitting the callback out is
-// deliberate: whether to run the handler, and what a failure looks like on the
-// wire, is protocol knowledge the adapters own. The outbound adapter calls fn
-// and records the decision on the call; a server adapter returns a 503, a gRPC
-// status or a failing RPC result, choosing its own shape without having run the
-// handler first.
-//
-// The kernel is a PARAMETER rather than a receiver: the manager loaded it from
-// its atomic pointer, and this function reaches for nothing else — no
-// manager, no lock, no call state. That is what keeps the hot path to one atomic
-// load plus the rule scan.
-//
-// t is the call being fired at, as the adapter named it: a rule is matched
-// against its Service, Action and Metadata ([Rule.Matches]) — a rule targets a
-// whole service by naming it, or one interface of it with an Action, or one
-// slice of its traffic with a Match. The FIRST matching rule governs the attempt
-// and evaluation stops there (see [Result]). Since every rule names a service,
-// a call that names none matches nothing: a target's Service comes from the
-// seam that built it, and this package never guesses one.
-//
-// The latency sleep is cancellable via ctx; on cancel it returns the context
-// error (with the decision intact) so the caller's own timeout/budget logic
-// reacts rather than retrying blindly. evaluate does NOT retry — retry is a
-// client concern; for the full retry/timeout/breaker treatment on a client call
-// use the outbound fault Manager's WrapClientExecutor with a chain.Executor.
-//
-// It records nothing anywhere. A fire is meant to be visible to every other
-// layer — the observe kit tags a span and the access line with it — and that is
-// the outbound adapter's job: it writes the returned decision onto the call's
-// [chain.Recorder], which is what the other layers read (see
-// the outbound fault Manager's WrapClientExecutor). Keeping the write there is
-// what leaves this
-// sequence free of any call state.
-func evaluate(ctx context.Context, c *core, t Target) (Result, error) {
-	if c == nil {
-		return Result{}, nil
-	}
-	// Rules are an ORDERED list and the FIRST one whose conditions match governs
-	// this attempt. Evaluation stops there: later rules never run, so one call is
-	// never affected by more than one experiment. Order is therefore precedence —
-	// specific rules go before a broader one.
-	//
-	// A matched rule that does not fire (Rate draw missed, guardrail tripped,
-	// blast radius full) leaves the attempt untouched and STILL terminates
-	// selection: matching decides governance, the draw decides whether the fault
-	// is applied. There is no fall-through to the next matching rule.
-	for _, r := range c.cfg.Rules {
-		if !r.Matches(t) {
-			continue
-		}
-		b := c.budgets[r.Name]
-		// The governing rule's own guardrails: a forgotten fire self-heals instead
-		// of running until the next deploy.
-		if b.durationExhausted(r) {
-			b.reportExhaustion(ctx, r, "max-duration")
-			return Result{}, nil
-		}
-		o := r.roll()
-		if !o.Inject && o.Delay == 0 {
-			return Result{}, nil // the draw missed, or the rule carries no effect
-		}
-		// Spend one unit of the blast-radius budget only after the rule actually
-		// drew a dose, so the cap is exact even under concurrency.
-		if !b.spend(r) {
-			b.reportExhaustion(ctx, r, "max-affected")
-			return Result{}, nil
-		}
-		o.RunID = c.cfg.RunID
-		if o.Delay > 0 && !timeutil.Sleep(ctx, o.Delay) {
-			return o, ctx.Err()
-		}
-		if o.Inject {
-			return o, newInjectedError(o.Error, o.Class)
-		}
-		return o, nil
-	}
-	return Result{}, nil
 }
 
 // budget is one rule identity's guardrail state across pushes: when its

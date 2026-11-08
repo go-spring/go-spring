@@ -19,6 +19,7 @@ package batch
 import (
 	"context"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -62,8 +63,8 @@ type ChunkStep[I, O any] struct {
 	// Retry, when any field is set, wraps each chunk (read+process+write) in a
 	// retry/circuit-breaker via the resilience default driver, so a transient
 	// failure retries the chunk instead of failing the step. It is the retry node
-	// (see [chain.Retry]); Ignored when Executor is set.
-	Retry chain.Retry
+	// (see [resilience.Retry]); Ignored when Executor is set.
+	Retry resilience.Retry
 
 	// Executor, when set, is used to guard each chunk instead of building one
 	// from Retry — plug in a production driver (e.g. sentinel) here. When both
@@ -92,11 +93,20 @@ func (s *ChunkStep[I, O]) executor() (chain.Executor, error) {
 	if err != nil {
 		return nil, err
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
-	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: s.Retry}}); err != nil {
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
 		return nil, err
 	}
-	return mgr.ExecutorFor(s.Name), nil
+	if err := mgr.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+		Service: s.Name,
+		Rules: []resilience.TimeoutRetryRule{{
+			ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			TimeoutRetry: resilience.TimeoutRetry{Retry: s.Retry},
+		}},
+	}}}); err != nil {
+		return nil, err
+	}
+	return mgr.Wrap(s.Name, nil), nil
 }
 
 // Run implements [Step]. It resumes from rc.StepExecution, drives the chunk

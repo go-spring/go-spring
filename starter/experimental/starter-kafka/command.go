@@ -50,7 +50,7 @@ func serviceLabelOf(brokers string) string {
 // kafka client has no seam for the resilience executor, so there is no
 // governance on this path — observation only.
 func runObserved(ctx context.Context, obs *observability.OperationObserver, op chain.Operation, call func(context.Context) error) error {
-	return obs.Observe(ctx, op, nil, call)
+	return obs.Observe(ctx, op, new(chain.Recorder), call)
 }
 
 // InnerKafka is the seam a client's synchronous produces run through.

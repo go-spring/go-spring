@@ -19,10 +19,10 @@ package cache
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -80,50 +80,54 @@ const componentName = "go-spring.org/cloud/cache"
 //     is the reason the histogram is here: the backend's own client metric
 //     cannot split hit from miss, and those two have different latency profiles.
 //
-// The instruments come from the package's process-wide set (see [instruments]),
-// resolved on first use: cache calls are too frequent for a per-call meter
-// lookup. This relies on [New] running after the OTel global provider is
-// installed — under the framework it does, since bean construction happens after
-// RefreshPrepare, where starter-otel installs the provider. A cache built before
-// any provider is set records to the no-op meter.
+// The instrument set is resolved when the cache is constructed (see [New]):
+// cache calls are too frequent for a per-call meter lookup. Under the framework
+// construction happens after RefreshPrepare, where starter-otel installs the
+// provider.
 type observedCache struct {
 	ByteCache
+	ins *instrumentSet
 }
 
-// instrumentSet is this package's metric set: one per process, resolved lazily
-// on first use so it binds to whichever meter provider is current then, and
-// immutable afterwards. It holds no per-cache state — the operation and status
+// instrumentSet is this package's metric set: one per cache, resolved when the
+// cache is constructed. It holds no per-cache state — the operation and status
 // labels travel with each record, not here.
 type instrumentSet struct {
 	total    metric.Int64Counter
 	duration metric.Float64Histogram
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The cache
+// owns the set, so a failed registration fails construction instead of silently
+// dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
 	in := &instrumentSet{}
-	in.total, _ = m.Int64Counter("cache.operation.total",
+	var err error
+	in.total, err = m.Int64Counter("cache.operation.total",
 		metric.WithDescription("Cache operations executed, by operation and status"),
 		metric.WithUnit("{operation}"))
-	in.duration, _ = m.Float64Histogram("cache.operation.duration",
+	if err != nil {
+		return nil, errutil.Explain(err, "cache: register cache.operation.total")
+	}
+	in.duration, err = m.Float64Histogram("cache.operation.duration",
 		metric.WithDescription("Duration of cache operations, by operation and status"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "cache: register cache.operation.duration")
+	}
+	return in, nil
 }
 
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
 // newObservedCache wraps bc.
-func newObservedCache(bc ByteCache) observedCache {
-	return observedCache{ByteCache: bc}
+func newObservedCache(bc ByteCache) (observedCache, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return observedCache{}, err
+	}
+	return observedCache{ByteCache: bc, ins: ins}, nil
 }
 
 func (o observedCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
@@ -197,7 +201,7 @@ func (o observedCache) record(ctx context.Context, op string, err error, elapsed
 		attribute.String("operation", op),
 		attribute.String("status", statusOf(op, err)),
 	)
-	in := instruments()
+	in := o.ins
 	in.total.Add(ctx, 1, attrs)
 	in.duration.Record(ctx, elapsed.Seconds(), attrs)
 }

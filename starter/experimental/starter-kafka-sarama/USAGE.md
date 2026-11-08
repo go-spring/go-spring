@@ -243,9 +243,9 @@ publish span is a NEW ROOT, and a per-call deadline is expressed via resilience
    `messaging.client.operation.duration` (retries+backoff included) plus
    `messaging.client.active_requests`; at the attempt level it records
    `messaging.client.attempt.duration`. It writes one access log on the `kafka` access tag.
-   Publish and consume are declared `NonIdempotent`, so a retry policy on the label is
-   **suppressed** (one warning per service): re-sending or re-running the handler is a second
-   side effect, not a second attempt.
+   Retry is governance-only: publish and consume carry no call-site retry. Re-sending or
+   re-running the handler is a second side effect, not a second attempt, so the document
+   configures no schedule for the label — whoever writes that document owns its effects.
 3. Inside the attempt, the W3C propagator injects `traceparent`/`tracestate` into
    `msg.Headers`. ⚠ Injection **drops any pre-existing header with the same key** so
    re-injection stays idempotent — do not stash data under `traceparent`.

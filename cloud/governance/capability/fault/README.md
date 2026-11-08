@@ -219,7 +219,7 @@ real downstream failure takes. Short-circuiting at the `Execute` boundary
 instead would bypass all of that and defeat the purpose.
 
 **Stack order in a host starter** (e.g. redigo): `fault( observe( rawExec ) )`.
-`Manager.ExecutorFor` applies the observe layer itself, on the still-private
+`Manager.Wrap` applies the observe layer itself, on the still-private
 governed executor (that is what lets observe attach its breaker listener at
 construction); fault then wraps that from the outside. The injected fault still
 reaches the real executor's retry loop, so it is both *handled* by resilience

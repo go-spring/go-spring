@@ -204,7 +204,7 @@ func TestParse_DocumentShape(t *testing.T) {
 	assert.String(t, c.Name).Equal("redis-errors")
 	assert.String(t, c.Service).Equal("redis:cache")
 	assert.That(t, c.Rate).Equal(0.5)
-	assert.String(t, c.Action.Exact).Equal("insert")
+	assert.String(t, c.ActionMatch.Exact).Equal("insert")
 	assert.String(t, c.MetadataMatch["traffic"].Exact).Equal("loadtest")
 	assert.That(t, c.Latency).Equal(10 * time.Millisecond)
 	assert.That(t, c.MaxDuration).Equal(time.Minute)

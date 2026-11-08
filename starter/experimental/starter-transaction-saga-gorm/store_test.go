@@ -96,8 +96,9 @@ func TestGormStore_EndToEndExecuteThenRecover(t *testing.T) {
 
 	// A live execution that fails on its last step: the coordinator compensates
 	// and keeps a terminal Compensated log.
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
-	_, err := coord.Execute(ctx, transaction.Saga{
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
+	_, err = coord.Execute(ctx, transaction.Saga{
 		ID:     "live",
 		Method: "Svc.Do",
 		Steps: []transaction.Step{
@@ -125,7 +126,8 @@ func TestGormStore_EndToEndExecuteThenRecover(t *testing.T) {
 	// A fresh coordinator over the same durable store recovers it: backward
 	// recovery compensates the in-flight b first, then the completed a.
 	var order []string
-	coord2 := transaction.NewCoordinator(transaction.WithStore(store))
+	coord2, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 	res, err := coord2.Recover(ctx, transaction.Saga{
 		ID:     "crashed",
 		Method: "Svc.Do",

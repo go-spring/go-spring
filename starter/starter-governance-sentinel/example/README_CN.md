@@ -1,14 +1,16 @@
-# starter-governance-sentinel Example
+# starter-governance-sentinel 示例
 
-演示 starter-governance-sentinel 的 Sentinel 熔断与限流。
+演示融合路径：sentinel-golang 作为 resilience 引擎的**限流算法**被选中。
 
-## 功能验证
+## 展示内容
 
-- **dialer seam 上的熔断**：对着无人监听的地址，连续 3 次拒绝拨号后熔断器打开，第 4 次直接以 `ErrCircuitOpen` 短路，不碰网络
-- **组合策略**：一份 policy 同时含限流 + 熔断 + 重试——上游先 503 两次再成功，在重试预算内被透明恢复
-- **Sentinel 驱动**：两者都跑在 `NewSentinelDriver()`（容器外入口）构建的 `sentinel` 驱动上
+- 一个 `ratelimit.Factory` 同时收集内置 provider 和 sentinel provider；
+  策略用 `limiter: sentinel` 指定算法。
+- 调用仍然走 resilience 引擎，所以拒绝是引擎的中立 `ErrRateLimited`，
+  不会把 sentinel 的错误泄露出去。
+- 预算 2/s：连续三次请求放行两次、拒绝一次。
 
-## 手动验证
+## 运行
 
 ```bash
 cd starter-governance-sentinel/example
@@ -16,7 +18,9 @@ go run .
 ```
 
 预期输出：
+
 ```
+sentinel limiter: 2 admitted, 1 rate-limited (budget 2/s)
 resilience seams smoke: OK
 ```
 
@@ -26,4 +30,4 @@ resilience seams smoke: OK
 ./check.sh
 ```
 
-`check.sh` 运行示例并等待其自测完成，退出码 0 表示通过。
+退出码 0 即通过。

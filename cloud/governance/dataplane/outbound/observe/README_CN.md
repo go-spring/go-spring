@@ -189,22 +189,18 @@ ctx = chain.WithOperation(ctx, chain.Operation{
 `Attrs` 必须保持有界：缓存 key、SQL 语句、URL 路径、topic 一律放 `Detail`，
 它永远不会变成指标标签。
 
-`chain.Operation` 只负责命名。调用的**身份**——`Target`、`Scenario` 与 `NonIdempotent`——
-单独、显式地作为 [`chain.Executor.Execute`](../chain/executor.go) 的 [`chain.Call`](../chain/executor.go)
-参数传递，**不放 ctx**：
+`chain.Operation` 同时承载两半：观测声明（`Observe`，发射端读，需要指标前缀与 detail）
+与调用身份（`Service`、`Request`，引擎读，用它给保护状态建 key）。它作为
+[`chain.Executor.Execute`](../chain/executor.go) 的参数传递，**不放 ctx**，因此在每一跳
+都可见：
 
 ```go
-ctx = chain.WithOperation(ctx, chain.Operation{
-    Name:   "publish",
-    Metric: "messaging.client",
-    …
-})
-exec.Execute(ctx, chain.Call{Target: "orders", Scenario: "tenant-a", NonIdempotent: true}, fn)
+exec.Execute(ctx, chain.Operation{
+    Service: "orders",
+    Request: chain.Request{Action: "publish"},
+    Observe: chain.Observe{Metric: chain.Metric{Name: "messaging.client"}},
+}, rec, fn)
 ```
-
-这个拆分是刻意的：`chain.Operation` 是观测声明（发射端读，需要指标前缀与 detail），
-`Call` 是治理身份（引擎读，分域键在它上面）。把身份放在签名而非 ctx，让它在每一跳
-都可见。
 
 声明是"传输层能提供 `chain.Executor` 缝"的 client 的路径。对那条缝不友好的组件 ——
 钩子 call-site-only 的消息生产者、服务端、进程内缓存 —— 改为自己发射，走
@@ -216,12 +212,12 @@ exec.Execute(ctx, chain.Call{Target: "orders", Scenario: "tenant-a", NonIdempote
 发射端在重试循环之外把它们读走。
 
 ```go
-rec := &chain.Recorder{}          // 传 nil 也行——含义是"什么都不记"
+rec := &chain.Recorder{}          // 必传；不想记录就传一个零值 Recorder
 exec.Execute(ctx, op, rec, fn)    // 重试循环边跑边填 rec
 rec.Rounds()                      // 只能在 Execute 返回之后读
 ```
 
-recorder 走的是**显式入参**,不走 context:`Execute` 收它,传 nil 就是"什么都不记"。
+recorder 走的是**显式入参**,不走 context:`Execute` 收它,且必须非 nil。
 这正是嵌套不会串味的原因——内层调用自建一个再往下传,内层 executor 永远写不进外层的记录。
 
 ## 调用 tracer

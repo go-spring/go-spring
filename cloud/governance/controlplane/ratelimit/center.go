@@ -16,9 +16,10 @@
 
 // Package ratelimit is the RATE-LIMIT control-plane root.
 //
-// Rate limiting is INTERFACE-scoped only: every rule names one interface, and
-// the service marker "-" is rejected. There is no service-wide or global quota,
-// because the accounting for one would be impossible to reason about.
+// A rule scopes to one interface (exact/prefix) or, with the service marker
+// "-", to the whole service. A service-scope rule is the FALLBACK: it governs
+// only calls no exact/prefix rule matches. There is no implicit default — a
+// service with no matching rule is not limited.
 //
 // The document is [resilience.RateLimitSettings] from the data plane — the root
 // binds it, validates it at the source boundary and pushes it whole.

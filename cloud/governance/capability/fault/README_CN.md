@@ -173,7 +173,7 @@ Envoy/Istio 的 delay+abort 组合。
 同一条路径。若改成在 `Execute` 边界短路，这一切都被绕过，放火就失去意义。
 
 **宿主 starter 里的包装顺序**（以 redigo 为例）：`fault( observe( rawExec ) )`。
-`Manager.ExecutorFor` 自己在**尚未发布**的治理 executor 上应用 observe 层（这正是
+`Manager.Wrap` 自己在**尚未发布**的治理 executor 上应用 observe 层（这正是
 observe 能在构造期挂上熔断 listener 的原因），fault 再从外层包住它。注入的故障依然抵达
 真实 executor 的重试循环，既被 resilience *处理*，又被 observe *记录*。
 

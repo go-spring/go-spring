@@ -58,7 +58,7 @@ func init() {
 			// this package's bytecache.go). Named "bigcache:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
-			r.Provide(func(c *Cache) *cache.Cache {
+			r.Provide(func(c *Cache) (*cache.Cache, error) {
 				return cache.New(NewByteCache(c))
 			}, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
 			return nil

@@ -22,6 +22,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -35,6 +36,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -109,13 +111,12 @@ func main() {
 		fmt.Println("Press Ctrl+C to stop.")
 
 		// The policy has no OnChanged hook, so polling is the observable.
+		exec := demo.Center.Resilience.Wrap("demo:service", nil)
 		go func() {
 			tk := time.NewTicker(time.Second)
 			defer tk.Stop()
 			for range tk.C {
-				pol := demo.Center.Resilience.LimitsFor("demo:service")
-				fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n",
-					!pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
+				fmt.Printf("policy: timeout=%v\n", resolvedTimeout(exec))
 			}
 		}()
 	}
@@ -123,20 +124,30 @@ func main() {
 	gs.Run()
 }
 
+// resolvedTimeout runs a no-op through exec and returns the timeout the call
+// resolved under — the public way to observe a pushed policy.
+func resolvedTimeout(exec chain.Executor) time.Duration {
+	rec := new(chain.Recorder)
+	_ = exec.Execute(context.Background(), chain.Operation{Service: "demo:service"}, rec,
+		func(context.Context) error { return nil })
+	return rec.Timeout
+}
+
 // runTest self-asserts the push chain: the cold-loaded 100ms policy, then the
 // 900ms policy after publishing v2.
 func runTest(d *demo) {
 	ctx := log.RootFields(log.String("data_id", dataID))
 	center := d.Center
+	exec := center.Resilience.Wrap("demo:service", nil)
 
 	// Cold load: the seeded document is already in effect.
-	pol := center.Resilience.LimitsFor("demo:service")
-	if pol.Timeout != 100*time.Millisecond {
-		err := errutil.Explain(nil, "cold-load mismatch: timeout=%v, want 100ms", pol.Timeout)
+	timeout := resolvedTimeout(exec)
+	if timeout != 100*time.Millisecond {
+		err := errutil.Explain(nil, "cold-load mismatch: timeout=%v, want 100ms", timeout)
 		log.Error(ctx, log.TagAppDef, err, "cold-load mismatch")
 		os.Exit(1)
 	}
-	fmt.Println("cold-load OK: timeout is", pol.Timeout)
+	fmt.Println("cold-load OK: timeout is", timeout)
 
 	// Hot push: publish v2, then poll until the center applies it.
 	if err := publish(rulesV2); err != nil {
@@ -147,15 +158,15 @@ func runTest(d *demo) {
 	tk := time.NewTicker(200 * time.Millisecond)
 	defer tk.Stop()
 	for range tk.C {
-		pol = center.Resilience.LimitsFor("demo:service")
-		fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
-		if pol.Timeout == 900*time.Millisecond {
-			fmt.Println("rule push observed: timeout is now", pol.Timeout)
+		timeout = resolvedTimeout(exec)
+		fmt.Printf("policy: timeout=%v\n", timeout)
+		if timeout == 900*time.Millisecond {
+			fmt.Println("rule push observed: timeout is now", timeout)
 			_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 			return
 		}
 		if time.Now().After(deadline) {
-			err := errutil.Explain(nil, "rule push timeout: timeout=%v", pol.Timeout)
+			err := errutil.Explain(nil, "rule push timeout: timeout=%v", timeout)
 			log.Error(ctx, log.TagAppDef, err, "rule push timeout")
 			os.Exit(1)
 		}

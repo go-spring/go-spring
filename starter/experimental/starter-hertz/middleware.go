@@ -102,7 +102,11 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Runtime, p
 		h.Use(tracingMiddleware())
 	}
 	if mw.Metrics.Enabled {
-		h.Use(metricsMiddleware())
+		metrics, err := metricsMiddleware()
+		if err != nil {
+			return err
+		}
+		h.Use(metrics)
 	}
 	if mw.AccessLog.Enabled {
 		h.Use(accessLog(accessLogSkipSet(cfg)))

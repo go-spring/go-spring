@@ -55,10 +55,16 @@ func main() {
 	_ = os.Unsetenv("TERM_SESSION_ID")
 	// mgrA and mgrB share ONE Redis-backed store. They model two replicas: no
 	// in-process state is shared between them, only Redis. What A writes, B reads.
-	gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {
+	gs.Provide(func(store session.SessionStore) (*gs.HttpServeMux, error) {
 		opt := session.Options{IdleTimeout: idleTimeout}
-		mgrA := session.NewManager(store, opt)
-		mgrB := session.NewManager(store, opt)
+		mgrA, err := session.NewManager(store, opt)
+		if err != nil {
+			return nil, err
+		}
+		mgrB, err := session.NewManager(store, opt)
+		if err != nil {
+			return nil, err
+		}
 
 		mux := http.NewServeMux()
 
@@ -85,7 +91,7 @@ func main() {
 			}
 		})))
 
-		return &gs.HttpServeMux{Handler: mux}
+		return &gs.HttpServeMux{Handler: mux}, nil
 	}, gs.TagArg("web"))
 
 	if !*manual {

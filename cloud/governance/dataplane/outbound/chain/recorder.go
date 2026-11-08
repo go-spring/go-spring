@@ -307,3 +307,49 @@ func ClassifyErrorType(err error) string {
 		return ""
 	}
 }
+
+// ErrorTypeDownstream names a call that failed at the downstream rather than
+// being refused by protection. Unlike [ClassifyErrorType]'s words it is not
+// produced by any sentinel: it is the answer left when every gate word is ruled
+// out, which is why it exists only at CALL level.
+//
+// It is the word that makes "was this failure ours or theirs" answerable from
+// the final error alone: the gate words say the chain refused the call, this one
+// says the call ran and the dependency did not serve it. A business answer the
+// adapter declares as normal (see the client seams' Tolerate) never reaches here
+// — it ends the call as success, because the dependency did serve it.
+const ErrorTypeDownstream = "downstream"
+
+// ErrorTypeCanceled names a call the CALLER abandoned or put a deadline on
+// before the chain could finish. It is not a downstream failure: the dependency
+// was never given the chance to answer, so counting it against the dependency
+// would be wrong.
+const ErrorTypeCanceled = "canceled"
+
+// ClassifyOutcome names the FINAL outcome of one call, on a closed vocabulary
+// the observability plane reports verbatim: the gate words above plus
+// [ErrorTypeDownstream] and [ErrorTypeCanceled]. Empty means success.
+//
+// It is the CALL-level counterpart of [ClassifyErrorType], and totals where that
+// one is partial: a round may simply run and say nothing, but a finished call
+// that failed has exactly one reason, so the answer is never "unclassified".
+// The distinction matters to a reader: `status=error` with no class cannot tell
+// a broken downstream from a caller that walked away, and a failure rate that
+// counts both is not a health signal.
+//
+// ctx is the context the call ran under, used only to tell a deadline the CALLER
+// set from the budget the chain derived: in the first case err is ctx.Err() and
+// the call was abandoned, in the second ctx is still live and the timeout is the
+// chain's own gate.
+func ClassifyOutcome(ctx context.Context, err error) string {
+	if err == nil {
+		return ""
+	}
+	if ctx != nil && ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+		return ErrorTypeCanceled
+	}
+	if t := ClassifyErrorType(err); t != "" {
+		return t
+	}
+	return ErrorTypeDownstream
+}

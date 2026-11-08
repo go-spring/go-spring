@@ -128,9 +128,9 @@ Each mailer under `spring.mail.instances.<name>` reads the following properties:
 
 ## Design Notes
 
-* **`Send` is non-idempotent.** A resend delivers a second message, so the
-  executor runs `Send` once whatever retry the policy configures — a delivery is
-  never duplicated by a retry.
+* **Retry is governance-only.** A resend delivers a second message, so the
+  governance document must not configure a retry schedule for a mail label;
+  call-site code cannot declare one either way.
 * **Observability declares, it does not emit.** `Send` marks the operation with
   the `email.client` prefix and the recipient **count** as `Detail` (never the
   addresses or the subject — personal data); the resilience emitter produces the

@@ -64,7 +64,8 @@ func (markerCodec) Unmarshal(data []byte, v any) error {
 
 func TestCacheRoundTrip(t *testing.T) {
 	bc := cache.NewMemory()
-	c := cache.New(bc)
+	c, err := cache.New(bc)
+	assert.That(t, err).Nil()
 
 	type user struct{ Name string }
 	in := user{Name: "ada"}
@@ -84,15 +85,17 @@ func TestCacheRoundTrip(t *testing.T) {
 }
 
 func TestCacheGetMiss(t *testing.T) {
-	c := cache.New(cache.NewMemory())
+	c, err := cache.New(cache.NewMemory())
+	assert.That(t, err).Nil()
 	var v any
-	err := c.Get(context.Background(), "absent", &v)
+	err = c.Get(context.Background(), "absent", &v)
 	assert.That(t, errors.Is(err, cache.ErrMiss)).True()
 }
 
 func TestCacheDelete(t *testing.T) {
 	bc := cache.NewMemory()
-	c := cache.New(bc)
+	c, err := cache.New(bc)
+	assert.That(t, err).Nil()
 
 	assert.That(t, c.Set(context.Background(), "k", 42, 0)).Nil()
 	assert.That(t, c.Delete(context.Background(), "k")).Nil()
@@ -103,7 +106,8 @@ func TestCacheDelete(t *testing.T) {
 
 func TestCacheCustomCodec(t *testing.T) {
 	bc := cache.NewMemory()
-	c := cache.New(bc, cache.WithCodec(markerCodec{}))
+	c, err := cache.New(bc, cache.WithCodec(markerCodec{}))
+	assert.That(t, err).Nil()
 
 	in := map[string]any{"n": float64(7)}
 	assert.That(t, c.Set(context.Background(), "k", in, 0)).Nil()
@@ -121,7 +125,8 @@ func TestCachePerCallCodec(t *testing.T) {
 	// One cache, two formats: entries stick to the construction codec (here
 	// the JSON default), exceptions pass a codec to that single call.
 	bc := cache.NewMemory()
-	c := cache.New(bc)
+	c, err := cache.New(bc)
+	assert.That(t, err).Nil()
 
 	assert.That(t, c.Set(context.Background(), "json", 7, 0)).Nil()
 	assert.That(t, c.Set(context.Background(), "marked", 7, 0, cache.WithCodec(markerCodec{}))).Nil()

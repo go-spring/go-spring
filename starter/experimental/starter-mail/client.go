@@ -24,6 +24,7 @@ package StarterMail
 import (
 	"bytes"
 	"context"
+	"errors"
 
 	"github.com/wneessen/go-mail"
 	"go-spring.org/cloud/governance"
@@ -253,21 +254,54 @@ func (g *GuardMailer) Release(releaseRaw bool) error {
 	return err
 }
 
-// Send builds the batch's semantic identity (see observe.go), merges in the
-// non-idempotent marker that stops a configured retry from sending the same
-// mail twice, and runs the batch under the executor with that one operation —
-// passed explicitly, so the executor reads the whole description from its
-// signature.
+// Send builds the batch's semantic identity (see observe.go) and runs the batch
+// under the executor with that one operation — passed explicitly, so the
+// executor reads the whole description from its signature. Retry is never
+// declared here: a send is a second side effect when repeated, so the governance
+// document must simply not configure a retry schedule for this label. No RetryOn
+// class is declared either — a transient SMTP failure is not retried by this
+// adapter even when a schedule is present.
 func (g *GuardMailer) Send(ctx context.Context, msgs ...*Message) error {
 	op := operation(ctx, g.prop, msgs)
 	// Name the service on the operation: the fault layer matches its rules on it
 	// and sits outside this executor.
 	op.Service = g.service
-	op.Retry = chain.Retry{NonIdempotent: true}
 	_, err := resilience.Run(ctx, g.exec, op, func(attemptCtx context.Context) (struct{}, error) {
 		return struct{}{}, g.next.Send(attemptCtx, msgs...)
-	})
+	}, resilience.TolerateFunc(isNormalSendError))
 	return err
+}
+
+// isNormalSendError reports whether a send error is the SMTP server's DEFINITE
+// answer rather than evidence that it is unhealthy: the message was malformed
+// before it was sent, or the server answered with a permanent (5xx) rejection.
+// Those must neither trip the breaker nor trigger a retry. Transport failures
+// (connection checks, writes), temporary 4xx replies and ambiguous errors stay
+// downstream faults. The error is still returned to the caller verbatim.
+//
+// IsTemp() alone is not enough: go-mail computes it from the error text's first
+// byte, so a connection error (not a numeric SMTP reply) is also "non-temporary".
+// The reason is what separates "the server answered" from "we never got an
+// answer".
+func isNormalSendError(err error) bool {
+	var se *mail.SendError
+	if !errors.As(err, &se) {
+		return false
+	}
+	switch se.Reason {
+	case mail.ErrGetSender, mail.ErrGetRcpts, mail.ErrNoUnencoded:
+		// The message could not be formed; no server verdict exists, and the
+		// dependency is not at fault.
+		return true
+	case mail.ErrSMTPMailFrom, mail.ErrSMTPRcptTo, mail.ErrSMTPData,
+		mail.ErrSMTPDataClose, mail.ErrSMTPReset:
+		code := se.ErrorCode()
+		return code >= 500 && code < 600
+	default:
+		// Connection check, content write, reset without a reply, ambiguous:
+		// no definite answer from the server.
+		return false
+	}
 }
 
 // ObsMailer is the head layer: it hands the batch down. The identity the layer

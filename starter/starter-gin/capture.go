@@ -83,9 +83,13 @@ const respCaptureKey = "_gs_gin_resp_capture"
 // = false) and owns its chain can install the innermost capture wrapper at a
 // chosen point - it must sit inside any response transformer (e.g. gzip) so it
 // records uncompressed bytes. See ApplyMiddlewares for the full chain.
-func ResponseCapture(payloadEnabled bool, payloadLimit int, sseDistributions bool) gin.HandlerFunc {
+func ResponseCapture(payloadEnabled bool, payloadLimit int, sseDistributions bool) (gin.HandlerFunc, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	tracer := newSSETracer()
-	metrics := newSSEMetrics(sseDistributions)
+	metrics := newSSEMetrics(sseDistributions, ins)
 	accessLog := newSSEAccessLog(payloadEnabled, payloadLimit)
 
 	return func(c *gin.Context) {
@@ -134,7 +138,7 @@ func ResponseCapture(payloadEnabled bool, payloadLimit int, sseDistributions boo
 		// defer runs after the handler rather than before it.
 		defer func() { cw.sseCount, cw.wasSSE = cw.finalizeSSE() }()
 		c.Next()
-	}
+	}, nil
 }
 
 // getResponseCapture returns the captureWriter published by responseCapture, or
@@ -245,10 +249,11 @@ func (w *captureWriter) capturedBody() []byte {
 // data (chunk size, interval) is passed to Record.
 type sseMetrics struct {
 	distributions bool
+	ins           *instrumentSet
 }
 
-func newSSEMetrics(sseDistributions bool) *sseMetrics {
-	return &sseMetrics{distributions: sseDistributions}
+func newSSEMetrics(sseDistributions bool, ins *instrumentSet) *sseMetrics {
+	return &sseMetrics{distributions: sseDistributions, ins: ins}
 }
 
 // size returns the per-event size histogram to record through: the shared
@@ -265,7 +270,7 @@ func (m *sseMetrics) size() metric.Int64Histogram {
 	if !m.distributions {
 		return metricnoop.Int64Histogram{}
 	}
-	return instruments().eventSize()
+	return m.ins.eventSize()
 }
 
 // interval returns the per-event interval histogram to record through (see size).
@@ -273,7 +278,7 @@ func (m *sseMetrics) interval() metric.Float64Histogram {
 	if !m.distributions {
 		return metricnoop.Float64Histogram{}
 	}
-	return instruments().eventInterval()
+	return m.ins.eventInterval()
 }
 
 // Record bumps the event counter and records the per-event size and interval
@@ -284,7 +289,7 @@ func (m *sseMetrics) interval() metric.Float64Histogram {
 // per-instance.
 func (m *sseMetrics) Record(ef eventFacts) {
 	attrs := metric.WithAttributes(ef.attrs...)
-	instruments().sseCounter.Add(ef.ctx, 1, attrs)
+	m.ins.sseCounter.Add(ef.ctx, 1, attrs)
 	m.size().Record(ef.ctx, int64(ef.chunkSize), attrs)
 	m.interval().Record(ef.ctx, ef.interval.Seconds(), attrs)
 }

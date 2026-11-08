@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/experimental/batch"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -131,6 +131,13 @@ func TestChunkStep_RestartNoDoubleProcessing(t *testing.T) {
 	assert.Number(t, final.WriteCount).Equal(int64(total))
 }
 
+// transientErr is a retryable failure: retry is a whitelist, so a chunk-retry
+// test must return an error that opts in.
+type transientErr struct{}
+
+func (transientErr) Error() string   { return "transient" }
+func (transientErr) Retryable() bool { return true }
+
 // TestChunkStep_RetryRecoversChunk verifies a transient chunk failure is retried
 // via the reused resilience policy instead of failing the step.
 func TestChunkStep_RetryRecoversChunk(t *testing.T) {
@@ -145,12 +152,12 @@ func TestChunkStep_RetryRecoversChunk(t *testing.T) {
 		Writer: batch.WriterFunc[int](func(_ context.Context, _ []int) error {
 			attempts++
 			if attempts < 3 { // fail the first two attempts of the first chunk
-				return errutil.Explain(nil, "transient")
+				return transientErr{}
 			}
 			return nil
 		}),
 		ChunkSize: 5,
-		Retry:     chain.Retry{MaxRetries: 3},
+		Retry:     resilience.Retry{MaxRetries: 3},
 	}
 
 	job := &batch.Job{Name: "flaky-job", Steps: []batch.Step{step}}

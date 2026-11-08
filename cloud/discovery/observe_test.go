@@ -33,11 +33,8 @@ import (
 // installGlobals wires an in-memory OTel meter so the assertions below see real
 // records. It is called exactly once, from [TestObserveReporting].
 //
-// resetInstruments keeps the install deterministic. This package's instrument
-// set is process-wide and resolved once, on first use, so it would otherwise
-// keep whichever instruments an earlier use in this test binary had already
-// resolved - against the no-op provider every test starts with - and these
-// records would go nowhere.
+// The observer resolves its instruments when it is constructed, so constructing
+// it after this call is what binds them to the reader.
 func installGlobals(t *testing.T) (sdkmetric.Reader, func()) {
 	t.Helper()
 	prevMP := otel.GetMeterProvider()
@@ -46,7 +43,6 @@ func installGlobals(t *testing.T) (sdkmetric.Reader, func()) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(rdr))
 
 	otel.SetMeterProvider(mp)
-	resetInstruments()
 	return rdr, func() {
 		otel.SetMeterProvider(prevMP)
 		_ = mp.Shutdown(context.Background())

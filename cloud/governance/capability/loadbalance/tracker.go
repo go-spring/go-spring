@@ -23,6 +23,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -104,9 +105,8 @@ type Tracker struct {
 	closed bool
 }
 
-// instrumentSet is this package's metric set: one per process, resolved lazily
-// on first use so it binds to whichever meter provider is current then, and
-// immutable afterwards. It holds no per-tracker state — the endpoint address is
+// instrumentSet is this package's metric set: one per tracker, resolved when the
+// tracker is constructed. It holds no per-tracker state — the endpoint address is
 // never a metric attribute, so no per-endpoint value travels here either.
 //
 // The suspension of an endpoint is an event (a dedicated counter named after the
@@ -118,34 +118,44 @@ type instrumentSet struct {
 	suspended   metric.Int64UpDownCounter
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments resolves the process-wide instruments from the meter provider
-// in force when it first runs.
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The
+// tracker owns the set, so a failed registration fails construction instead of
+// silently dropping the metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
 	set := &instrumentSet{}
-	set.suspensions, _ = m.Int64Counter("loadbalance.endpoint.suspension.total",
+	var err error
+	set.suspensions, err = m.Int64Counter("loadbalance.endpoint.suspension.total",
 		metric.WithDescription("Endpoints suspended for consecutive failures, including re-suspensions after failed half-open trials"),
 		metric.WithUnit("{event}"))
-	set.suspended, _ = m.Int64UpDownCounter("loadbalance.endpoint.suspended",
+	if err != nil {
+		return nil, errutil.Explain(err, "loadbalance: register loadbalance.endpoint.suspension.total")
+	}
+	set.suspended, err = m.Int64UpDownCounter("loadbalance.endpoint.suspended",
 		metric.WithDescription("Endpoints currently suspended from rotation"),
 		metric.WithUnit("{endpoint}"))
-	return set
+	if err != nil {
+		return nil, errutil.Explain(err, "loadbalance: register loadbalance.endpoint.suspended")
+	}
+	return set, nil
 }
 
 // NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
 // the 5s default here.
-func NewTracker(cfg TrackerConfig) *Tracker {
+func NewTracker(cfg TrackerConfig) (*Tracker, error) {
 	if cfg.SuspendFor <= 0 {
 		cfg.SuspendFor = 5 * time.Second
+	}
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
 	}
 	return &Tracker{
 		cfg:    cfg,
 		states: map[string]*suspendState{},
-		ins:    instruments(),
-	}
+		ins:    ins,
+	}, nil
 }
 
 // Allows returns the subset of eps that may currently receive traffic:

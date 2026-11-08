@@ -117,7 +117,11 @@ func (o *Relay) Init() error {
 			return err
 		}
 	}
-	o.relay = outbox.NewRelay(newStore(o.db), o.drv, o.cfg.relayConfig(), logObserver{instance: o.instanceName})
+	relay, err := outbox.NewRelay(newStore(o.db), o.drv, o.cfg.relayConfig(), logObserver{instance: o.instanceName})
+	if err != nil {
+		return err
+	}
+	o.relay = relay
 	// The loop runs on a context derived from octx rather than a bare
 	// background one, so the relay's own lines name the instance too.
 	ctx, cancel := context.WithCancel(octx)

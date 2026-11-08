@@ -126,7 +126,6 @@ spring.http-client.instances.discovered.discovery=static
 # 内置 DefaultDriver 连续失败 2 次后熔断,持续 30s。
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
 # NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
-spring.resilience.driver=default
 spring.governance.client.resilience.error-threshold=2
 spring.governance.client.resilience.open-duration=30s
 
@@ -339,9 +338,10 @@ endpoint,看打散变化——链路是整条重建的,不用重启;用真实发
    `resilience.ErrCircuitOpen`,微秒级返回(无网络往返)。
 2. 用自己的 binary 做等价手工演练:杀掉后端、循环调用,观察错误从网络/500 错误变为
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
-3. 观察跳变:`resilience.client.breaker.transitions_total{to="open"}` 递增,
-   `resilience.client.breaker.state{state="open"}` 报告打开状态
-   (由 resilience executor 自己发布,见 cloud/governance/dataplane/outbound/resilience/observe.go)。
+3. 观察跳变:快速失败的调用带
+   `resilience.client.calls{status="error", resilience.error_type="circuit_open"}`,
+   熔断打开就是这个序列的出现(`increase()` 即门禁拒绝次数)。不存在单独的熔断状态序列,
+   调用结果就是唯一事实源。
 
 ### 4.4 故障注入(免重启)
 
@@ -361,10 +361,10 @@ spring.fault.client.error=timeout    # 或 generic / reset
 
 - 指标(starter-otel 的 prometheus exporter,如 example-otel 的 `:9090/metrics`):
   `resilience.client.calls` 计数器,属性 `resilience.system="http"`、
-  `resilience.service="http:greet-svc"`、`status` ∈ {ok, error},以及保护拒绝该调用时的
-  `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout};
-  `resilience.client.breaker.state`(按 state 1-hot)、
-  `resilience.client.breaker.transitions_total{to}`。
+  `resilience.service="http:greet-svc"`、`status` ∈ {ok, error},以及完备的
+  `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, retry_exceeded,
+  timeout, downstream, canceled}。下游失败率为
+  `rate(resilience.client.calls{status="error", resilience.error_type="downstream"})`。
 - 访问日志:由 `observability.level` 门控(默认 brief = 开),tag
   `_app_http_resilience`(`log.RegisterAppTag("http", "resilience")`)。
 - trace:httpx 内置的 otelhttp 层每请求一个 client span(命名遵循

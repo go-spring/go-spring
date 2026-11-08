@@ -14,66 +14,24 @@
  * limitations under the License.
  */
 
+// breaker.go is the circuit-breaker capability: the pushed document, its
+// validation, and the checks a policy must pass before the executor can
+// materialize it.
+
 package resilience
 
 import (
 	"errors"
+	"fmt"
+	"hash"
+	"hash/fnv"
 	"time"
 
 	"go-spring.org/cloud/governance/capability/circuitbreaker"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/stdlib/errutil"
 )
-
-// This file holds the outbound policy vocabulary, split by CAPABILITY:
-//
-//   - [Limits] — timeout and the retry schedule. Pure values: nothing is
-//     materialized, so a change costs no state.
-//   - [BreakerPolicy] — the circuit-breaker knobs. One state machine per key.
-//   - [ratelimit.Policy] — the rate-limit knobs. One token bucket (or
-//     store-backed counter) per key.
-//
-// The split is what lets the three capabilities be configured, refreshed and
-// materialized independently. There is deliberately no aggregate type: a document
-// block composes the three where all of them apply, and every other caller names
-// only the capability it means.
-
-// Limits is the timeout and retry half of a policy: the wall-time budget of one
-// Execute and the schedule its rounds follow. It carries no runtime state — the
-// executor reads these values per call.
-type Limits struct {
-	// Retry is the retry declaration a governance center MAY push for this label.
-	// By default a center pushes nothing (the zero node), and the retry a call
-	// runs under is the one the caller declares on [chain.Operation.Retry] — the
-	// caller is the only side that knows whether repeating the call repeats a
-	// side effect. When a center DOES push a node that declares a schedule, it
-	// wins WHOLE over the call's node, because a pushed value is how an operator
-	// hot-fixes a live incident; the NonIdempotent flag is preserved from both
-	// regardless (see [EffectiveRetry], the one place the two are merged).
-	//
-	// RetryBudget is read from HERE only, at the label level (see
-	// [chain.Retry.RetryBudget]); a per-call node's budget is ignored.
-	Retry chain.Retry `value:"${retry:=}"`
-
-	// Timeout bounds the WALL TIME of the whole [chain.Executor.Execute] — retries
-	// and backoff included — as one context deadline applied at the entry and
-	// covering every stage beneath it.
-	//
-	// It is deliberately ONE bound rather than a per-attempt one plus a total: a
-	// single deadline is what an operator reasons about ("this call must not
-	// exceed N"), and it is what the governance layers of every mainstream stack
-	// express. Its consequence is that rounds share the budget — a first attempt
-	// that spends it all leaves nothing for the retries — which is the same
-	// contract Istio's route timeout and gRPC's deadline carry.
-	//
-	// 0 means no bound of its own, beyond whatever the caller's context carries.
-	Timeout time.Duration `value:"${timeout:=0}" expr:"int($) >= 0"`
-}
-
-// IsZero reports whether these limits configure nothing — no deadline and no
-// schedule, so the call runs on its own context and its own retry node.
-func (l Limits) IsZero() bool {
-	return l.Timeout == 0 && l.Retry.IsZero()
-}
 
 // BreakerPolicy is the circuit-breaker half of a policy. Every knob is
 // zero-value-safe; a zero policy leaves the breaker off rather than enabling it
@@ -241,19 +199,92 @@ func (p BreakerPolicy) ResolvedStrategy() circuitbreaker.Strategy {
 	return circuitbreaker.StrategyConsecutive
 }
 
-// Retryable is implemented by an error to opt itself in or out of retry: the
-// error's own type knows best whether another attempt is meaningful (a
-// non-idempotent write that already failed server-side opts out; a transient
-// reset opts in). This is how a gorm/redis adapter marks a
-// non-idempotent-write error (Retryable() false) or a transient one (true)
-// without teaching the executor about that client library.
-type Retryable interface {
-	Retryable() bool
+// BreakerSettings is the circuit-breaker half of the outbound document. This
+// type IS the document: the control-plane breaker root binds it and hands it
+// back unchanged (see [BreakerSettings.Validate]), so there is no separate
+// binding twin.
+type BreakerSettings struct {
+	// Services groups the rules by the label they govern. Duplicate groups are
+	// order-shadowed: the first group naming a label wins. There is no implicit
+	// default: an instance with no matching rule runs with no breaker.
+	Services []BreakerService `value:"${services:=}"`
+}
+
+// BreakerService is one label's policy block: every rule inside it governs the
+// same service. A service-scope rule WINS OUTRIGHT over the interface-level
+// rules of its service, so the two never compete; interface rules are consulted
+// only when the service has no service rule.
+type BreakerService struct {
+	// Service is the label these rules apply to, exact-compare. Required.
+	Service string `value:"${service:=}" expr:"$ != ''"`
+
+	// Rules are the breakers for this service.
+	Rules []BreakerRule `value:"${rules:=}"`
+}
+
+// Validate reports whether every breaker policy in s can be materialized.
+// conf.Bind calls it, so an invalid document is rejected at the source boundary
+// rather than reaching the center.
+//
+// Breakers accept both scopes. A service rule WINS OUTRIGHT over the
+// interface-level rules of its service, so the two never compete; interface
+// rules are consulted only when the service has no service rule.
+func (s BreakerSettings) Validate() error {
+	for i := range s.Services {
+		g := &s.Services[i]
+		for j := range g.Rules {
+			r := &g.Rules[j]
+			if err := validateBreakerPolicy(r.BreakerPolicy); err != nil {
+				return errutil.Explain(err, "resilience: breaker rule %q of %q", r.ActionMatch, g.Service)
+			}
+		}
+	}
+	return nil
+}
+
+// BreakerRule is one breaker rule inside a [BreakerService].
+//
+// Action is either [matcher.ServiceScopeAction] ("-") or a real exact/prefix. A service
+// rule, when present, WINS OUTRIGHT: the interface-level rules of that service
+// are not consulted. With no service rule, the most specific interface rule
+// applies.
+type BreakerRule struct {
+	// Action selects the scope: "-" for the whole service, or a real
+	// exact/prefix for one interface.
+	ActionMatch matcher.ActionMatch `value:"${action:=}"`
+
+	BreakerPolicy
+}
+
+// validateBreakerPolicy checks what the breaker cannot build from. Every scalar
+// knob is owned by its expr tag (thresholds, windows); what remains is the
+// cross-field choice of a strategy and its trip condition.
+func validateBreakerPolicy(p BreakerPolicy) error {
+	if !p.Enabled() {
+		return nil
+	}
+	// Without an explicit strategy, only an error threshold can be inferred
+	// unambiguously (as consecutive). Windowed-strategy knobs have no meaning
+	// under that inference, and a general knob such as open-duration cannot
+	// choose a strategy at all — name the missing choice instead.
+	if p.BreakerStrategy == "" {
+		if p.ErrorRateThreshold != 0 || p.SlowCallDurationThreshold != 0 ||
+			p.SlowCallRateThreshold != 0 || p.MinRequests != 0 || p.BreakerWindow != 0 {
+			return errutil.Explain(nil,
+				"breaker-strategy is required when windowed-strategy knobs are set")
+		}
+		if p.ErrorThreshold == 0 {
+			return errutil.Explain(nil,
+				"breaker-strategy (or error-threshold) is required to enable the breaker")
+		}
+	}
+	_, err := circuitbreaker.New(p.Spec())
+	return err
 }
 
 // FailureClass is implemented by an error that knows whether it is evidence
 // AGAINST the downstream — the breaker's question, which is independent of the
-// retry question above. A caller mistake (an injected "business" fault, an HTTP
+// retry question. A caller mistake (an injected "business" fault, an HTTP
 // 4xx from an adapter) is neither retried nor counted; a deterministic failure
 // may be unretryable yet still count. The two questions are separate because
 // their answers are: [Retryable] alone would make "don't retry" and "don't open
@@ -279,4 +310,113 @@ func CountsAsFailure(err error) bool {
 		return fc.CountsAsFailure()
 	}
 	return true
+}
+
+// findRule answers the breaker half of the call plan ([Executor.planFor]). A
+// service-scope rule WINS OUTRIGHT: interface-level rules of that service are
+// not consulted. Without a service rule, the most specific real-action rule
+// applies.
+//
+// The second result reports whether a rule matched. The state key is derived by
+// the caller from the rule's selector ([ruleKey]); the document fingerprint
+// tracks the rule's content, so a changed rule rebuilds the table rather than
+// following an old key to different state.
+func (s *BreakerSettings) findRule(op chain.Operation) (BreakerRule, bool) {
+	for i := range s.Services {
+		if s.Services[i].Service == op.Service {
+			// The first group naming a label wins; a duplicate group is
+			// order-shadowed, not merged.
+			return s.Services[i].findRule(op)
+		}
+	}
+	return BreakerRule{}, false
+}
+
+// findRule selects one rule of this service.
+func (s *BreakerService) findRule(op chain.Operation) (BreakerRule, bool) {
+	best := -1
+	var bestMatch matcher.ActionMatch
+	for i := range s.Rules {
+		r := &s.Rules[i]
+		if !r.ActionMatch.Matches(op.Request.Action) {
+			continue
+		}
+		// A service-scope rule wins outright, so the first one seen ends the
+		// search: no interface rule can beat it.
+		if r.ActionMatch.IsServiceScope() {
+			return s.Rules[i], true
+		}
+		if best < 0 || r.ActionMatch.BetterThan(bestMatch) {
+			best, bestMatch = i, r.ActionMatch
+		}
+	}
+	if best >= 0 {
+		return s.Rules[best], true
+	}
+	return BreakerRule{}, false
+}
+
+// breakerGen fingerprints the breaker half of everything a label resolves:
+// every rule naming it. It is the ONE capability that needs a content
+// comparison — a push that changes nothing must not reset a breaker's live
+// state. Rate counters survive pushes by construction and timeout/retry values
+// are pure, so neither carries a generation.
+//
+// The state key is the rule's selector (see [ruleKey]), so a reordering does
+// not move a breaker; only a change of a rule's content does.
+func breakerGen(label string, s *BreakerSettings) uint64 {
+	h := fnv.New64a()
+	for i := range s.Services {
+		g := &s.Services[i]
+		if g.Service != label {
+			continue
+		}
+		for j := range g.Rules {
+			r := &g.Rules[j]
+			fingerprint(h, r.ActionMatch.Exact)
+			fingerprint(h, r.ActionMatch.Prefix)
+			fingerprintBreaker(h, r.BreakerPolicy)
+		}
+		break // first group naming the label wins, as in findRule
+	}
+	return h.Sum64()
+}
+
+// breakerFingerprint is the breaker half, in one value so it can be
+// fingerprinted without pulling in unrelated knobs.
+type breakerFingerprint struct {
+	Off         bool
+	Threshold   int
+	Open        time.Duration
+	Strategy    circuitbreaker.Strategy
+	Rate        float64
+	MinRequests int
+	Window      time.Duration
+	Slow        time.Duration
+	SlowRate    float64
+	HalfOpen    int
+	HalfTimeout time.Duration
+}
+
+func fingerprintBreaker(h hash.Hash64, p BreakerPolicy) {
+	fingerprint(h, fmt.Sprintf("%+v", breakerFingerprint{
+		Off:         p.BreakerDisabled,
+		Threshold:   p.ErrorThreshold,
+		Open:        p.OpenDuration,
+		Strategy:    p.BreakerStrategy,
+		Rate:        p.ErrorRateThreshold,
+		MinRequests: p.MinRequests,
+		Window:      p.BreakerWindow,
+		Slow:        p.SlowCallDurationThreshold,
+		SlowRate:    p.SlowCallRateThreshold,
+		HalfOpen:    p.HalfOpenRequests,
+		HalfTimeout: p.HalfOpenTimeout,
+	}))
+}
+
+// fingerprint writes one field, delimited so that ("ab","c") and ("a","bc")
+// cannot collide.
+func fingerprint(h hash.Hash64, s string) {
+	h.Write([]byte(s))
+	h.Write([]byte{0})
 }

@@ -27,9 +27,9 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -56,10 +56,18 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: lb,
-		Admission:   admission.NewManager(fact2),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),

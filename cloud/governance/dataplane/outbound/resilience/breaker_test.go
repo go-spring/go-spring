@@ -21,32 +21,63 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/circuitbreaker"
-	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// TestPolicyIsZeroCoversNewKnobs pins that IsZero sees the newer knobs: a
-// policy setting ONLY one of them is no longer "no protection".
-func TestPolicyIsZeroCoversNewKnobs(t *testing.T) {
-	assert.That(t, (ratelimit.Policy{WarmUp: time.Second}).IsZero()).False()
-	assert.That(t, (ratelimit.Policy{ColdFactor: 3}).IsZero()).False()
-	assert.That(t, (BreakerPolicy{BreakerStrategy: circuitbreaker.StrategySlowCall}).IsZero()).False()
-	assert.That(t, (BreakerPolicy{BreakerStrategy: circuitbreaker.StrategyErrorCount}).IsZero()).False()
-	assert.That(t, (BreakerPolicy{BreakerDisabled: true}).IsZero()).False()
-	assert.That(t, (Limits{Timeout: time.Second}).IsZero()).False()
+// TestBreakerServiceRequiredAtBind pins the single-field rule that lives in the
+// expr tag rather than in Validate.
+func TestBreakerServiceRequiredAtBind(t *testing.T) {
+	_, err := source.Parse[BreakerSettings]("breaker.properties", []byte(`
+services[0].rules[0].action.exact=GET /x
+services[0].rules[0].error-threshold=1
+`), "")
+	assert.Error(t, err).NotNil()
+
+	_, err = source.Parse[BreakerSettings]("breaker.properties", []byte(`
+services[0].service=svc
+services[0].rules[0].action.exact=GET /x
+services[0].rules[0].error-threshold=1
+`), "")
+	assert.Error(t, err).Nil()
+}
+
+// TestValidateBreakerRuleList pins the breaker document checks that are not
+// single-field expr tags. Selector shape is not checked here: documents are
+// platform-generated and the document-validation layer owns that.
+func TestValidateBreakerRuleList(t *testing.T) {
+	// Duplicate selectors are order-shadowed by first-match-wins, not invalid;
+	// the platform is expected not to emit them.
+	assert.Error(t, (BreakerSettings{Services: []BreakerService{{
+		Service: "svc",
+		Rules: []BreakerRule{
+			{ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction}},
+			{ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction}},
+		},
+	}}}).Validate()).Nil()
 }
 
 // TestValidateBreakerEnablement pins the contract that a configured breaker is
 // either valid or rejected: disabling is an explicit, accepted choice, while an
 // enabled breaker missing its trip condition is a configuration error.
 func TestValidateBreakerEnablement(t *testing.T) {
+	settings := func(p BreakerPolicy) BreakerSettings {
+		return BreakerSettings{Services: []BreakerService{{
+			Service: "svc",
+			Rules: []BreakerRule{{
+				ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+				BreakerPolicy: p,
+			}},
+		}}}
+	}
 	valid := func(p BreakerPolicy) {
 		t.Helper()
-		assert.Error(t, ValidateBreaker(BreakerSettings{Default: p})).Nil()
+		assert.Error(t, settings(p).Validate()).Nil()
 	}
 	invalid := func(p BreakerPolicy) {
 		t.Helper()
-		assert.Error(t, ValidateBreaker(BreakerSettings{Default: p})).NotNil()
+		assert.Error(t, settings(p).Validate()).NotNil()
 	}
 
 	// Nothing configured: the breaker stays off.
@@ -95,4 +126,12 @@ func TestBreakerSpecDefaults(t *testing.T) {
 	if spec.FailureThreshold != 9 || spec.MinSamples != 20 {
 		t.Fatalf("explicit knobs did not win: %+v", spec)
 	}
+}
+
+// TestBreakerIsZeroCoversNewKnobs pins that IsZero sees the newer knobs: a
+// policy setting ONLY one of them is no longer "no protection".
+func TestBreakerIsZeroCoversNewKnobs(t *testing.T) {
+	assert.That(t, (BreakerPolicy{BreakerStrategy: circuitbreaker.StrategySlowCall}).IsZero()).False()
+	assert.That(t, (BreakerPolicy{BreakerStrategy: circuitbreaker.StrategyErrorCount}).IsZero()).False()
+	assert.That(t, (BreakerPolicy{BreakerDisabled: true}).IsZero()).False()
 }

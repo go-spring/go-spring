@@ -45,12 +45,15 @@ func TestDocumentBinds(t *testing.T) {
 	assert.That(t, d.Rules[0].Limiter).Equal(ratelimit.TokenBucketAlgorithm)
 }
 
-func TestDuplicateEntrancesRejected(t *testing.T) {
+// TestDuplicateEntrancesAreOrderShadowed pins that a repeated entrance is not a
+// document error: matching takes the first one, and avoiding duplicates is the
+// platform's job when it writes the document.
+func TestDuplicateEntrancesAreOrderShadowed(t *testing.T) {
 	_, err := source.Parse[admission.Settings]("admission.properties", []byte(`
 services[0].service=gin::8080
 services[1].service=gin::8080
 `), "")
-	assert.Error(t, err).NotNil()
+	assert.Error(t, err).Nil()
 }
 
 func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
@@ -61,7 +64,10 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := admission.NewManager(factories)
+	mgr, err := admission.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// A guard must exist for Apply to materialize a policy: construction is what
 	// rejects a document, so nothing is built for an instance this process does
 	// not serve.
@@ -91,7 +97,10 @@ func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := admission.NewManager(factories)
+	mgr, err := admission.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := mgr.GuardFor(admission.Identity{System: "gin", Service: "gin::8080"}); err != nil {
 		t.Fatal(err)
 	}

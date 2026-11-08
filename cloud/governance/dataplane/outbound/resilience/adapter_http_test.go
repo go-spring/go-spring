@@ -43,7 +43,7 @@ func TestRoundTripperRetriesOn5xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 3}})
+	e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 3}})
 	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, "svc", nil)}
 
 	resp, err := client.Get(srv.URL)

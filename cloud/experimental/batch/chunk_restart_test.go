@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/experimental/batch"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -125,12 +125,12 @@ func TestChunkStep_RetryReplaysBufferWithoutRereading(t *testing.T) {
 		Writer: batch.WriterFunc[int](func(_ context.Context, _ []int) error {
 			attempts++
 			if attempts < 3 {
-				return errutil.Explain(nil, "transient")
+				return transientErr{}
 			}
 			return nil
 		}),
 		ChunkSize: 5,
-		Retry:     chain.Retry{MaxRetries: 3},
+		Retry:     resilience.Retry{MaxRetries: 3},
 	}
 
 	je, err := (&batch.Job{Name: "replay", Steps: []batch.Step{step}}).Run(ctx, repo, nil)

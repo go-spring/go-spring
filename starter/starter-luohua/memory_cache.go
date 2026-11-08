@@ -43,7 +43,7 @@ type luohuaValue struct {
 }
 
 // NewLuohuaCache builds a typed *cache.Cache over the luohua in-memory store.
-func NewLuohuaCache() *cache.Cache {
+func NewLuohuaCache() (*cache.Cache, error) {
 	return cache.New(&byteCache{m: make(map[string]luohuaValue)})
 }
 

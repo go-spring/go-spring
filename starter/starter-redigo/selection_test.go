@@ -56,10 +56,18 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: mgr,
-		Admission:   admission.NewManager(fact2),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -114,10 +122,18 @@ func TestNewPoolWithoutDiscoveryHasNoChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

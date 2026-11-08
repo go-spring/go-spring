@@ -39,7 +39,6 @@ import (
 
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/lock"
 	"go-spring.org/cloud/security"
 	"go-spring.org/cloud/traffic"
@@ -117,22 +116,6 @@ func apply(r gs.BeanProvider, c Config) error {
 // Each lives in its own file for the implementation, but its registration is
 // collected here so this file is the single place that shows what the starter
 // contributes to the container.
-
-// governance registers the company resilience driver as a bean named "luohua"
-// (selectable by spring.resilience.driver=luohua).
-func init() {
-	// Contributing the backend as a bean named "luohua" makes it selectable by
-	// spring.resilience.driver=luohua: the resilience manager injects the
-	// resilience.Driver bean whose name that key selects. Like the bundled
-	// "default" (and sentinel's blank-import contribution) this is an init-time
-	// availability registration, not a config-gated activation — the driver only
-	// governs when the process actually selects it.
-	gs.Provide(func() *luohuaResilienceDriver {
-		return &luohuaResilienceDriver{}
-	}).Name(LuohuaResilienceDriverName).
-		Export(gs.As[resilience.Driver]()).
-		Caller(1)
-}
 
 // identity registers the SSO token validator default (step-aside via OnMissingBean).
 func init() {
@@ -215,7 +198,7 @@ func init() {
 
 // memory_cache registers the in-process cache under the luohua driver name.
 func init() {
-	gs.Provide(func() *cache.Cache { return NewLuohuaCache() }).Name("luohua")
+	gs.Provide(func() (*cache.Cache, error) { return NewLuohuaCache() }).Name("luohua")
 }
 
 // propagate registers luohua's wire vocabulary into the otel trace propagator.

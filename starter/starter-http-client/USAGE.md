@@ -133,7 +133,6 @@ spring.http-client.instances.discovered.discovery=static
 # keeps it open 30s.
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
 # NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
-spring.resilience.driver=default
 spring.governance.client.resilience.error-threshold=2
 spring.governance.client.resilience.open-duration=30s
 
@@ -363,9 +362,10 @@ The `guarded` route targets the always-500 backend on :9473 with
 2. Equivalent manual drill with your own binary: kill the backend, loop the call, watch the error
    change from a network/500 error to `circuit open`, wait out `open-duration` (30s) with the
    backend restored — the half-open trial succeeds and the breaker closes.
-3. Observe the trip: `resilience.client.breaker.transitions_total{to="open"}` increments, and
-   `resilience.client.breaker.state{state="open"}` reports the open state (published by the
-   resilience executor itself, see cloud/governance/dataplane/outbound/resilience/observe.go).
+3. Observe the trip: fast-failed calls carry
+   `resilience.client.calls{status="error", resilience.error_type="circuit_open"}`, so the trip is
+   the appearance of that series (`increase()` = how often the gate refused). There is no separate
+   breaker-state series: the call outcome is the source of truth.
 
 ### 4.4 Fault injection (no restart)
 
@@ -386,11 +386,10 @@ whole stack, not just the injector.
 
 - Metrics (starter-otel's prometheus exporter, e.g. example-otel `:9090/metrics`):
   `resilience.client.calls` counter with attributes `resilience.system="http"`,
-  `resilience.service="http:greet-svc"`, `status` ∈ {ok, error}, plus
-  `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout} when
-  protection refused the call;
-  `resilience.client.breaker.state` (1-hot by state) and
-  `resilience.client.breaker.transitions_total{to}`.
+  `resilience.service="http:greet-svc"`, `status` ∈ {ok, error}, plus a total
+  `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, retry_exceeded,
+  timeout, downstream, canceled}. Downstream failure rate is
+  `rate(resilience.client.calls{status="error", resilience.error_type="downstream"})`.
 - Access log: gated by `observability.level` (default brief = on), tag `_app_http_resilience`
   (`log.RegisterAppTag("http", "resilience")`).
 - Traces: client span per request from httpx's built-in otelhttp layer (`GET /greet`-style naming per

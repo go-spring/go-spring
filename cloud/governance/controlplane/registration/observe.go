@@ -56,10 +56,9 @@ const (
 // obsNow reads the wall clock. A variable so tests can advance time.
 var obsNow = time.Now
 
-// instrumentSet is the registration instrument set: one per process, resolved
-// lazily on first use so it binds to whichever providers are current then, and
-// immutable afterwards. It holds no per-instance state — the value the
-// observable gauge reports lives in each Observer, not here.
+// instrumentSet is the registration instrument set: one per observer, resolved
+// when the observer is constructed. It holds no per-instance state — the value
+// the observable gauge reports lives in each Observer, not here.
 //
 // The gauge is created WITHOUT a callback on purpose; see [Observer.register]
 // for why a creation-time callback would report only the first block.
@@ -70,36 +69,41 @@ type instrumentSet struct {
 	registered  metric.Int64ObservableGauge
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The
+// observer owns the set, so a failed registration fails construction instead of
+// silently dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
 	in := &instrumentSet{meter: m}
-	in.opDuration, _ = m.Float64Histogram("discovery.operation.duration",
+	var err error
+	in.opDuration, err = m.Float64Histogram("discovery.operation.duration",
 		metric.WithDescription("Duration of discovery-center registration operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	in.regAttempts, _ = m.Int64Counter("discovery.registration.attempts_total",
+	if err != nil {
+		return nil, errutil.Explain(err, "registration: register discovery.operation.duration")
+	}
+	in.regAttempts, err = m.Int64Counter("discovery.registration.attempts_total",
 		metric.WithDescription("Registration attempts against a discovery center, by reason and outcome"))
-	in.registered, _ = m.Int64ObservableGauge("discovery.instance.registered",
+	if err != nil {
+		return nil, errutil.Explain(err, "registration: register discovery.registration.attempts_total")
+	}
+	in.registered, err = m.Int64ObservableGauge("discovery.instance.registered",
 		metric.WithDescription("1 while this instance is published into the discovery center, 0 while it is not"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "registration: register discovery.instance.registered")
+	}
+	return in, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // Observer reports one configured registration block: the publish, deregister
 // and weight operations of that block and the "is this instance published"
 // gauge they feed. It is a layer the block owns — created by the block's
 // constructor, closed by its destructor — so the state it accumulates lives
 // exactly as long as the block that produced it, and two blocks in one process
-// cannot contaminate each other. The instrument set those readings go through is
-// shared by every block (see [instruments]); only the state is per block.
+// cannot contaminate each other. Each observer resolves its own instrument set
+// at construction (see [buildInstruments]); only the state is per block.
 //
 // The two axes of that identity travel with every reading: system names the
 // backend implementation ("etcd", "nacos", ...), center names the configured
@@ -112,11 +116,12 @@ type Observer struct {
 	system string
 	center string
 
-	// regOnce registers this block's gauge callback against the shared
-	// instruments. It runs on first use, not at construction: the callback must
-	// be in place before the first collection, and the instruments must be
-	// resolved after starter-otel has installed the global providers — which a
-	// test may also do later than this constructor runs.
+	// ins is this block's instrument set, resolved at construction.
+	ins *instrumentSet
+
+	// regOnce registers this block's gauge callback on the set resolved at
+	// construction. It runs on first use so a block that never reports never
+	// registers a callback.
 	regOnce sync.Once
 
 	// mu guards the state below: the map the observable gauge reads, and the
@@ -141,9 +146,14 @@ func NewObserver(system, center string) (*Observer, error) {
 	if center == "" {
 		return nil, errutil.Explain(nil, "registration: observer center is required")
 	}
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return &Observer{
 		system:    system,
 		center:    center,
+		ins:       ins,
 		published: map[string]bool{},
 	}, nil
 }
@@ -194,7 +204,7 @@ func (o *Observer) live() bool {
 // it is reversible.
 func (o *Observer) register() {
 	o.regOnce.Do(func() {
-		in := instruments()
+		in := o.ins
 		if reg, err := in.meter.RegisterCallback(o.observeRegistered, in.registered); err == nil {
 			o.mu.Lock()
 			o.unregs = append(o.unregs, reg)
@@ -203,12 +213,10 @@ func (o *Observer) register() {
 	})
 }
 
-// ready resolves the shared instruments and registers this block's gauge
-// callback. Both happen once; calling it on every reporting path is what keeps
-// the resolution lazy — after starter-otel has installed the global providers,
-// and not at construction.
+// ready registers this block's gauge callback. The instruments were resolved at
+// construction; calling this on every reporting path is cheap because [register]
+// is once-only.
 func (o *Observer) ready() {
-	instruments()
 	o.register()
 }
 
@@ -218,7 +226,7 @@ func (o *Observer) observeRegistered(_ context.Context, ob metric.Observer) erro
 	snapshot := make(map[string]bool, len(o.published))
 	maps.Copy(snapshot, o.published)
 	o.mu.Unlock()
-	registered := instruments().registered
+	registered := o.ins.registered
 	for service, ok := range snapshot {
 		var v int64
 		if ok {
@@ -286,7 +294,7 @@ func (o *Observer) endOp(ctx context.Context, span trace.Span, op, service strin
 		span.SetStatus(codes.Error, err.Error())
 	}
 	span.End()
-	instruments().opDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+	o.ins.opDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
 		o.attrs(
 			attribute.String("operation", op),
 			attribute.String("service", service),
@@ -323,7 +331,7 @@ func (o *Observer) RegisterAttempt(ctx context.Context, service, reason string, 
 	ctx, span := o.startOp(ctx, opRegister, service, reason)
 	return finishAttempt(ctx, func(err error) {
 		o.endOp(ctx, span, opRegister, service, start, err)
-		instruments().regAttempts.Add(ctx, 1, metric.WithAttributes(
+		o.ins.regAttempts.Add(ctx, 1, metric.WithAttributes(
 			o.attrs(
 				attribute.String("service", service),
 				attribute.String("reason", reason),

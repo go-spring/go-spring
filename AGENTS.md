@@ -30,6 +30,8 @@ reorganizing any rule:
 
 - Start every reply with "Hi,Go-Spring.".
 - 首先对问题或者任务进行回应，不要直接开始干活。
+- 没有遵循 TDD，不要因为测试逼着代码去改，可以寻求人工介入。
+- 每个回答的开始讲一下对问题的理解或者简短答复，然后再输出其他。
 
 <!-- ## AI Collaboration Rules
 

@@ -250,9 +250,9 @@ executor 在调用点驱动，而非作为 interceptor 串入。每次发布/消
 （见 observe.go）并经 `guard` 跑在 executor 下 [command.go:197-202]——executor 是**唯一发射点**：
 它从 ctx 读取声明的操作，打开调用 span，记录调用级 `messaging.client.operation.duration`
 与尝试级 `messaging.client.attempt.duration` histogram、在途 gauge、`resilience.client.calls`
-counter 以及那一条 access log。publish 与 consume 声明为 `NonIdempotent`，所以针对该 label、
-带重试策略的治理规则，其重试会被**抑制**（每个 service 告警一次）：重新发布或再跑一遍
-handler 是第二个副作用，不是第二次尝试。
+counter 以及那一条 access log。重试只由治理配置：publish 与 consume 不带调用侧重试。
+重新发布或再跑一遍 handler 是第二个副作用，不是第二次尝试，所以文档不应给该 label 配置
+调度——写文档的人自己负责它的效果。
 
 | 入口 | 发射方 | Resilience guard |
 |---|---|---|

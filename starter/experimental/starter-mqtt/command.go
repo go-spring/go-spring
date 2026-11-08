@@ -118,7 +118,7 @@ func observe(ctx context.Context, cl mqtt.Client, declare func(traffic.Propagato
 		return call(ctx)
 	}
 	co := v.(*clientObserver)
-	return co.obs.Observe(ctx, declare(co.prop), nil, call)
+	return co.obs.Observe(ctx, declare(co.prop), new(chain.Recorder), call)
 }
 
 // GuardedPublish publishes payload to topic at qos, routed through the

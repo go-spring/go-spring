@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"sync"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -57,9 +57,8 @@ func WithTraffic(prop traffic.Propagator) Option {
 	return func(c *coordinator) { c.prop = prop }
 }
 
-// instrumentSet bundles the metrics a saga records: one per process, resolved
-// lazily on first use so the set binds to whichever OTel global provider is
-// current then, and immutable afterwards. It holds no per-saga state.
+// instrumentSet bundles the metrics a saga records: one per coordinator,
+// resolved when the coordinator is constructed. It holds no per-saga state.
 type instrumentSet struct {
 	// outcomes counts saga terminal states — the event counter of the metrics
 	// rules: a saga's outcome is a rare, semantically major event, named after
@@ -68,40 +67,45 @@ type instrumentSet struct {
 	outcomes metric.Int64Counter
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
-	in := &instrumentSet{}
-	in.outcomes, _ = otel.Meter(componentName).
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The
+// coordinator owns the set, so a failed registration fails construction instead
+// of silently dropping the metric family.
+func buildInstruments() (*instrumentSet, error) {
+	outcomes, err := otel.Meter(componentName).
 		Int64Counter("transaction.saga.outcome.total",
 			metric.WithDescription("Saga terminal states, by status"),
 			metric.WithUnit("{saga}"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "transaction: register transaction.saga.outcome.total")
+	}
+	return &instrumentSet{outcomes: outcomes}, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // NewCoordinator returns the bundled in-process [Coordinator]: it runs a saga's
 // steps synchronously and, on the first failure, compensates the already-
 // succeeded steps in reverse order. With no options it uses no store and no
 // observer, which is a valid transparent setup for tests and development.
-func NewCoordinator(opts ...Option) Coordinator {
+func NewCoordinator(opts ...Option) (Coordinator, error) {
 	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding())}
 	for _, opt := range opts {
 		opt(c)
 	}
-	return c
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
+	c.ins = ins
+	return c, nil
 }
 
 type coordinator struct {
 	store    Store
 	observer Observer
 	prop     traffic.Propagator
+
+	// ins is this coordinator's instrument set, resolved at construction.
+	ins *instrumentSet
 }
 
 // completedStep records a step that succeeded, so compensation can replay it in
@@ -284,7 +288,7 @@ func (c *coordinator) persistRunning(ctx context.Context, s Saga, completed []co
 // log line too — a saga's outcome is the key lifecycle event an operator
 // greps for, and the span alone is not greppable text.
 func (c *coordinator) finish(ctx context.Context, s Saga, res *Result, completed []completedStep) {
-	instruments().outcomes.Add(ctx, 1, metric.WithAttributes(
+	c.ins.outcomes.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("status", res.Status.String()),
 	))
 	if res.Status == StatusCommitted {
@@ -328,7 +332,7 @@ func (c *coordinator) snapshot(s Saga, status Status, completed []completedStep,
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
-// reuses [resilience.Limits] so Saga step retries and outbound resilience share
+// reuses [resilience.TimeoutRetry] so Saga step retries and outbound resilience share
 // one knob set instead of duplicating retry logic here; the step's node becomes the
 // executor's policy retry node.
 func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
@@ -339,12 +343,21 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resour
 	if err != nil {
 		return err
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
-	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
+		return err
+	}
+	if err := mgr.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+		Service: resource,
+		Rules: []resilience.TimeoutRetryRule{{
+			ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			TimeoutRetry: resilience.TimeoutRetry{Retry: p},
+		}},
+	}}}); err != nil {
 		return err
 	}
 	defer func() { _ = mgr.Close() }()
-	exec := mgr.ExecutorFor(resource)
+	exec := mgr.Wrap(resource, nil)
 	op := chain.NewOperation(ctx, prop)
 	op.Service = resource
 	return exec.Execute(ctx, op, new(chain.Recorder), fn)

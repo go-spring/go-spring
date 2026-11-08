@@ -25,7 +25,7 @@ import (
 
 // error.go is the OUTCOME vocabulary: the one error shape every injected failure
 // returns, and the two ways to detect it. Nothing here decides anything — the
-// sequence that builds these errors is [evaluate] in manager.go, and the adapters
+// sequence that builds these errors is [Manager.Fire] in manager.go, and the adapters
 // that turn one into their protocol's failure live in outbound/fault and
 // inbound/fault.
 

@@ -82,15 +82,14 @@ that has no bespoke backend should ride the official one and pin its policy per
 fleet. Do that in a governance rules document (see cloud/governance/controlplane/source's USAGE.md):
 
 ```properties
-spring.resilience.driver=default
 spring.governance.client.resilience.services[0].service=orders
 spring.governance.client.resilience.services[0].timeout=500ms
 spring.governance.client.resilience.services[0].retry.max-retries=2
 ```
 
-Registering a company resilience backend (instead of `default`) is a plain bean —
-`gs.Provide(...).Name(name).Export(gs.As[resilience.Driver]())` — and the seam
-exists; luohua just chooses not to ship a pretend engine.
+The framework has one outbound engine and the manager owns it; there is no
+backend bean to select. A company that wants its own protection composes it as a
+chain node around the manager, exactly like any other client layer.
 
 ## Arming
 

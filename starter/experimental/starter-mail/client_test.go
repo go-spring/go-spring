@@ -18,15 +18,17 @@ package StarterMail
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/wneessen/go-mail"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -80,10 +82,18 @@ func newChainMailer(t *testing.T, tail InnerMailer) *Mailer {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -98,6 +108,22 @@ func newChainMailer(t *testing.T, tail InnerMailer) *Mailer {
 	raw := NewRawMailer(nil, "")
 	guard := NewGuardMailer(raw, "hot", "", ctr)
 	return &Mailer{InnerMailer: NewObsMailer(&GuardMailer{exec: guard.exec, next: tail, prop: guard.prop})}
+}
+
+// TestNormalSendErrorIsPermanentAnswer pins the classification the guard hands
+// the resilience seam: only a malformed message or a definite server rejection
+// is normal; a connection failure is not, even though go-mail reports it as
+// non-temporary.
+func TestNormalSendErrorIsPermanentAnswer(t *testing.T) {
+	malformed := &mail.SendError{Reason: mail.ErrNoUnencoded}
+	assert.That(t, isNormalSendError(malformed)).True()
+	assert.That(t, isNormalSendError(errors.Join(errors.New("send failed"), malformed))).True()
+
+	// No server verdict: these are downstream faults.
+	assert.That(t, isNormalSendError(&mail.SendError{Reason: mail.ErrConnCheck})).False()
+	assert.That(t, isNormalSendError(&mail.SendError{Reason: mail.ErrWriteContent})).False()
+	assert.That(t, isNormalSendError(errors.New("connection refused"))).False()
+	assert.That(t, isNormalSendError(nil)).False()
 }
 
 // TestInnerChainRewritesMessages pins the wrap-head protocol: a custom layer

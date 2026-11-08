@@ -139,7 +139,10 @@ func TestConsistentHashRingCache(t *testing.T) {
 // picks must not rebuild or republish anything.
 func TestConsistentHashCachesAlternatingSets(t *testing.T) {
 	ch := NewConsistentHash(Selection{ConsistentHashReplicas: 10})
-	z := NewZoneAware(ch, "zone")
+	z, err := NewZoneAware(ch, "zone")
+	if err != nil {
+		t.Fatal(err)
+	}
 	set := []discovery.Endpoint{
 		{Addr: "a", Metadata: map[string]string{"zone": "z1"}},
 		{Addr: "b", Metadata: map[string]string{"zone": "z2"}},

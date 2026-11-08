@@ -35,7 +35,7 @@ import (
 // stage state — so the bean declares it as the Destroy hook and the runtime does
 // not close it.
 func init() {
-	gs.Provide(func(factory *ratelimit.Factory) *Manager {
+	gs.Provide(func(factory *ratelimit.Factory) (*Manager, error) {
 		return NewManager(factory)
 	}, gs.IndexArg(0, gs.TagArg(""))).
 		Destroy((*Manager).Close).Caller(1)

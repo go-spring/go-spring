@@ -35,11 +35,8 @@ import (
 // real spans and records. It is called exactly once, from [TestObserveReporting];
 // every scenario is driven under that single install.
 //
-// resetInstruments keeps the install deterministic. This package's instrument
-// set is process-wide and resolved once, on first use, so it would otherwise
-// keep whichever instruments an earlier use in this test binary had already
-// resolved - against the no-op provider every test starts with - and these
-// records would go nowhere.
+// The observer resolves its instruments when it is constructed, so constructing
+// it after this call is what binds them to the reader.
 func installGlobals(t *testing.T) (*tracetest.InMemoryExporter, sdkmetric.Reader, func()) {
 	t.Helper()
 	prevTP := otel.GetTracerProvider()
@@ -52,7 +49,6 @@ func installGlobals(t *testing.T) (*tracetest.InMemoryExporter, sdkmetric.Reader
 
 	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
-	resetInstruments()
 	return spanExp, rdr, func() {
 		otel.SetTracerProvider(prevTP)
 		otel.SetMeterProvider(prevMP)

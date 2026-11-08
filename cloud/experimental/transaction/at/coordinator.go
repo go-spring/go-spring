@@ -22,6 +22,7 @@ import (
 	"slices"
 	"sync"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -207,7 +208,7 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
-// reuses [resilience.Limits] so AT phase retries and outbound resilience share
+// reuses [resilience.TimeoutRetry] so AT phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
 func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
@@ -217,12 +218,21 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resour
 	if err != nil {
 		return err
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
-	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
+		return err
+	}
+	if err := mgr.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+		Service: resource,
+		Rules: []resilience.TimeoutRetryRule{{
+			ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			TimeoutRetry: resilience.TimeoutRetry{Retry: p},
+		}},
+	}}}); err != nil {
 		return err
 	}
 	defer func() { _ = mgr.Close() }()
-	exec := mgr.ExecutorFor(resource)
+	exec := mgr.Wrap(resource, nil)
 	op := chain.NewOperation(ctx, prop)
 	op.Service = resource
 	return exec.Execute(ctx, op, new(chain.Recorder), fn)

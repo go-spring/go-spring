@@ -273,7 +273,7 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 | No limiting at all, everything 200 | the service's policy has `rate-limit: 0`, or Redis is unreachable (the executor fails open) | Set an explicit positive `rate-limit` in the rules file; check Redis. |
 | The document is rejected with "does not support algorithm" | the rule asks for `limiter: sliding-window`, which this store refuses at apply time | Model the cap as `rate-limit`/`burst`, or keep sliding windows on the in-memory store. |
 | Calls pile up instead of being rejected | `rate-limit-max-wait` is set but the shared store does not queue | Keep queueing for the in-memory store, or drop the knob. |
-| An app whose document configures no rate limit has no limiting | with no matching rule (or a zero `Default`), every executor is a pass-through | Give the label a rule with a positive `rate-limit`; this starter only moves the counters. |
+| An app whose document configures no rate limit has no limiting | with no matching rule, every executor is a pass-through | Give the label a rule with a positive `rate-limit`; this starter only moves the counters. |
 
 ---
 

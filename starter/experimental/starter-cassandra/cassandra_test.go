@@ -20,10 +20,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
 
@@ -31,6 +32,7 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
@@ -56,10 +58,18 @@ func newTestCenter(t *testing.T) *governance.Runtime {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -147,16 +157,25 @@ func (c *captureExec) Execute(ctx context.Context, op chain.Operation, rec *chai
 }
 func (c *captureExec) Close() error { return c.next.Close() }
 
-// newGuardedExec builds an executor from the default resilience driver, wrapped
-// by the resilience observe layer exactly as the container wiring does.
+// newGuardedExec builds a manager-owned executor, wrapped by the resilience
+// observe layer exactly as the container wiring does.
 func newGuardedExec(t *testing.T, p ratelimit.Policy) chain.Executor {
 	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
-	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
-	inner := m.ExecutorFor("svc")
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+		Service: "cassandra:test",
+		Rules: []resilience.RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			Policy:      p,
+		}},
+	}}})).Nil()
+	inner := m.Wrap("svc", nil)
 	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")
 }
 
@@ -189,6 +208,114 @@ func TestGuardRateLimit(t *testing.T) {
 	assert.Error(t, head.Exec(context.Background())).Is(chain.ErrRateLimited)
 	assert.That(t, cap.ops).Equal([]string{"exec", "exec"}) // identity reaches the executor on every call
 	assert.That(t, tail.execs).Equal(1)                     // the rejected statement never ran
+}
+
+// fakeRequestError implements gocql.RequestError: the driver's concrete error
+// types are not externally constructible, but the interface is.
+type fakeRequestError struct{ code int }
+
+func (e fakeRequestError) Code() int       { return e.code }
+func (e fakeRequestError) Message() string { return "fake" }
+func (e fakeRequestError) Error() string   { return "fake" }
+
+// TestClientQueryErrorClassification pins the protocol-spec split: client-side
+// verdicts are normal; conditions of the cluster are faults.
+func TestClientQueryErrorClassification(t *testing.T) {
+	for _, code := range []int{
+		gocql.ErrCodeProtocol, gocql.ErrCodeCredentials, gocql.ErrCodeSyntax,
+		gocql.ErrCodeUnauthorized, gocql.ErrCodeInvalid, gocql.ErrCodeConfig,
+		gocql.ErrCodeAlreadyExists,
+	} {
+		assert.That(t, isClientQueryError(fakeRequestError{code})).True()
+	}
+	for _, code := range []int{
+		gocql.ErrCodeServer, gocql.ErrCodeUnavailable, gocql.ErrCodeOverloaded,
+		gocql.ErrCodeBootstrapping, gocql.ErrCodeTruncate, gocql.ErrCodeWriteTimeout,
+		gocql.ErrCodeReadTimeout, gocql.ErrCodeReadFailure, gocql.ErrCodeFunctionFailure,
+		gocql.ErrCodeWriteFailure, gocql.ErrCodeCDCWriteFailure,
+		gocql.ErrCodeCASWriteUnknown, gocql.ErrCodeUnprepared,
+	} {
+		assert.That(t, isClientQueryError(fakeRequestError{code})).False()
+	}
+	assert.That(t, isClientQueryError(errors.New("connection refused"))).False()
+}
+
+// TestRetryableQueryErrorClassification pins the protocol's transient codes:
+// another attempt may succeed; client verdicts and transport errors may not.
+func TestRetryableQueryErrorClassification(t *testing.T) {
+	for _, code := range []int{
+		gocql.ErrCodeUnavailable, gocql.ErrCodeOverloaded, gocql.ErrCodeBootstrapping,
+		gocql.ErrCodeWriteTimeout, gocql.ErrCodeReadTimeout, gocql.ErrCodeReadFailure,
+		gocql.ErrCodeWriteFailure, gocql.ErrCodeCASWriteUnknown,
+	} {
+		assert.That(t, isRetryableQueryError(fakeRequestError{code})).True()
+	}
+	for _, code := range []int{
+		gocql.ErrCodeServer, gocql.ErrCodeSyntax, gocql.ErrCodeInvalid,
+		gocql.ErrCodeUnprepared, gocql.ErrCodeAlreadyExists,
+	} {
+		assert.That(t, isRetryableQueryError(fakeRequestError{code})).False()
+	}
+	assert.That(t, isRetryableQueryError(errors.New("connection reset"))).False()
+}
+
+// TestGuardRetriesTransient proves a transient verdict reaches the retry loop
+// while the caller still receives the original error.
+func TestGuardRetriesTransient(t *testing.T) {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+		Service: "cassandra:test",
+		Rules: []resilience.TimeoutRetryRule{{
+			ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			TimeoutRetry: resilience.TimeoutRetry{Retry: resilience.Retry{MaxRetries: 2}},
+		}},
+	}}})).Nil()
+	tail := &fakeTail{err: fakeRequestError{gocql.ErrCodeUnavailable}}
+	head := NewGuardQuery(tail, m.Wrap("svc", nil), "cassandra:test", "SELECT 1", testProp)
+
+	assert.Error(t, head.Exec(context.Background())).Is(fakeRequestError{gocql.ErrCodeUnavailable})
+	assert.That(t, tail.execs).Equal(3)
+}
+
+// TestNormalQueryOutcomeDoesNotTripBreaker proves the declaration reaches the
+// executor: "no rows" and a client-side verdict are returned verbatim but count
+// as neither a breaker failure nor a retry trigger.
+func TestNormalQueryOutcomeDoesNotTripBreaker(t *testing.T) {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Services: []resilience.BreakerService{{
+		Service: "cassandra:test",
+		Rules: []resilience.BreakerRule{{
+			ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			BreakerPolicy: resilience.BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour},
+		}},
+	}}})).Nil()
+
+	for name, normal := range map[string]error{
+		"not found":    gocql.ErrNotFound,
+		"syntax error": fakeRequestError{gocql.ErrCodeSyntax},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tail := &fakeTail{err: normal}
+			head := NewGuardQuery(tail, m.Wrap("svc", nil), "cassandra:test", "SELECT 1", testProp)
+			assert.Error(t, head.Exec(context.Background())).Is(normal)
+			// Had it counted, this second call would be short-circuited.
+			assert.Error(t, head.Exec(context.Background())).Is(normal)
+		})
+	}
 }
 
 // passthroughLayer wraps a chain head and delegates — the wrap-head protocol on

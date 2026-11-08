@@ -72,14 +72,13 @@ luohua 刻意**不造自己的治理引擎** —— 出站调用已走治理 sta
 写在治理规则文档里即可(见 cloud/governance/controlplane/source 的 USAGE_CN.md):
 
 ```properties
-spring.resilience.driver=default
 spring.governance.client.resilience.services[0].service=orders
 spring.governance.client.resilience.services[0].timeout=500ms
 spring.governance.client.resilience.services[0].retry.max-retries=2
 ```
 
-要注册公司自己的 resilience 后端(替换 `default`)就是贡献一个 bean ——
-`gs.Provide(...).Name(name).Export(gs.As[resilience.Driver]())` —— 缝在,luohua 只是不假装造一个引擎。
+框架只有一个出站引擎，由 manager 自己持有，没有可选的后端 bean。
+需要自有保护的公司在 manager 上组合一个链节点即可，和其它 client 层一样。
 
 ## 如何启用
 

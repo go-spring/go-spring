@@ -115,10 +115,8 @@ func installGlobals(t *testing.T) (*tracetest.InMemoryExporter, sdkmetric.Reader
 
 	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
-	// The instrument set is process-wide and resolved once, so without this the
-	// records would keep going to whichever provider an earlier use resolved
-	// against.
-	resetInstruments()
+	// Each Observe call resolves its instruments now, so a wrapper built after
+	// this point reports into these providers.
 	return spanExp, rdr, func() {
 		otel.SetTracerProvider(prevTP)
 		otel.SetMeterProvider(prevMP)
@@ -239,7 +237,8 @@ func TestObserve_AcquireSuccess(t *testing.T) {
 	spanExp, rdr, cleanup := installGlobals(t)
 	defer cleanup()
 
-	l := Observe(fakeLocker{}, "redis")
+	l, err := Observe(fakeLocker{}, "redis")
+	require.NoError(t, err)
 	held, err := l.Acquire(context.Background(), "jobs:1")
 	require.NoError(t, err)
 	assert.Equal(t, "jobs:1", held.Key())
@@ -332,7 +331,8 @@ func testOperationTotals(t *testing.T, rdr sdkmetric.Reader) {
 // dashboard can separate misses from wins without parsing errors.
 func testTryAcquireMiss(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 
-	l := Observe(fakeLocker{tryOK: false}, "etcd")
+	l, err := Observe(fakeLocker{tryOK: false}, "etcd")
+	require.NoError(t, err)
 	_, ok, err := l.TryAcquire(context.Background(), "leader")
 	require.NoError(t, err)
 	assert.False(t, ok)
@@ -360,8 +360,9 @@ func testTryAcquireMiss(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr s
 func testAcquireError(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 	backendErr := errutil.Explain(nil, "backend down")
 
-	l := Observe(fakeLocker{err: backendErr}, "consul")
-	_, err := l.Acquire(context.Background(), "jobs:2")
+	l, err := Observe(fakeLocker{err: backendErr}, "consul")
+	require.NoError(t, err)
+	_, err = l.Acquire(context.Background(), "jobs:2")
 	require.ErrorIs(t, err, backendErr)
 
 	spans := spanExp.GetSpans()
@@ -389,7 +390,8 @@ func testAcquireError(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdk
 // "unlock" client span and a duration datapoint, so a dashboard can see how
 // often releasing fails as well as how long locks are held.
 func testUnlockOK(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
-	l := Observe(fakeLocker{}, "k8s")
+	l, err := Observe(fakeLocker{}, "k8s")
+	require.NoError(t, err)
 	held, err := l.Acquire(context.Background(), "jobs:3")
 	require.NoError(t, err)
 	require.NoError(t, held.Unlock(context.Background()))
@@ -410,7 +412,8 @@ func testUnlockNotHeld(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sd
 	handle := newFakeLock("jobs:4")
 	handle.unlockErr = ErrNotHeld
 
-	l := Observe(fakeLocker{handle: handle}, "memory")
+	l, err := Observe(fakeLocker{handle: handle}, "memory")
+	require.NoError(t, err)
 	held, err := l.Acquire(context.Background(), "jobs:4")
 	require.NoError(t, err)
 	require.ErrorIs(t, held.Unlock(context.Background()), ErrNotHeld)
@@ -429,8 +432,9 @@ func testUnlockNotHeld(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sd
 func testLostReported(t *testing.T, rdr sdkmetric.Reader) {
 	handle := newFakeLock("jobs:5")
 
-	l := Observe(fakeLocker{handle: handle}, "k8s")
-	_, err := l.Acquire(context.Background(), "jobs:5")
+	l, err := Observe(fakeLocker{handle: handle}, "k8s")
+	require.NoError(t, err)
+	_, err = l.Acquire(context.Background(), "jobs:5")
 	require.NoError(t, err)
 
 	handle.lose()
@@ -448,7 +452,8 @@ func testLostReported(t *testing.T, rdr sdkmetric.Reader) {
 func testNilLostChannel(t *testing.T, rdr sdkmetric.Reader) {
 	handle := &fakeLock{key: "jobs:7"} // no lost channel: nothing can be lost
 
-	l := Observe(fakeLocker{handle: handle}, "memory")
+	l, err := Observe(fakeLocker{handle: handle}, "memory")
+	require.NoError(t, err)
 	held, err := l.Acquire(context.Background(), "jobs:7")
 	require.NoError(t, err)
 	assert.Nil(t, held.Lost(), "the wrapper must not invent a channel the backend never had")
@@ -464,7 +469,8 @@ func testNilLostChannel(t *testing.T, rdr sdkmetric.Reader) {
 func testResignedNotLost(t *testing.T, rdr sdkmetric.Reader) {
 	handle := newFakeLock("jobs:6")
 
-	l := Observe(fakeLocker{handle: handle}, "etcd")
+	l, err := Observe(fakeLocker{handle: handle}, "etcd")
+	require.NoError(t, err)
 	held, err := l.Acquire(context.Background(), "jobs:6")
 	require.NoError(t, err)
 	require.NoError(t, held.Unlock(context.Background()))

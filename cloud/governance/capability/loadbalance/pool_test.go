@@ -32,7 +32,7 @@ func TestPoolHealthFilter(t *testing.T) {
 		discovery.Endpoint{Addr: "b", Healthy: false},
 		discovery.Endpoint{Addr: "c", Healthy: true},
 	)
-	p := NewPool(src, newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{}), Selection{})
+	p := mustPool(t, src, newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{}), Selection{})
 	m := map[string]int{}
 	for range 20 {
 		r, err := p.Pick(context.Background(), PickInfo{})
@@ -47,7 +47,7 @@ func TestPoolHealthFilter(t *testing.T) {
 
 func TestPoolEvictionViaComplete(t *testing.T) {
 	src := staticSource(eps("a", "b")...)
-	p := NewPool(src, newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{Threshold: 2, SuspendFor: time.Minute}), Selection{})
+	p := mustPool(t, src, newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{Threshold: 2, SuspendFor: time.Minute}), Selection{})
 
 	// Drive "a" to failure through the pool's Complete wiring, twice, to suspend it.
 	for range 5 {
@@ -71,7 +71,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 }
 
 func TestPoolEmpty(t *testing.T) {
-	p := NewPool(staticSource(), newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{}), Selection{})
+	p := mustPool(t, staticSource(), newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{}), Selection{})
 	_, err := p.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Is(ErrNoEndpoints)
 }
@@ -80,7 +80,7 @@ func TestPoolWithZeroTrackerConfig(t *testing.T) {
 	// A zero TrackerConfig: the pool's own tracker is disabled (threshold 0), so
 	// Complete with failures must not suspend anything.
 	src := staticSource(eps("a", "b")...)
-	p := NewPool(src, newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{}), Selection{})
+	p := mustPool(t, src, newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{}), Selection{})
 	for range 10 {
 		r, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
@@ -105,7 +105,7 @@ func TestPoolZeroWeightDrains(t *testing.T) {
 		discovery.Endpoint{Addr: "a", Healthy: true, Weight: 1},
 		discovery.Endpoint{Addr: "b", Healthy: true, Weight: 0},
 	)
-	p := NewPool(src, newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{}), Selection{})
+	p := mustPool(t, src, newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{}), Selection{})
 	for range 10 {
 		r, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
@@ -122,7 +122,7 @@ func TestPoolAllZeroWeightFallsBack(t *testing.T) {
 		discovery.Endpoint{Addr: "a", Healthy: true},
 		discovery.Endpoint{Addr: "b", Healthy: true},
 	)
-	p := NewPool(src, newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{}), Selection{})
+	p := mustPool(t, src, newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{}), Selection{})
 	m := map[string]int{}
 	for range 20 {
 		r, err := p.Pick(context.Background(), PickInfo{})
@@ -142,7 +142,7 @@ func TestPoolNegativeWeightKept(t *testing.T) {
 		discovery.Endpoint{Addr: "a", Healthy: true, Weight: -1},
 		discovery.Endpoint{Addr: "b", Healthy: true, Weight: 0},
 	)
-	p := NewPool(src, newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{}), Selection{})
+	p := mustPool(t, src, newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{}), Selection{})
 	for range 10 {
 		r, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
@@ -156,7 +156,7 @@ func TestPoolNegativeWeightKept(t *testing.T) {
 // candidate set, so what [Pool.Selection] reports and what [Pool.Pick] does
 // cannot diverge — including for a standalone caller with no manager behind it.
 func TestPoolAppliesItsSelectionsSelector(t *testing.T) {
-	p := NewPool(versionedSource(), newBalancer(t, Selection{Balancer: RoundRobin}), NewTracker(TrackerConfig{}),
+	p := mustPool(t, versionedSource(), newBalancer(t, Selection{Balancer: RoundRobin}), mustTracker(t, TrackerConfig{}),
 		Selection{Balancer: RoundRobin, Selector: versionPrefix("v2.")})
 
 	for range 5 {
@@ -164,4 +164,25 @@ func TestPoolAppliesItsSelectionsSelector(t *testing.T) {
 		assert.Error(t, err).Nil()
 		assert.String(t, r.Endpoint.Addr).Equal("a")
 	}
+}
+
+// mustTracker builds a tracker, failing the test if its instruments cannot be
+// registered.
+func mustTracker(t *testing.T, cfg TrackerConfig) *Tracker {
+	t.Helper()
+	tr, err := NewTracker(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tr
+}
+
+// mustPool builds a pool, failing the test if its input is rejected.
+func mustPool(t *testing.T, src discovery.Resolver, bal Balancer, tracker *Tracker, sel Selection) *Pool {
+	t.Helper()
+	p, err := NewPool(src, bal, tracker, sel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

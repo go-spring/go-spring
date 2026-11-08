@@ -32,9 +32,17 @@ func act(v any) func(context.Context) (any, error) {
 	return func(context.Context) (any, error) { return v, nil }
 }
 
+// transientErr is a retryable failure: retry is a whitelist, so a test that
+// expects another attempt must return an error that opts in.
+type transientErr struct{}
+
+func (transientErr) Error() string   { return "transient" }
+func (transientErr) Retryable() bool { return true }
+
 func TestExecute_AllStepsCommit(t *testing.T) {
 	var order []string
-	coord := transaction.NewCoordinator()
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{
 		ID: "s1",
@@ -59,7 +67,8 @@ func TestExecute_AllStepsCommit(t *testing.T) {
 func TestExecute_CompensatesInReverseOnFailure(t *testing.T) {
 	var order []string
 	failB := errutil.Explain(nil, "b failed")
-	coord := transaction.NewCoordinator()
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{
 		ID: "s2",
@@ -86,7 +95,8 @@ func TestExecute_CompensatesInReverseOnFailure(t *testing.T) {
 
 func TestExecute_CompensationFailureIsReported(t *testing.T) {
 	failComp := errutil.Explain(nil, "restore failed")
-	coord := transaction.NewCoordinator()
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{
 		ID: "s3",
@@ -108,7 +118,8 @@ func TestExecute_CompensationFailureIsReported(t *testing.T) {
 }
 
 func TestExecute_IrreversibleStepDuringRollback(t *testing.T) {
-	coord := transaction.NewCoordinator()
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{
 		ID: "s4",
@@ -127,7 +138,8 @@ func TestExecute_IrreversibleStepDuringRollback(t *testing.T) {
 
 func TestExecute_RetriesActionUnderPolicy(t *testing.T) {
 	attempts := 0
-	coord := transaction.NewCoordinator()
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{
 		ID: "s5",
@@ -139,7 +151,7 @@ func TestExecute_RetriesActionUnderPolicy(t *testing.T) {
 				Action: func(context.Context) (any, error) {
 					attempts++
 					if attempts < 3 {
-						return nil, errutil.Explain(nil, "transient")
+						return nil, transientErr{}
 					}
 					return "ok", nil
 				},
@@ -156,11 +168,12 @@ func TestExecute_RetriesActionUnderPolicy(t *testing.T) {
 
 func TestExecute_StorePersistenceLifecycle(t *testing.T) {
 	store := &transaction.MemoryStore{}
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 
 	// Committed saga: log is deleted after success.
 	ok := transaction.Saga{ID: "done", Steps: []transaction.Step{{Name: "a", Action: act(1)}}}
-	_, err := coord.Execute(context.Background(), ok)
+	_, err = coord.Execute(context.Background(), ok)
 	assert.Error(t, err).Nil()
 	_, err = store.Load(context.Background(), "done")
 	assert.Error(t, err).Is(transaction.ErrSnapshotNotFound)
@@ -190,13 +203,14 @@ func (o *recordObserver) Begin(ctx context.Context, sagaID, step string, phase t
 
 func TestExecute_ObserverSeesEveryPhase(t *testing.T) {
 	obs := &recordObserver{}
-	coord := transaction.NewCoordinator(transaction.WithObserver(obs))
+	coord, err := transaction.NewCoordinator(transaction.WithObserver(obs))
+	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{ID: "s6", Steps: []transaction.Step{
 		{Name: "a", Action: act(1), Compensate: func(context.Context, any) error { return nil }},
 		{Name: "b", Action: func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") }},
 	}}
-	_, err := coord.Execute(context.Background(), saga)
+	_, err = coord.Execute(context.Background(), saga)
 	assert.Error(t, err).NotNil()
 	// a.Action, b.Action, then a.Compensate.
 	assert.Slice(t, obs.begins).Equal([]string{"a:Action", "b:Action", "a:Compensate"})
@@ -211,13 +225,14 @@ func TestGlobalTransactional_RunsRegisteredSaga(t *testing.T) {
 			Compensate: func(context.Context, any) error { compensated = true; return nil }},
 		transaction.Step{Name: "b", Action: func(context.Context) (any, error) { return nil, errutil.Explain(nil, "boom") }},
 	)
-	coord := transaction.NewCoordinator()
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
 	decorator := transaction.GlobalTransactional(coord, reg)
 
 	ctx := transaction.WithSagaID(context.Background(), "order-42")
 	// The target must not run: it is replaced by the registered saga.
 	targetRan := false
-	err := decorator(ctx, "OrderService.Place", func(context.Context) error {
+	err = decorator(ctx, "OrderService.Place", func(context.Context) error {
 		targetRan = true
 		return nil
 	})
@@ -228,12 +243,13 @@ func TestGlobalTransactional_RunsRegisteredSaga(t *testing.T) {
 
 func TestGlobalTransactional_PassthroughWhenUnregistered(t *testing.T) {
 	reg := transaction.NewStepRegistry()
-	coord := transaction.NewCoordinator()
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
 	decorator := transaction.GlobalTransactional(coord, reg)
 
 	ran := false
 	var v string
-	err := decorator(context.Background(), "Unknown.Method", func(context.Context) error {
+	err = decorator(context.Background(), "Unknown.Method", func(context.Context) error {
 		ran = true
 		v = "target"
 		return nil
@@ -267,13 +283,14 @@ func (s *spyStore) Save(ctx context.Context, id string, snap transaction.Snapsho
 
 func TestExecute_PersistsInProgressBeforeActionThenClears(t *testing.T) {
 	store := &spyStore{}
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{ID: "p1", Method: "Svc.Do", Steps: []transaction.Step{
 		{Name: "a", Action: act("ra"), Compensate: func(context.Context, any) error { return nil }},
 		{Name: "b", Action: act("rb"), Compensate: func(context.Context, any) error { return nil }},
 	}}
-	_, err := coord.Execute(context.Background(), saga)
+	_, err = coord.Execute(context.Background(), saga)
 	assert.Error(t, err).Nil()
 
 	// Two steps => four running Saves: intent(a), confirm(a), intent(b), confirm(b).
@@ -320,7 +337,8 @@ func TestRecover_CompensatesInProgressThenCompletedInReverse(t *testing.T) {
 	})).Nil()
 
 	var order []string
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 	saga := transaction.Saga{ID: "r1", Method: "Svc.Do", Steps: []transaction.Step{
 		{Name: "a", Action: act("ra"), Compensate: func(_ context.Context, r any) error { order = append(order, "!a:"+r.(string)); return nil }},
 		{Name: "b", Action: act("rb"), Compensate: func(_ context.Context, r any) error { order = append(order, "!b:"+r.(string)); return nil }},
@@ -345,7 +363,8 @@ func TestRecover_CompensatesInProgressThenCompletedInReverse(t *testing.T) {
 
 func TestRecover_NoLogIsNoOp(t *testing.T) {
 	store := &transaction.MemoryStore{}
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 	res, err := coord.Recover(context.Background(), transaction.Saga{ID: "missing"})
 	assert.Error(t, err).Nil()
 	assert.That(t, res.Status).Equal(transaction.StatusCommitted)
@@ -357,7 +376,8 @@ func TestRecover_TerminalSnapshotIsIdempotent(t *testing.T) {
 	assert.Error(t, store.Save(ctx, "t1", transaction.Snapshot{ID: "t1", Status: transaction.StatusCompensated})).Nil()
 
 	compensated := false
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 	saga := transaction.Saga{ID: "t1", Steps: []transaction.Step{
 		{Name: "a", Action: act("ra"), Compensate: func(context.Context, any) error { compensated = true; return nil }},
 	}}
@@ -369,8 +389,9 @@ func TestRecover_TerminalSnapshotIsIdempotent(t *testing.T) {
 }
 
 func TestRecover_WithoutStoreErrors(t *testing.T) {
-	coord := transaction.NewCoordinator()
-	_, err := coord.Recover(context.Background(), transaction.Saga{ID: "x"})
+	coord, err := transaction.NewCoordinator()
+	assert.That(t, err).Nil()
+	_, err = coord.Recover(context.Background(), transaction.Saga{ID: "x"})
 	assert.Error(t, err).NotNil()
 }
 
@@ -379,7 +400,8 @@ func TestRecover_WithoutStoreErrors(t *testing.T) {
 // with its own results, and the shared store must stay race-free.
 func TestExecute_ConcurrentSagasOnSharedStore(t *testing.T) {
 	store := &transaction.MemoryStore{}
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 
 	const n = 16
 	var wg sync.WaitGroup
@@ -457,7 +479,8 @@ func TestRecover_CompensationFailureIsTerminalAndIdempotent(t *testing.T) {
 	})).Nil()
 
 	calls := 0
-	coord := transaction.NewCoordinator(transaction.WithStore(store))
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 	saga := transaction.Saga{ID: "f1", Steps: []transaction.Step{
 		{Name: "a", Action: act("ra"),
 			Compensate: func(context.Context, any) error { calls++; return errutil.Explain(nil, "restore broke") }},

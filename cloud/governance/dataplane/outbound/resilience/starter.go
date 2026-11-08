@@ -17,54 +17,21 @@
 package resilience
 
 import (
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/spring/gs"
 )
 
-// The manager and the bundled driver are registered here, by the package that
-// owns them, so linking this package is what puts them in the container: a
-// starter that injects *resilience.Manager has already imported it, and
-// its constructor parameter is REQUIRED (`gs.IndexArg(n, gs.TagArg(""))`) — the
-// bean being absent would fail startup, not degrade silently.
+// The manager is registered here, by the package that owns it, so linking this
+// package is what puts it in the container: a starter that injects
+// *resilience.Manager has already imported it, and its constructor parameter is
+// REQUIRED (`gs.IndexArg(n, gs.TagArg(""))`) — the bean being absent would fail
+// startup, not degrade silently.
 //
 // This is the OUTBOUND authority only. Inbound requests run through
 // go-spring.org/cloud/governance/dataplane/inbound/admission, whose manager is owned by the governance center.
 //
-// The manager is self-sufficient: ExecutorFor hands out a lazily bound
-// executor that reads the manager's current policy, so it works with no center
-// anywhere, over the bundled driver. A governance center, when one is linked,
-// only pushes policy into it.
+// The manager is self-sufficient: its chain node reads the manager's current
+// policy on every call, so it works with no center anywhere. A governance
+// center, when one is linked, only pushes policy into it.
 func init() {
-	// The driver is injected BY NAME here, from a static key: ${spring.resilience.driver}
-	// names the [Driver] bean to build executors with, defaulting to the bundled
-	// one. Each backend contributes its Driver under its own bean name (the
-	// bundled driver below as "default", a backend starter's as "sentinel", ...),
-	// so this one tag is where the backend is configured — no directory, no name
-	// lookup at runtime.
-	//
-	// It is a static key, not a pushed policy: the backend is fixed for the
-	// process's lifetime, because swapping it drops every executor (and so every
-	// breaker and limiter state). Naming a backend no starter
-	// contributed fails wiring — the tag cannot resolve the bean — so an unusable
-	// selection fails startup rather than silently falling back.
-	//
-	// Each bean owns its own teardown: close runs on the corresponding Close,
-	// which releases that direction's registered objects so a driver can stop its
-	// background resources (metric pumps) rather than leak them with the process.
-	// gs destroys beans in reverse construction order, so the clients and servers
-	// holding those objects are gone by then.
-	gs.Provide(func(d Driver, factories *ratelimit.Factory) *Manager {
-		return NewManager(d, factories)
-	}, gs.IndexArg(0, gs.TagArg("${"+DriverProperty+":="+DefaultDriverName+"}")), gs.IndexArg(1, gs.TagArg(""))).
-		Destroy((*Manager).Close).Caller(1)
-
-	// The bundled engine, contributed as the [Driver] bean NAMED
-	// [DefaultDriverName] — the driver the tag above resolves when
-	// ${spring.resilience.driver} is unset or "default". Rate-limit counters are
-	// not a driver concern: the manager resolves a rule's limiter kind against the
-	// factories injected into it. A process that configures driver=sentinel still
-	// gets this bean; it simply is not the one selected.
-	gs.Provide(NewDefaultDriver).
-		Name(DefaultDriverName).
-		Export(gs.As[Driver]()).Caller(1)
+	gs.Provide(NewManager).Destroy((*Manager).Close)
 }

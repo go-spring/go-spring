@@ -27,7 +27,7 @@ lifetimes and inputs:
 | Input | The call's result and `Recorder` | The organ's own fields |
 | Lifetime | One call | The organ instance (`Close` unregisters) |
 | Publish mode | Per call (span, metric, log) | Per collection, by pull (observable instruments) |
-| Packages | `outbound/observe`, `inbound/observe` | `outbound/resilience`, `inbound/admission`, the sentinel starter, `../capability/loadbalance`, `../../discovery` |
+| Packages | `outbound/observe`, `inbound/observe` | `inbound/admission`, `../capability/loadbalance`, `../../discovery` |
 
 ## The rule
 
@@ -36,16 +36,22 @@ lifetimes and inputs:
 > lives for the process (breaker state, budget usage, slot occupancy, endpoint
 > suspension), the organ publishes it from its own package.
 
-Two consequences, both normative:
+Three consequences, all normative:
 
 1. **The request plane never reads governance state.** It records what the call
    returned. A refused call is visible as `resilience.error_type=circuit_open`
    (and its siblings); that is a request-level fact, not a breaker read.
-2. **The capability packages never import an observability SDK.** They expose read-only
-   accessors (`Breaker.Stats`, `Bulkhead.Stats`); the holding
-   organ registers its own observable callback and unregisters it on `Close`.
-   There is no cross-layer state listener, and no state query method on
-   `chain.Executor`.
+2. **A decision already expressed by the call outcome is not published a second
+   time as organ state.** Outbound protection is this case: every effect a
+   breaker has on a call (refusal, admission, unavailability) is already on the
+   call's own error, so the outbound executor publishes no breaker series. The
+   request plane is the source of truth; there is no gauge to keep in step and
+   no per-rule key to turn into a label.
+3. **The capability packages never import an observability SDK.** They expose read-only
+   accessors (`Breaker.Stats`, `Bulkhead.Stats`); an organ that still needs its
+   own series — because its state is not derivable from call outcomes — registers
+   its own observable callback and unregisters it on `Close`. There is no
+   cross-layer state listener, and no state query method on `chain.Executor`.
 
 ## Who publishes what
 
@@ -53,32 +59,28 @@ Request plane (existing):
 
 | Metric | Meaning |
 | --- | --- |
-| `resilience.client.duration`, `.calls` | Outbound latency and outcome, with `resilience.error_type` when protection refused the call |
+| `resilience.client.duration`, `.calls` | Outbound latency and outcome, with a total `resilience.error_type`: the gate that refused the call, `downstream`, or `canceled` |
 | `*.operation.duration`, `*.attempt.duration` | Per-operation and per-attempt latency |
 | `resilience.server.duration`, `.calls` | Inbound latency and outcome |
 | `*.request.duration`, `*.active_requests` | Per-route inbound latency and in-flight requests |
 
-Organ state plane:
+Organ state plane (only where the state is not derivable from call outcomes):
 
 | Metric | Owner | Attributes |
 | --- | --- | --- |
-| `resilience.client.breaker.state` (1-hot), `.transitions_total{to}` | outbound resilience | `service`, `unit` |
 | `resilience.server.bulkhead.usage_ratio`, `.queued` | inbound admission | `system`, `service` |
 | `loadbalance.endpoint.suspended`, `.suspension.total` | load balancing | — |
 | `discovery.cache.age_seconds`, `discovery.sync_total` | discovery | depends on the observer |
 | `discovery.instance.registered` | registration | depends on the observer |
-| sentinel: `resilience.client.breaker.state`, `.transitions_total{to}` | sentinel starter | `service` |
 
 Notes:
 
-- The outbound state plane carries no `system` attribute: one executor is shared
-  by every client backend of a label, so it does not know the system. `system`
-  stays a request-plane dimension.
-- Start and end times of an open circuit are the edges of the `state` gauge in
-  the time series; "open for more than N seconds" is an alert `for:` on
-  `state{state="open"} == 1`. No separate age metric exists.
-- `transitions_total` is a cumulative count per breaker instance and restarts
-  when a policy generation rebuilds the breaker; use `increase()`/`rate()`.
+- The outbound breaker is deliberately absent: "is this dependency cut off"
+  is `resilience.error_type=circuit_open` on the call counter, and "how often"
+  is its `increase()`. The executor's per-rule state key is an internal
+  implementation detail and never becomes a metric label.
+- An open-circuit duration is the width of the `circuit_open` error burst in the
+  time series; no separate age or transition counter is published.
 
 ## Deliberately not covered
 

@@ -232,8 +232,16 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	unary = append(unary, AccessLogUnaryInterceptor())
 	stream = append(stream, AccessLogStreamInterceptor())
 	if s.cfg.Observer.Metrics.Enabled {
-		unary = append(unary, MetricsUnaryInterceptor())
-		stream = append(stream, MetricsStreamInterceptor())
+		um, err := MetricsUnaryInterceptor()
+		if err != nil {
+			return nil, err
+		}
+		sm, err := MetricsStreamInterceptor()
+		if err != nil {
+			return nil, err
+		}
+		unary = append(unary, um)
+		stream = append(stream, sm)
 	}
 	ropts, ok, err := s.buildResilienceInterceptors()
 	if err != nil {

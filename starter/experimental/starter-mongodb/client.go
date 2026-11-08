@@ -79,13 +79,17 @@ type Client struct {
 // the command-layer monitor emits the span, metrics and access log, and nothing
 // throttles, retries or circuit-breaks. There is no Init step — building a
 // Client and initializing it are the same act.
-func NewClient(raw *mongo.Client, cfg Config) *Client {
+func NewClient(raw *mongo.Client, cfg Config) (*Client, error) {
+	obs, err := newDBObserver()
+	if err != nil {
+		return nil, err
+	}
 	return &Client{
 		Client:       raw,
-		obs:          newDBObserver(),
+		obs:          obs,
 		cfg:          cfg,
 		serviceLabel: serviceLabel(cfg),
-	}
+	}, nil
 }
 
 // serviceLabel derives a stable, human-readable service key for a client, so

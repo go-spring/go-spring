@@ -31,7 +31,9 @@ package StarterMemcached
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/governance"
@@ -90,7 +92,7 @@ type Client struct {
 // [governance.Runtime.ExecutorFor] is required, so a nil center is a
 // construction error — never a graceful downgrade.
 //
-// The manager's ExecutorFor resolves its backing executor lazily, on each
+// Runtime.ExecutorFor resolves the executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(client *memcache.Client, instanceName, serviceName string, center *governance.Runtime) *Client {
@@ -283,7 +285,17 @@ func (g *GuardClient) op(ctx context.Context, name, key string) chain.Operation 
 // is the call's semantic identity, built by the method that knows its op name
 // and key (see observe.go).
 func guard[T any](ctx context.Context, exec chain.Executor, op chain.Operation, fn func(context.Context) (T, error)) (T, error) {
-	return resilience.Run(ctx, exec, op, fn, resilience.Tolerate(memcache.ErrCacheMiss))
+	return resilience.Run(ctx, exec, op, fn,
+		resilience.Tolerate(memcache.ErrCacheMiss), resilience.RetryOn(isTransientError))
+}
+
+// isTransientError reports whether the failure is a transport-level condition
+// another attempt may survive — a dial/read/write error. Server replies
+// (memcache.ErrNotStored, a CAS conflict) are definitive answers and are not
+// retried.
+func isTransientError(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne)
 }
 
 // guardErr is the error-only variant of [guard].

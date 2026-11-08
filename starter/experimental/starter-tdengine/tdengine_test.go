@@ -22,6 +22,7 @@ import (
 	"errors"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
@@ -71,12 +72,21 @@ func TestGuardedConnRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
-	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}})).Nil()
-	exec := m.ExecutorFor("svc")
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+		Service: "svc",
+		Rules: []resilience.RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			Policy:      ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
+		}},
+	}}})).Nil()
+	exec := m.Wrap("svc", nil)
 
 	sc := &stubConn{}
-	conn := guardedConn{base: sc, slot: &clientSlot{exec: exec, prop: testProp}}
+	conn := guardedConn{base: sc, slot: &clientSlot{exec: exec, service: "svc", prop: testProp}}
 
 	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 1)", nil)
 	assert.Error(t, err).Nil()

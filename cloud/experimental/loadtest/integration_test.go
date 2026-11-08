@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/fault"
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -38,10 +38,17 @@ func newGovernedExec(t *testing.T, p resilience.BreakerPolicy) chain.Executor {
 	t.Helper()
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
-	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: p})).Nil()
+	m, err := resilience.NewManager(factories)
+	assert.That(t, err).Nil()
+	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Services: []resilience.BreakerService{{
+		Service: "svc",
+		Rules: []resilience.BreakerRule{{
+			ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			BreakerPolicy: p,
+		}},
+	}}})).Nil()
 	t.Cleanup(func() { _ = m.Close() })
-	return m.ExecutorFor("svc")
+	return m.Wrap("svc", nil)
 }
 
 // TestIntegration_LoadFaultBreaker is the capstone: it proves the load-test +

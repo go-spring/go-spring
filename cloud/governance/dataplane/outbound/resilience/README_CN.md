@@ -9,7 +9,7 @@
 它是**纯出站**的。入站请求走 [`cloud/governance/dataplane/inbound/admission`](../../inbound/admission/)：每实例一个 `Guard`、
 两阶段 `Admit` + `Done`、自己的策略词汇和默认引擎。旧的入站半边
 （`Manager` / `ServerEngine` / `ServerPolicy` / `Driver.NewServerExecutor`）
-已经删除，`Driver` 现在只答出站。
+已经删除；出站的后端缝（`Driver`）也一并删除，manager 自己持有唯一的引擎。
 
 ## 特性
 
@@ -18,7 +18,7 @@
   `ErrorThreshold` / `OpenDuration` / `BreakerStrategy`
   （`consecutive` | `error-rate` | `slow-call` | `error-count`）/
   `ErrorRateThreshold` / 慢调用阈值对 / `HalfOpenRequests`、
-  `Retry`（`chain.RetryPolicy` 节点）、`Timeout`。
+  `Retry`（`resilience.Retry` 节点）、`Timeout`。
 - 中立拒绝错误：`ErrRateLimited`、`ErrCircuitOpen`、`ErrBulkheadFull`。
 - 内置 `"default"` 驱动 —— 进程内、零依赖。推荐的生产驱动 `sentinel` 在
   `starter/starter-governance-sentinel`。
@@ -29,8 +29,6 @@
   429 / 503；见 starter-gin / starter-grpc 的 admission）。治理中心把两个方向各自独立的
   文档分别推给 outbound 的 `Manager` 与 inbound 的 `admission.Manager`，所以出站策略变更
   永远不会顺手调了入站准入。
-- `Fallback(ctx, exec, fn, degrade)` —— 组合任意 executor 的降级
-  helper。
 - 限流是受保护调用里的一个 stage，不是独立 API：计数器就是 executor 为自身
   服务持有的预算，交给它一份 `Limiter` 存储（`starter-go-redis` 的 Redis）
   则跨副本共用一份预算。
@@ -143,28 +141,21 @@ driver 的预热是冷启动近似（容量爬坡），不是 sentinel 的速率
 system / hotspot / 集群流控是 future work（入站或参数维度，暂无 policy 字段）。
 OpenSergo 的 `RetryOnSame`（实例级重试提示）属 loadbalance，不在此处。
 
-## 可插拔后端
+## 引擎与计数器
 
-本包**不带任何注册表**。引擎后端是以自身名字贡献、导出为 `Driver` 的 bean;
-消费方把它们收成按名字索引的目录，治理中心在这份目录里解析配置里的名字。
-内置引擎无需 bean 即应答 `"default"`，经 `NewDefaultDriver(nil)` 取得。
+本包**没有注册表，也没有可选引擎**。`Executor` 自己持有它这一 label 的状态：
+`Manager.Wrap(service, next)` 把节点和状态一起构造出来，
+`Manager.Wrap(service, nil)` 是终点形式（`next == nil`）。一个 label 就是一个
+保护域，构造一次并持有。想要不同机制的后端（sentinel）就自己构造一个
+`chain.Executor`，通过客户端的 executor 缝显式安装。
 
-```go
-// 贡献一个后端（通常在 starter 的 init 里）
-gs.Provide(func() *sentinelDriver { return &sentinelDriver{} }).
-    Name("sentinel").
-    Export(gs.As[resilience.Driver]())
-```
-
-`Export` 是承重的：gs 按精确类型索引 bean，缺了它具体的 driver 对目录不可见。
-
-计数器存储也是后端，但是**可选**的 —— 它只决定限流能扩到多宽，不决定别的。
-容器里没有 `Limiter` bean 时，每个 executor 用自己的一份预算计数，和它的
-熔断、舱壁状态完全一样：executor 按服务 label 建一份，所以"一份预算覆盖该
-label 的所有调用方"依然成立。贡献一份跨共享后端的存储（Redis），driver 会
+计数器存储是**可选**的 —— 它只决定限流能扩到多宽，不决定别的。
+容器里没有 `Limiter` bean 时，每个 label 的引擎用自己的一份预算计数，和它的
+熔断状态完全一样：引擎按服务 label 建一份，所以"一份预算覆盖该
+label 的所有调用方"依然成立。贡献一份跨共享后端的存储（Redis），manager 会
 注入它，限额对全体副本生效，每个服务一份预算。它作用
-到内置引擎的 executor 上，这正是存储的用途：自带流控的引擎（sentinel）按自己的
-计数，不用这份存储。
+在内置引擎上，这正是存储的用途：自带流控的引擎（sentinel）按自己的计数，
+不用这份存储。
 
 ## 安装
 
@@ -180,18 +171,39 @@ go get go-spring.org/cloud
 import (
     "net/http"
 
+    "go-spring.org/cloud/governance/capability/matcher"
+    "go-spring.org/cloud/governance/capability/ratelimit"
     "go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
-exec, _ := resilience.NewDefaultDriver(nil).NewExecutor("http:orders", resilience.Policy{
-    RateLimit:      100,
-    ErrorThreshold: 5,
-    Timeout: 2 * time.Second,
-    Retry:          chain.RetryPolicy{MaxRetries: 2},
-})
+fact, _ := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+mgr := resilience.NewManager(fact)
+_ = mgr.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+    Service: "http:orders",
+    Rules: []resilience.TimeoutRetryRule{{
+        ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+        TimeoutRetry: resilience.TimeoutRetry{Timeout: 2 * time.Second, Retry: resilience.Retry{MaxRetries: 2}},
+    }},
+}}})
+_ = mgr.ApplyBreaker(resilience.BreakerSettings{Services: []resilience.BreakerService{{
+    Service: "http:orders",
+    Rules: []resilience.BreakerRule{{
+        ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+        BreakerPolicy: resilience.BreakerPolicy{ErrorThreshold: 5},
+    }},
+}}})
+_ = mgr.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+    Service: "http:orders",
+    Rules: []resilience.RateLimitRule{{
+        ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+        Policy:      ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 100},
+    }},
+}}})
+
+exec := mgr.ExecutorFor("http:orders")
 
 client := &http.Client{
-    Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil),
+    Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, "http:orders", nil),
 }
 ```
 
@@ -199,8 +211,8 @@ client := &http.Client{
 准入的全部工作：
 
 ```go
-exec := mgr.ExecutorFor("gateway", "route:orders")
-err := exec.Execute(ctx, chain.Call{}, func(context.Context) error { return nil })
+exec := mgr.ExecutorFor("route:orders")
+err := exec.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
 if errors.Is(err, resilience.ErrRateLimited) { /* 429 */ }
 ```
 
@@ -209,34 +221,32 @@ if errors.Is(err, resilience.ErrRateLimited) { /* 429 */ }
 # 设计说明
 
 `resilience` 是 go-spring 的客户端容错抽象（`go-spring.org/cloud/governance/dataplane/outbound/resilience`），
-策略由控制面 [governance](../../../README.md) 下发。定义所有 adapter 与 driver 都遵守的中立契约，内置一个可用的驱动让
-框架开箱可跑；生产环境通常从 `starter/starter-governance-sentinel` 换成
-sentinel 驱动。
+策略由控制面 [governance](../../../README.md) 下发。定义所有 adapter 都遵守的中立契约，自己持有唯一
+引擎让框架开箱可跑；需要 sentinel 的调用方从 `starter/starter-governance-sentinel`
+构造 executor 并显式安装。
 
 ## 1. 职责与边界
 
-- **做：** 定义 `Policy`、`Executor`、`Driver`、`Limiter`、`Algorithm`；
-  内置 `default` 驱动；提供客户端 adapter（`NewRoundTripper`）；
-  提供 `Fallback` 组合助手。
+- **做：** 定义策略词汇与 `chain.Executor` 链节点；持有内置引擎；
+  提供客户端 adapter（`NewRoundTripper`）。
 - **不做：**
   - **不做统一的 per-request seam**。每个 client 库暴露的调用钩子形状不一；
     本包只提供最可复用的一个（`http.RoundTripper`），各 client
     adapter 把 executor 塞进自家钩子（redis.Hook /
     gorm plugin 等）。理由见 §4。
-  - 不做指标、追踪、日志。adapter 与 driver 自己决定如何暴露状态。
-  - 无三方依赖。推荐的 sentinel 驱动放独立 module，框架本体保持 stdlib 无外
-    依赖。
+  - 不做指标、追踪、日志。adapter 自己决定如何暴露状态。
+  - 无三方依赖。sentinel 后端放独立 module，框架本体保持 stdlib 无外依赖。
 
 ## 2. 关键抽象与缝隙
 
-- **两级抽象：`Policy` + `Driver` + `chain.Executor`。** `Policy` 是后端中立的声明式
-  配置；`Driver.NewExecutor(service, Policy)` 构造出站的运行时。内置驱动给出进程内的
-  `defaultExecutor`；sentinel 那类后端则映射到本土的 flow / circuit-breaker 规则。
-  adapter 只依赖 `chain.Executor`。入站的准入引擎不在这里，见 `guard`。
-- **容器即驱动目录。** 本包不带任何注册表：后端以自身名字贡献为 bean、导出为
-  `Driver`,manager 的构造函数把所有这类 bean 收成按名字索引的 map。
-  `spring.resilience.driver` 在这个目录里解析出选中项 —— 与 `discovery`
-  和 client starter 的 `Driver` 同一形态。内置驱动无需 bean 即应答 `"default"`。
+- **两块：manager 和它的链节点。** manager 持有策略快照和每个 label 一份共享引擎；
+  `Manager.Wrap(service, next)` 在该引擎上构造韧性节点，
+  `Manager.Wrap(service, nil)` 是终点形式（`next == nil`）。adapter 只依赖
+  `chain.Executor`。入站的准入引擎不在这里，见 `guard`。
+- **一个 Executor，一个保护域。** Executor 自己持有 per-label 状态；
+  `Manager.Wrap(service, next)` 把节点和状态一起构造，`Manager.Wrap`
+  是终点形式。没有注册表、没有后端 bean、没有 `spring.resilience.driver`：
+  starter 只注册 manager。
 - **中立拒绝错误**(`ErrRateLimited` / `ErrCircuitOpen` / `ErrBulkheadFull`)
   让 adapter 做协议特定映射（协议 starter 的 admission 中间件里 429 vs 503），
   不用 import 驱动包。
@@ -255,9 +265,9 @@ sentinel 驱动。
   入站 admission 走自己的 seam：各协议 starter 用 `admission.Guard.Admit` 自建中间件
   （见 starter-gin / starter-grpc 的 admission），把中立拒绝映射为 429 / 503，并保证
   每个请求恰好服务一次。
-- **`Fallback` 是助手，不进接口。** 给 `Executor.Execute` 加 `degrade` 参数会
-  波及所有驱动和 adapter；独立助手可组合任何 executor（包括 nil），核心表面
-  更小。
+- **降级在调用方。** `Execute` 只返回失败；决定改成什么（熔断时读缓存、返
+  默认值、还是继续上抛）是调用方的几行代码，而不是一个会波及所有驱动和
+  adapter 的 `degrade` 参数。
 - **限流是一个 stage，不是自己的 seam。** 它跑在 `Execute` 里，调用方从不
   自己造限流器：通过 `Policy` 配置这个 stage，通过 `ErrRateLimited` 读结果。
   限流是本地还是全局，取决于计数器放在哪 —— executor 自身的预算，或一份
@@ -320,16 +330,16 @@ sentinel 驱动。
 - **器官共享、参数中立。** 熔断状态机 / 限流桶 / `serviceState` / `Limiter`
   各一份，各自收自己的词汇：`ratelimit.Policy` 导出（store 实现与 gateway 过滤器都要读），
   `BreakerPolicy.Spec()` 包内，`resolveBreakerStrategy` 决定策略。
-- **两个互不依赖的观测面。** 请求面（`outbound/observe`）只记录单次调用的结果，从不读取治理状态；
-  本包通过 `observe.go` 注册的 observable 仪器发布**自己的**器官状态（breaker、限流预算）。
-  因此不存在跨层 listener 契约，也不在 `chain.Executor` 上放状态快照接口。
+- **出站只有一个观测面。** 请求面（`outbound/observe`）只记录单次调用的结果，从不读取治理状态；
+  本包保护措施对一次调用的全部影响都已在调用自己的错误上——拒绝是 `error_type=circuit_open`
+  及其同类，下游没服务成功是 `downstream`——因此本包不发布任何器官状态序列。
+  没有状态 observer 可注册，没有按规则的 key 变成 label，也不在 `chain.Executor` 上放状态快照接口。
 - **命名：** 出站不再带方向限定词——本包就是出站。入站在 `guard`
   （`admission.Manager` / `admission.Policy`），两个 authority 读起来是一对对称的类型，
   谁都不需要 `Client`/`Server` 前缀。
-- **manager 是具体类型：** 一个 `Manager` 持有一份已发布的 outbound settings 快照
-  （`Settings`），以及由它记忆化的每 label 代际；
-  注册表只存 `*entry{exec}` 指针，纯粹是身份表 —— `Apply` 从不遍历它。决定一个 label 要不要
-  重建的，是每个 executor 在调用点上自己比对的、按**内容**派生的代际。
+- **manager 是具体类型：** 一个 `Manager` 持有三份已发布的 capability 快照，不持有
+  任何注册表。决定一个 label 要不要重建的，是每个 executor 在调用点上自己比对的、
+  按**内容**派生的代际。
 - **executor 构造期绑定一个 service；`call` 不改变这一点。** `Execute(ctx, call, fn)`
   显式接收调用的身份（`chain.Call`：target / scenario / 幂等），于是每一层从签名读到、
   无须走 ctx——但保护**状态**仍绑定在构造期：一个 executor 一个 breaker、
@@ -339,7 +349,7 @@ sentinel 驱动。
 - **器官在首次调用时惰性构建**（`snapshot()` / `buildState()`）。executor 的状态观测在采集时
   读取当前代际，因此惰性构建和策略换代都不需要任何装配握手。
 - **托管路径一个 label 一个 executor。** client 一律走
-  `Manager.ExecutorFor`，不自己 `Subscribe` + `NewExecutor`。别给某个 client
+  `Manager.Wrap`，不自己 `Subscribe` + `NewExecutor`。别给某个 client
   加「需要看见 resolved policy」的能力（那会逼它绕开 manager），要改就在 govern rule
   层改。httpx 曾是唯一绕开 manager 的 client（自带 `min-requests=5` 下限），该下限
   已删、改走 `ExecutorFor("http", service)`；`Policy.MinRequests` 的默认值现在是 5（Sentinel 的 minRequestAmount）。
@@ -369,32 +379,23 @@ sentinel 驱动。
   `ResilienceConfig` 直接嵌它（`AdmissionService` 嵌 `admission.Policy`），不造绑定孪生或
   翻译层。新增治理可绑旋钮直接加在 Policy 上（带 tag）；不把函数字段塞进 Policy。
 - **`Timeout` 已更名 `Timeout`**（与键名一致）；`RetryPredicate` 函数字段已删
-  （全仓零赋值），重试分类只走 `Retryable` 接口 + 默认全重试。重试已收进 `Retry`
-  节点（`chain.RetryPolicy`），不再是 Policy 上的平铺字段：**默认关闭、由调用方在
-  `chain.Operation.Retry` 上显式声明**，治理中心下发的 `Policy.Retry` 声明了调度
-  时整体优先（`NonIdempotent` 两来源 OR 保留）。节点字段：退避
+  （全仓零赋值），重试分类只走 `Retryable` 接口的**白名单**：未声明可重试的错误不重试。
+  重试已收进 `Retry`
+  节点（`resilience.Retry`），不再是 Policy 上的平铺字段：**超时和重试都只由治理文档
+  决定，调用方代码不参与**。非幂等调用由文档侧保证：不给它的 service/interface 声明
+  调度即可；调用方只保留自己的 context deadline（可以收紧治理预算，不能放宽）。节点字段：退避
   `InitialInterval` / `Multiplier` / `MaxInterval` / `RandomizationFactor`、整通
   `Timeout`、breaker 策略 `BreakerStrategy` / `ErrorRateThreshold` /
   `MinRequests` / `BreakerWindow`；全部零值 = 旧行为。Policy 不能 `== Policy{}`
   比较，用 `IsZero()`。拆两份仅在有硬结构理由时允许（当前仅剩 loadbalance 工厂入参
   `Config` 一处内部翻译，消费 `Selection.Params`）。
-- **驱动目录在容器里。** 注册表已删（`RegisterDriver` / `GetDriver` /
-  `RegisterLimiter` / `GetLimiter` 全删，两个 init 注册的 `"default"` 也删）；
-  resilience 是零全局、零 gs 依赖的纯契约包。后端 = 命名 bean +
-  `Export(gs.As[resilience.Driver]())`；管理器构造器 `resilience.NewManager(driver Driver)`
-  只接收**已经按 `${spring.resilience.driver}` 解析好的那一个** Driver bean——
-  没有 wiring bean，也没有 `BindDrivers` / `SetDrivers`、名字解析或运行时切换：
-  后端是启动决策、终身持有。选不到 bean 会在装配期失败，不会静默回落。
-  内置驱动 = `resilience.NewDefaultDriver(limiter Limiter)`。
-  `spring.resilience.driver` 留在治理文档（`autowire:"${...}"` 读 gs properties，
-  而治理键来自 `Source.Snapshot()`，搬走会劈裂配置系统）。`gs.Provide` 的 ctor 返回
-  具体类型时必须 `Export`（gs 按精确类型索引）。Limiter 的选择键来自 gateway route
-  filter 参数，与 driver 的文档键不同源——两者形态相同但不要合并成一步改。
-  `httpx.Config.ResilienceDriver` 是 `resilience.Driver` 对象（httpx
-  container-free）。
+- **一个 Executor，一个保护域。** 没有注册表、没有后端 bean、没有
+  `spring.resilience.driver`；`Manager.Wrap(service, next)` 把节点和状态一起构造，
+  `Manager.Wrap(service, nil)` 是终点形式。不同机制（sentinel）在 manager 之外
+  作为 `chain.Executor` 由调用方显式安装。
 - **后端专属能力。** 集群限流、Warm-up 预热、按调用方限流、系统自适应整体保护
-  （Sentinel SystemRule 类）属 Driver 后端能力，不进核心 `Policy`；sentinel 接入时
-  沿其原生配置面提供。
+  （Sentinel SystemRule 类）属 sentinel executor 的能力，不进内置引擎；需要的
+  调用方沿其原生配置面提供。
 - **可观测桥接。** 出站/入站执行器包装落在 **`cloud/governance/dataplane/outbound/observe`**
   （`WrapClientExecutor(inner, system, service)` / `WrapServerExecutor(inner,
   system, service)`，返回 `chain.Executor`）；出站放火在

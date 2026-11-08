@@ -25,9 +25,9 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
@@ -52,10 +52,18 @@ func TestDefaultDriverFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -110,10 +118,18 @@ func TestCustomDriverUsed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),

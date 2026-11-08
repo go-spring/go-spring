@@ -60,7 +60,7 @@ func newLocker(c Config) (lock.Locker, error) {
 	if !c.ObserveEnabled {
 		return inner, nil
 	}
-	return lock.Observe(inner, "memory"), nil
+	return lock.Observe(inner, "memory")
 }
 
 // destroyLocker closes the Locker (passes through the observe wrapper).

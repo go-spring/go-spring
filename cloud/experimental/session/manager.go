@@ -19,9 +19,9 @@ package session
 import (
 	"context"
 	"net/http"
-	"sync"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/randutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -83,13 +83,21 @@ func (o *Options) normalize() {
 type Manager struct {
 	store SessionStore
 	opt   Options
+
+	// ins is this manager's instrument set, resolved at construction.
+	ins *instrumentSet
 }
 
 // NewManager builds a Manager over store with opt (defaults filled for zero
-// fields).
-func NewManager(store SessionStore, opt Options) *Manager {
+// fields). The instruments are resolved here, so a failed registration fails
+// construction instead of silently dropping the metric family.
+func NewManager(store SessionStore, opt Options) (*Manager, error) {
 	opt.normalize()
-	return &Manager{store: store, opt: opt}
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
+	return &Manager{store: store, opt: opt, ins: ins}, nil
 }
 
 // Middleware returns an http.Handler that loads the session referenced by the
@@ -121,30 +129,26 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// instrumentSet bundles the metrics a manager records: one per process,
-// resolved lazily on first use so the set binds to whichever OTel global
-// provider is current then, and immutable afterwards.
+// instrumentSet bundles the metrics a manager records: one per manager,
+// resolved when the manager is constructed.
 type instrumentSet struct {
 	total metric.Int64Counter
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
-	in := &instrumentSet{}
-	in.total, _ = otel.Meter(componentName).
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The
+// manager owns the set, so a failed registration fails construction instead of
+// silently dropping the metric family.
+func buildInstruments() (*instrumentSet, error) {
+	total, err := otel.Meter(componentName).
 		Int64Counter("session.operation.total",
 			metric.WithDescription("Session store operations, by operation and status"),
 			metric.WithUnit("{operation}"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "session: register session.operation.total")
+	}
+	return &instrumentSet{total: total}, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // countStoreOp reports one session-store operation on session.operation.total
 // with an exclusive status axis (ok | missed | error): load distinguishes a
@@ -157,7 +161,7 @@ func (m *Manager) countStoreOp(op string, err error, ok bool) {
 	} else if !ok {
 		status = "missed"
 	}
-	instruments().total.Add(context.Background(), 1, metric.WithAttributes(
+	m.ins.total.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("operation", op),
 		attribute.String("status", status),
 	))

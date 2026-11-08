@@ -35,15 +35,15 @@ func newLocker(ctx *gs.ContextProvider, c Config, client *redis.Client) (lock.Lo
 	if err != nil {
 		return nil, err
 	}
-	return wrapIfObserved(c, inner), nil
+	return wrapIfObserved(c, inner)
 }
 
 // wrapIfObserved is the transparent-default decision: bound configs default
 // observe.enabled=true, so the primary bean is the wrapped locker; an explicit
 // opt-out returns the bare inner locker unchanged.
-func wrapIfObserved(c Config, inner lock.Locker) lock.Locker {
+func wrapIfObserved(c Config, inner lock.Locker) (lock.Locker, error) {
 	if !c.ObserveEnabled {
-		return inner
+		return inner, nil
 	}
 	return lock.Observe(inner, "redis")
 }

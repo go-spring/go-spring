@@ -29,7 +29,9 @@ import (
 // cannot be joined to it. record returns both together for exactly that
 // reason; this pins the field side.
 func TestConnStateRecordCarriesTheMetricKeys(t *testing.T) {
-	fields := newConnStateCounter().record(context.Background(), "probe")
+	counter, err := newConnStateCounter()
+	assert.That(t, err).Nil()
+	fields := counter.record(context.Background(), "probe")
 
 	keys := make([]string, 0, len(fields))
 	for _, f := range fields {

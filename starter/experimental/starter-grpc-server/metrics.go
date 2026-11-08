@@ -18,10 +18,10 @@ package StarterGrpcServer
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -44,56 +44,62 @@ type instrumentSet struct {
 	streamDuration   metric.Float64Histogram
 }
 
-// instruments is the one instrument set this starter uses for the whole
-// process. Resolution is deferred to the first use, not run at package init, so
-// the instruments bind to whichever providers are current then - starter-otel
-// installs them before the server starts, but a test may replace them later and
-// a value resolved at init would keep pointing at the old SDK.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this starter's instruments against the meter
+// provider the otel starter installs before the server is built. The
+// interceptors own the set, so a failed registration fails server construction
+// instead of silently dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
-	requestCount, _ := m.Int64Counter(
+	requestCount, err := m.Int64Counter(
 		"rpc.server.request_count",
 		metric.WithDescription("Number of RPC requests received"),
 		metric.WithUnit("{request}"),
 	)
-	requestDuration, _ := m.Float64Histogram(
+	if err != nil {
+		return nil, errutil.Explain(err, "grpc: register rpc.server.request_count")
+	}
+	requestDuration, err := m.Float64Histogram(
 		"rpc.server.request.duration",
 		metric.WithDescription("Duration of RPC requests"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
-	requestsInFlight, _ := m.Int64UpDownCounter(
+	if err != nil {
+		return nil, errutil.Explain(err, "grpc: register rpc.server.request.duration")
+	}
+	requestsInFlight, err := m.Int64UpDownCounter(
 		"rpc.server.active_requests",
 		metric.WithDescription("Number of RPC requests currently in-flight"),
 		metric.WithUnit("{request}"),
 	)
-	streamCount, _ := m.Int64Counter(
+	if err != nil {
+		return nil, errutil.Explain(err, "grpc: register rpc.server.active_requests")
+	}
+	streamCount, err := m.Int64Counter(
 		"rpc.server.stream_count",
 		metric.WithDescription("Number of RPC stream requests received"),
 		metric.WithUnit("{request}"),
 	)
-	streamDuration, _ := m.Float64Histogram(
+	if err != nil {
+		return nil, errutil.Explain(err, "grpc: register rpc.server.stream_count")
+	}
+	streamDuration, err := m.Float64Histogram(
 		"rpc.server.stream.duration",
 		metric.WithDescription("Duration of RPC stream requests"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
+	if err != nil {
+		return nil, errutil.Explain(err, "grpc: register rpc.server.stream.duration")
+	}
 	return &instrumentSet{
 		requestCount:     requestCount,
 		requestDuration:  requestDuration,
 		requestsInFlight: requestsInFlight,
 		streamCount:      streamCount,
 		streamDuration:   streamDuration,
-	}
+	}, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // MetricsUnaryInterceptor records gRPC request metrics — total count, duration,
 // and in-flight gauge — through the global MeterProvider.
@@ -102,13 +108,17 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // "rpc.server.request.duration" (dotted). request_count and active_requests are
 // kept as starter-specific extras (the stable convention only standardizes the
 // duration histogram).
-func MetricsUnaryInterceptor() grpc.UnaryServerInterceptor {
+func MetricsUnaryInterceptor() (grpc.UnaryServerInterceptor, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		attrs := metric.WithAttributes(
 			attribute.String("rpc.system", rpcSystem),
 			attribute.String("rpc.method", info.FullMethod),
 		)
-		instruments().requestsInFlight.Add(ctx, 1, attrs)
+		ins.requestsInFlight.Add(ctx, 1, attrs)
 		start := time.Now()
 
 		resp, err := handler(ctx, req)
@@ -121,12 +131,12 @@ func MetricsUnaryInterceptor() grpc.UnaryServerInterceptor {
 			attribute.String("status", status),
 			attribute.String("rpc.grpc.status_code", code),
 		)
-		instruments().requestCount.Add(ctx, 1, done)
+		ins.requestCount.Add(ctx, 1, done)
 		dur := time.Since(start)
-		instruments().requestDuration.Record(ctx, dur.Seconds(), done)
-		instruments().requestsInFlight.Add(ctx, -1, attrs)
+		ins.requestDuration.Record(ctx, dur.Seconds(), done)
+		ins.requestsInFlight.Add(ctx, -1, attrs)
 		return resp, err
-	}
+	}, nil
 }
 
 // MetricsStreamInterceptor records gRPC stream metrics — count and duration —
@@ -136,7 +146,11 @@ func MetricsUnaryInterceptor() grpc.UnaryServerInterceptor {
 // here; instead a starter-specific "rpc.server.stream.duration" (dotted) is
 // emitted alongside stream_count. Both histograms use the family-wide duration
 // bucket boundaries.
-func MetricsStreamInterceptor() grpc.StreamServerInterceptor {
+func MetricsStreamInterceptor() (grpc.StreamServerInterceptor, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 		err := handler(srv, ss)
@@ -148,9 +162,9 @@ func MetricsStreamInterceptor() grpc.StreamServerInterceptor {
 			attribute.String("status", status),
 			attribute.String("rpc.grpc.status_code", code),
 		)
-		instruments().streamCount.Add(ss.Context(), 1, done)
+		ins.streamCount.Add(ss.Context(), 1, done)
 		dur := time.Since(start)
-		instruments().streamDuration.Record(ss.Context(), dur.Seconds(), done)
+		ins.streamDuration.Record(ss.Context(), dur.Seconds(), done)
 		return err
-	}
+	}, nil
 }

@@ -45,10 +45,6 @@ func TestMain(m *testing.M) {
 	testReader = sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(testReader))
 	otel.SetMeterProvider(mp)
-	// The instrument set is process-wide and resolved once, so a fresh
-	// MeterProvider must reset it or the records below keep going to the
-	// provider that was current when it was first resolved.
-	resetInstruments()
 	code := m.Run()
 	otel.SetMeterProvider(prev)
 	_ = mp.Shutdown(context.Background())
@@ -126,10 +122,15 @@ func hasHist(t *testing.T, name string, want map[string]string) bool {
 // metrics come from the package-wide instrument set (see observe.go). refresh
 // is the property-refresh seam, which onMessage calls.
 func newTestBus(refresh func(ctx context.Context) error) *ConfigBus {
+	ins, err := buildInstruments()
+	if err != nil {
+		panic(err)
+	}
 	return &ConfigBus{
 		Config:  Config{Subject: "t.subject", Origin: "test-origin"},
 		refresh: refresh,
 		origin:  "test-origin",
+		ins:     ins,
 	}
 }
 

@@ -22,40 +22,33 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
-// WrapClientExecutor returns an [chain.Executor] that wraps inner with an internal span
-// (system/service/status attributes), the resilience metrics, and an
-// access log per call. Pass the system label (e.g. "redis", "gorm", "grpc")
-// so calls from several protected clients are distinguishable. A nil inner
-// returns nil — no wrapper, so an unarmed client stays untouched.
+// WrapClientExecutor returns an [chain.Executor] that runs next under an
+// internal span (system/service/status attributes), the resilience metrics, and
+// an access log per call. Pass the system label (e.g. "redis", "gorm", "grpc")
+// so calls from several protected clients are distinguishable. next nil means
+// this layer is the terminal: the call itself is fn (see [chain.Next]).
 //
-// This is an internal composition step, not a client API: the resilience
-// manager applies it while the provider-built executor is still private, so
-// clients get an already-observed executor and never wrap one themselves. The
-// only other caller is a client that composes its own stack around a raw
-// executor it built directly (e.g. httpx's custom chain.Executor / ResilienceDriver
-// paths).
+// This is an internal composition step, not a client API: a composition root
+// layers it over the rest of the chain, so clients get an already-observed
+// executor and never wrap one themselves.
 //
 // The shared instruments are resolved at this point — the first resolve time,
 // not package init — so an SDK installed after this package's init still
 // receives the spans and records. The tracer is not held at all; see
 // [observingExecutor.Execute].
-func WrapClientExecutor(inner chain.Executor, system, service string) chain.Executor {
-	if inner == nil {
-		return nil
-	}
-	w := &observingExecutor{
-		inner: inner,
+func WrapClientExecutor(next chain.Executor, system, service string) chain.Executor {
+	return &observingExecutor{
+		next: next,
 		callEmitter: &callEmitter{
 			system:  system,
 			service: service,
 			ins:     clientInstruments(),
 		},
 	}
-	return w
 }
 
 type observingExecutor struct {
-	inner chain.Executor
+	next chain.Executor
 	*callEmitter
 }
 
@@ -77,7 +70,14 @@ type observingExecutor struct {
 // down to their names — migrating a client to the declared-operation path is what
 // switches its signals over, one client at a time.
 func (w *observingExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
-	return w.call(ctx, op, rec, func(c context.Context) error { return w.inner.Execute(c, op, rec, fn) }, false)
+	return w.call(ctx, op, rec, func(c context.Context) error {
+		return chain.Next(w.next, c, op, rec, fn)
+	}, w.next == nil)
 }
 
-func (w *observingExecutor) Close() error { return w.inner.Close() }
+func (w *observingExecutor) Close() error {
+	if w.next == nil {
+		return nil
+	}
+	return w.next.Close()
+}

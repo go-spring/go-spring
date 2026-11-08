@@ -28,19 +28,19 @@ import (
 // whoever owns the deployment's configuration. With no source bean the default
 // below arms the center with an empty document — a process with no limits
 // transport runs ungoverned instead of failing. Exactly one
-// Source[resilience.LimitsSettings] must exist; gs rejects the ambiguous
+// Source[resilience.TimeoutRetrySettings] must exist; gs rejects the ambiguous
 // injection.
 func init() {
 	// Default source, stepping aside when a company-level starter provides one.
-	gs.Provide(func() source.Source[resilience.LimitsSettings] {
-		return source.NewPushSource(resilience.LimitsSettings{})
-	}).Condition(gs.OnMissingBean[source.Source[resilience.LimitsSettings]]()).Caller(1)
+	gs.Provide(func() source.Source[resilience.TimeoutRetrySettings] {
+		return source.NewPushSource(resilience.TimeoutRetrySettings{})
+	}).Condition(gs.OnMissingBean[source.Source[resilience.TimeoutRetrySettings]]()).Caller(1)
 
 	// The center is constructor-injected with the outbound resilience authority
 	// and this root's source; [NewCenter] arms it on the spot. It is exported as
 	// a root so gs constructs it even when nothing injects it.
 	gs.Provide(func(cp *gs.ContextProvider, mgr *resilience.Manager,
-		src source.Source[resilience.LimitsSettings]) (*Center, error) {
+		src source.Source[resilience.TimeoutRetrySettings]) (*Center, error) {
 		return NewCenter(cp.Context, mgr, src)
 	}).
 		Name("limitsCenter").

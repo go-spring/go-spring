@@ -233,7 +233,7 @@ go-spring 是完整、开箱即用的生态(不接任何公司扩展也能独立
 
 跨模块的既有拍板,登记于此以免重议;机制细节在各自的模块文档里。
 
-- **MQ binder 路径必须走与直连 API 相同的 admission / executor 缝**(`Manager.ExecutorFor`);治理按目标资源生效、与调用路径无关;per-instance 开关默认开、可关(2026-08-28)。
+- **MQ binder 路径必须走与直连 API 相同的 admission / executor 缝**(`Manager.Wrap`);治理按目标资源生效、与调用路径无关;per-instance 开关默认开、可关(2026-08-28)。
 - **注册自愈:** etcd lease keepalive 死亡 / zk session 过期后自动重注册(退避 1s 倍增至 1min,仅 Close 退出);consul 因 `UpdateTTL` 自恢复无需改(2026-08-28)。骨架偏好:倾向家族共享骨架;若各 starter 独立实现,宁可各写本地小 helper,也不新建跨模块依赖。
 - **casbin:** `policy` 与 `adapter` 互斥,fail fast——**除非**文档明确支持「文件装载 + 库持久化」模式,才做三态(2026-08-28)。
 - **总则:** 死配置删除 + 语义冲突响亮校验 + 静默失败改 WARN / ERROR(2026-08-28)。

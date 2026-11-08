@@ -75,7 +75,10 @@ type DefaultDriver struct{}
 func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Conn, error) {
 	// Connection-layer events are counted as well as logged, from this one
 	// place (see connStateCounter for why the pair cannot be split).
-	connState := newConnStateCounter()
+	connState, err := newConnStateCounter()
+	if err != nil {
+		return nil, err
+	}
 	opts := []nats.Option{
 		nats.Name(c.Name),
 		nats.MaxReconnects(c.MaxReconnects),

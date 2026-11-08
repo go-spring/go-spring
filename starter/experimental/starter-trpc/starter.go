@@ -200,7 +200,11 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		filter.Register("tracing", TracingServerFilter(), nil)
 	}
 	if s.cfg.Observer.Metrics.Enabled {
-		filter.Register("metrics", MetricsServerFilter(), nil)
+		mf, err := MetricsServerFilter()
+		if err != nil {
+			return err
+		}
+		filter.Register("metrics", mf, nil)
 	}
 	// Register the load-test identification filter. Add "loadtest" to a
 	// service's filter chain (first position) to activate it; it tags the

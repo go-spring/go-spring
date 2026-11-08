@@ -145,7 +145,11 @@ func TestHeaderProtocolTracePropagation(t *testing.T) {
 	writeHeaderMessage(ctx, t, wire, "Ping", headers)
 
 	svc := &recordingFunc{}
-	proc := thrift.WrapProcessor(newStubProcessor("Ping", svc), Observe())
+	mw, err := Observe()
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	proc := thrift.WrapProcessor(newStubProcessor("Ping", svc), mw)
 	serverIn := thrift.NewTHeaderProtocolConf(wire, nil)
 	serverOut := thrift.NewTHeaderProtocolConf(thrift.NewTMemoryBuffer(), nil)
 
@@ -191,7 +195,11 @@ func TestBinaryProtocolNoPropagation(t *testing.T) {
 	if err := sender.WriteMessageEnd(ctx); err != nil {
 		t.Fatalf("WriteMessageEnd: %v", err)
 	}
-	proc := thrift.WrapProcessor(newStubProcessor("Ping", &recordingFunc{}), Observe())
+	mw, err := Observe()
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	proc := thrift.WrapProcessor(newStubProcessor("Ping", &recordingFunc{}), mw)
 	serverIn := thrift.NewTBinaryProtocolConf(wire, nil)
 	serverOut := thrift.NewTBinaryProtocolConf(thrift.NewTMemoryBuffer(), nil)
 
@@ -240,7 +248,11 @@ func TestRejectionIsStillObserved(t *testing.T) {
 	}
 
 	svc := &recordingFunc{}
-	proc := thrift.WrapProcessor(newStubProcessor("Ping", svc), Observe(), rejecting)
+	mw, err := Observe()
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	proc := thrift.WrapProcessor(newStubProcessor("Ping", svc), mw, rejecting)
 	serverIn := thrift.NewTBinaryProtocolConf(wire, nil)
 	serverOut := thrift.NewTBinaryProtocolConf(thrift.NewTMemoryBuffer(), nil)
 

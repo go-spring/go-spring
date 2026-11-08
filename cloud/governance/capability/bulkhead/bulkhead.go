@@ -28,6 +28,8 @@ import (
 	"context"
 	"sync/atomic"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // Bulkhead is one concurrency-isolation stage: at most maxConcurrent callers
@@ -78,18 +80,18 @@ func WithQueueTimeout(timeout time.Duration) Option {
 
 // New builds a bulkhead admitting at most maxConcurrent callers at once.
 // maxConcurrent must be positive: "no isolation" is a nil *Bulkhead at the
-// holder, never a disabled instance, so New panics on a non-positive value and
-// the holder guarantees it. By default a caller that finds the bulkhead full is
-// rejected immediately; pass [WithQueueTimeout] to make it wait for a slot.
-func New(maxConcurrent int, opts ...Option) *Bulkhead {
+// holder, never a disabled instance, so New refuses a non-positive value. By
+// default a caller that finds the bulkhead full is rejected immediately; pass
+// [WithQueueTimeout] to make it wait for a slot.
+func New(maxConcurrent int, opts ...Option) (*Bulkhead, error) {
 	if maxConcurrent <= 0 {
-		panic("bulkhead: New requires maxConcurrent > 0")
+		return nil, errutil.Explain(nil, "bulkhead: max-concurrent must be > 0")
 	}
 	b := &Bulkhead{slots: make(chan struct{}, maxConcurrent)}
 	for _, opt := range opts {
 		opt(b)
 	}
-	return b
+	return b, nil
 }
 
 // QueueTimeout reports how long a caller that finds the bulkhead full may

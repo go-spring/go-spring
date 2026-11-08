@@ -177,7 +177,10 @@ func TestManagerPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(factories)
+	m, err := NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer m.Close()
 	g := mustGuardFor(t, m, id)
 
@@ -206,7 +209,10 @@ func TestTwoInstancesDoNotShareState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(factories)
+	m, err := NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer m.Close()
 	_ = m.Apply(Settings{Default: Policy{MaxConcurrent: 1}})
 
@@ -286,7 +292,10 @@ func TestApplyRejectsUnknownLimiterKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(factories)
+	m, err := NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = m.Close() }()
 	// A Guard is what makes the default policy actually used; an unserved rule
 	// is just data and is not validated.
@@ -346,7 +355,10 @@ func TestRateStateSurvivesPolicyChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(factories)
+	m, err := NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = m.Close() }()
 
 	id := Identity{System: "sys", Service: "svc-rate-survives"}
@@ -373,7 +385,7 @@ func TestRateStateSurvivesPolicyChange(t *testing.T) {
 }
 
 func TestStandaloneBulkhead(t *testing.T) {
-	b := bulkhead.New(1)
+	b := mustBulkhead(t, 1)
 	release, ok := b.Acquire(ctx())
 	if !ok {
 		t.Fatal("first acquire should succeed")
@@ -407,4 +419,14 @@ func TestNegativeMaxConcurrentRejected(t *testing.T) {
 	if _, err := New(id, Policy{MaxConcurrent: -1}, factories); err == nil {
 		t.Fatal("New accepted a negative max-concurrent")
 	}
+}
+
+// mustBulkhead builds a bulkhead, failing the test if its input is rejected.
+func mustBulkhead(t *testing.T, maxConcurrent int, opts ...bulkhead.Option) *bulkhead.Bulkhead {
+	t.Helper()
+	b, err := bulkhead.New(maxConcurrent, opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

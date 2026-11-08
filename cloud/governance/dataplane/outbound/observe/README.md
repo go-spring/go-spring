@@ -224,24 +224,19 @@ ctx = chain.WithOperation(ctx, chain.Operation{
 `Attrs` must stay bounded: a cache key, a SQL statement, a URL path or a topic
 belongs in `Detail`, which never becomes a metric label.
 
-`chain.Operation` is naming only. The call's **identity** — `Target`, `Scenario` and
-`NonIdempotent` — travels separately and explicitly as the [`chain.Call`](../chain/executor.go)
-argument to [`chain.Executor.Execute`](../chain/executor.go), not on the context:
+`chain.Operation` carries both halves: the observability declaration (`Observe`,
+read by the emitter, which needs the metric prefix and detail) and the call
+identity (`Service`, `Request`, read by the engine, which keys protection on it).
+It travels as an argument to [`chain.Executor.Execute`](../chain/executor.go),
+not on the context, so it is visible at every hop:
 
 ```go
-ctx = chain.WithOperation(ctx, chain.Operation{
-    Name:   "publish",
-    Metric: "messaging.client",
-    …
-})
-exec.Execute(ctx, chain.Call{Target: "orders", Scenario: "tenant-a", NonIdempotent: true}, fn)
+exec.Execute(ctx, chain.Operation{
+    Service: "orders",
+    Request: chain.Request{Action: "publish"},
+    Observe: chain.Observe{Metric: chain.Metric{Name: "messaging.client"}},
+}, rec, fn)
 ```
-
-The split is deliberate: `chain.Operation` is the observability declaration (read by
-the emitter, which needs the metric prefix and detail), while `Call` is the
-governance identity (read by the engine, which keys protection on it). Keeping
-the identity in the signature rather than the context makes it visible at every
-hop.
 
 Declaring is the path for a client whose transport offers a seam for
 `chain.Executor`. A component unfriendly to that seam — a message producer whose
@@ -255,13 +250,13 @@ and apply no governance at all.
 one `chain.Round` per round it runs; the emitter reads them after the retry loop.
 
 ```go
-rec := &chain.Recorder{}          // nil is fine too — it means "record nothing"
+rec := &chain.Recorder{}          // required; pass a zero one to record nothing
 exec.Execute(ctx, op, rec, fn)    // the retry loop fills rec as it runs
 rec.Rounds()                      // read only once Execute has returned
 ```
 
 The recorder travels as an explicit ARGUMENT, not through the context: `Execute`
-takes it, and a nil argument means "record nothing". That is what keeps nesting
+takes it, and it must be non-nil. That is what keeps nesting
 unambiguous — a nested call builds its own recorder and passes that one down, so
 an inner executor never writes into the outer call's record.
 

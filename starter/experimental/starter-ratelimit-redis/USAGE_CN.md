@@ -265,7 +265,7 @@ cd example && ./check.sh    # docker 门控：compose 起 redis，跑自断言�
 | 完全不限流，全是 200 | 该 service 的 policy `rate-limit: 0`，或 Redis 不可达（executor 放行） | 在规则文件里给正数 `rate-limit`；检查 Redis。 |
 | 文档被拒绝，提示 "does not support algorithm" | 规则要求 `limiter: sliding-window`，本存储会在 apply 时拒绝 | 把上限建模成 `rate-limit`/`burst`，或让 sliding window 继续用内存存储。 |
 | 调用堆积而不是被拒绝 | 设了 `rate-limit-max-wait`，但共享存储不排队 | 排队继续留给内存存储，或去掉该参数。 |
-| 文档没配限流的应用完全没有限流 | 没有匹配规则（或零值 `Default`）时，所有 executor 都是直通 | 给该 label 配一条带正数 `rate-limit` 的规则；本 starter 只搬计数器。 |
+| 文档没配限流的应用完全没有限流 | 没有匹配规则时，所有 executor 都是直通 | 给该 label 配一条带正数 `rate-limit` 的规则；本 starter 只搬计数器。 |
 
 ---
 

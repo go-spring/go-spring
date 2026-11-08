@@ -18,12 +18,15 @@ package StarterMilvus
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/merr"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
@@ -37,19 +40,81 @@ func TestConfigDefaults(t *testing.T) {
 	assert.That(t, c.Addr).Equal("")
 }
 
+// TestClientErrorClassification pins the split: a request Milvus definitively
+// rejected is normal; cluster conditions and transport errors are faults.
+func TestClientErrorClassification(t *testing.T) {
+	assert.That(t, isClientError(merr.ErrCollectionNotFound)).True()
+	assert.That(t, isClientError(merr.ErrParameterInvalid)).True()
+	assert.That(t, isClientError(errors.Join(errors.New("rpc failed"), merr.ErrDatabaseNotFound))).True()
+
+	assert.That(t, isClientError(merr.ErrServiceUnavailable)).False()
+	assert.That(t, isClientError(merr.ErrCollectionNotLoaded)).False()
+	assert.That(t, isClientError(errors.New("connection refused"))).False()
+}
+
+// TestRetryableErrorClassification pins the SDK's retriable sentinels.
+func TestRetryableErrorClassification(t *testing.T) {
+	assert.That(t, isRetryableError(merr.ErrServiceUnavailable)).True()
+	assert.That(t, isRetryableError(merr.ErrServiceRateLimit)).True()
+	assert.That(t, isRetryableError(errors.Join(errors.New("rpc failed"), merr.ErrServiceNotReady))).True()
+
+	assert.That(t, isRetryableError(merr.ErrCollectionNotLoaded)).False()
+	assert.That(t, isRetryableError(merr.ErrCollectionNotFound)).False()
+	assert.That(t, isRetryableError(errors.New("connection refused"))).False()
+}
+
+// TestUnaryGuardRetriesTransient proves the transient verdict reaches the
+// retry loop while the caller still receives the original error.
+func TestUnaryGuardRetriesTransient(t *testing.T) {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+		Service: "milvus:test",
+		Rules: []resilience.TimeoutRetryRule{{
+			ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			TimeoutRetry: resilience.TimeoutRetry{Retry: resilience.Retry{MaxRetries: 2}},
+		}},
+	}}})).Nil()
+	slot := &guardSlot{}
+	slot.apply(m.Wrap("svc", nil), "milvus:test", testProp)
+
+	var ran int
+	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
+		ran++
+		return merr.ErrServiceUnavailable
+	}
+	err = unaryGuard(slot)(context.Background(), "/milvus.proto/Search", nil, nil, nil, invoker)
+	assert.Error(t, err).Is(merr.ErrServiceUnavailable)
+	assert.Number(t, ran).Equal(3)
+}
+
 // --- guard (per-RPC resilience via gRPC interceptors) ---
 
-// newGuardedSlot builds a slot applied with a real executor from the default
-// resilience driver, for driving the interceptors directly (no live Milvus
-// server is needed).
+// newGuardedSlot builds a slot applied with a real manager-owned executor, for
+// driving the interceptors directly (no live Milvus server is needed).
 func newGuardedSlot(t *testing.T, p ratelimit.Policy) *guardSlot {
 	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
-	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
-	exec := m.ExecutorFor("svc")
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+		Service: "milvus:test",
+		Rules: []resilience.RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			Policy:      p,
+		}},
+	}}})).Nil()
+	exec := m.Wrap("svc", nil)
 	s := &guardSlot{}
 	s.apply(exec, "milvus:test", testProp)
 	return s

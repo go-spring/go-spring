@@ -163,7 +163,7 @@ type chainEntry struct {
 func newRouteTable(ctx *gs.ContextProvider, o *observer,
 	center *governance.Runtime, factories *ratelimit.Factory) (*RouteTable, error) {
 	if factories == nil {
-		panic("gateway: newRouteTable requires a non-nil ratelimit.Factory")
+		return nil, errutil.Explain(nil, "gateway: route table requires a non-nil ratelimit.Factory")
 	}
 	lbMgr := center.LoadBalance
 	if lbMgr == nil {

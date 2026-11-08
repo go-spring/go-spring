@@ -99,7 +99,7 @@ func init() {
 			// the adapter takes it directly. Named "go-redis:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
-			r.Provide(func(c *Client) *cache.Cache {
+			r.Provide(func(c *Client) (*cache.Cache, error) {
 				return cache.New(NewByteCache(c))
 			}, gs.TagArg(name)).Name("go-redis:" + name).Caller(1)
 			return nil

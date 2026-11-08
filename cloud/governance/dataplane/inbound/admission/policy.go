@@ -70,16 +70,11 @@ type Settings struct {
 // Validate is called by conf.Bind, so an invalid document is rejected at the
 // source boundary rather than reaching the center.
 func (s Settings) Validate() error {
-	seen := make(map[string]struct{}, len(s.Rules))
 	for i := range s.Rules {
 		r := &s.Rules[i]
 		if r.Service == "" {
 			return errutil.Explain(nil, "admission: entry without a service")
 		}
-		if _, dup := seen[r.Service]; dup {
-			return errutil.Explain(nil, "admission: duplicate entry for service %q", r.Service)
-		}
-		seen[r.Service] = struct{}{}
 	}
 	return nil
 }

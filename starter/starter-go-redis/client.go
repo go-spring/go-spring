@@ -26,6 +26,8 @@ package StarterGoRedis
 
 import (
 	"context"
+	"errors"
+	"net"
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/governance"
@@ -102,7 +104,7 @@ type Client struct {
 // span, the duration metrics and the access log from the point that sees the
 // whole call — so one log line covers the whole retry loop.
 //
-// The manager's ExecutorFor resolves its backing executor lazily, on each
+// Runtime.ExecutorFor resolves the executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Chain, center *governance.Runtime) (*Client, error) {
@@ -205,6 +207,16 @@ func (h *resilienceHook) ProcessPipelineHook(next redis.ProcessPipelineHook) red
 	}
 }
 
+// isTransientError reports whether the failure is a transport-level condition
+// another attempt may survive — a dial/read/write error. Server replies
+// (redis.Error: WRONGTYPE, ...) are definitive answers and are not retried; they
+// are also deliberately not tolerated, because a reply error can name a
+// server-state condition (LOADING, READONLY) rather than a client mistake.
+func isTransientError(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne)
+}
+
 // guard runs a single command through the executor, tagging the command with a
 // rejection error when the limiter or breaker short-circuits it.
 func (h *resilienceHook) guard(ctx context.Context, op chain.Operation, cmd redis.Cmder, call func(context.Context) error) error {
@@ -231,7 +243,7 @@ func (h *resilienceHook) run(ctx context.Context, op chain.Operation, setErr fun
 		func(actx context.Context) (struct{}, error) {
 			callErr = call(actx)
 			return struct{}{}, callErr
-		}, resilience.Tolerate(redis.Nil))
+		}, resilience.Tolerate(redis.Nil), resilience.RetryOn(isTransientError))
 	if err != nil && callErr == nil {
 		setErr(err)
 	}

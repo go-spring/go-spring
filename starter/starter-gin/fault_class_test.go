@@ -52,7 +52,10 @@ func TestHTTPStatusFor_FollowsFaultClass(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		gm := admission.NewManager(fact)
+		gm, err := admission.NewManager(fact)
+		if err != nil {
+			t.Fatal(err)
+		}
 		in, err := inbound.Over("gin", "gin:test", gm, inj)
 		if err != nil {
 			gm.Close()

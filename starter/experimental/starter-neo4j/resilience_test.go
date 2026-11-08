@@ -18,8 +18,11 @@ package StarterNeo4j
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
@@ -43,9 +46,18 @@ func newGuardedNeo4jClient(t *testing.T, p ratelimit.Policy) *Client {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
-	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
-	return &Client{DriverWithContext: fakeDriver{}, exec: m.ExecutorFor("svc")}
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+		Service: "svc",
+		Rules: []resilience.RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			Policy:      p,
+		}},
+	}}})).Nil()
+	return &Client{DriverWithContext: fakeDriver{}, exec: m.Wrap("svc", nil), serviceLabel: "svc"}
 }
 
 // TestRunWithResiliencePassThrough proves the zero-config stance: a Client with
@@ -67,4 +79,76 @@ func TestRunWithResilienceRateLimit(t *testing.T) {
 	assert.Error(t, RunWithResilience(context.Background(), c, chain.Operation{}, fn)).Nil()
 	assert.Error(t, RunWithResilience(context.Background(), c, chain.Operation{}, fn)).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(1) // the rejected call never ran
+}
+
+// TestClientErrorIsNormalOutcome pins the classification: a Neo4j ClientError is
+// the server's definite answer about the request, not evidence it is unhealthy.
+func TestClientErrorIsNormalOutcome(t *testing.T) {
+	clientErr := &neo4j.Neo4jError{Code: "Neo.ClientError.Statement.SyntaxError", Msg: "invalid syntax"}
+	transientErr := &neo4j.Neo4jError{Code: "Neo.TransientError.General.DatabaseUnavailable", Msg: "unavailable"}
+	assert.That(t, isClientError(clientErr)).True()
+	assert.That(t, isClientError(transientErr)).False()
+	assert.That(t, isClientError(errors.New("connection refused"))).False()
+}
+
+// TestRunWithResilienceRetriesTransient proves the driver's transient verdict
+// reaches the retry loop while the caller still receives the original error.
+func TestRunWithResilienceRetriesTransient(t *testing.T) {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+		Service: "svc",
+		Rules: []resilience.TimeoutRetryRule{{
+			ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			TimeoutRetry: resilience.TimeoutRetry{Retry: resilience.Retry{MaxRetries: 2}},
+		}},
+	}}})).Nil()
+	c := &Client{DriverWithContext: fakeDriver{}, exec: m.Wrap("svc", nil), serviceLabel: "svc"}
+
+	transient := &neo4j.Neo4jError{Code: "Neo.TransientError.General.DatabaseUnavailable", Msg: "unavailable"}
+	var calls int
+	err = RunWithResilience(context.Background(), c, chain.Operation{}, func(context.Context) error {
+		calls++
+		return transient
+	})
+	assert.Error(t, err).Is(transient)
+	assert.Number(t, calls).Equal(3)
+}
+
+// TestRunWithResilienceClientErrorDoesNotTripBreaker proves the predicate reaches
+// the executor: a client error is returned verbatim but counts as neither a
+// breaker failure nor a retry trigger.
+func TestRunWithResilienceClientErrorDoesNotTripBreaker(t *testing.T) {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Services: []resilience.BreakerService{{
+		Service: "svc",
+		Rules: []resilience.BreakerRule{{
+			ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			BreakerPolicy: resilience.BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour},
+		}},
+	}}})).Nil()
+	c := &Client{DriverWithContext: fakeDriver{}, exec: m.Wrap("svc", nil), serviceLabel: "svc"}
+
+	clientErr := &neo4j.Neo4jError{Code: "Neo.ClientError.Statement.SyntaxError", Msg: "invalid syntax"}
+	call := func() error {
+		return RunWithResilience(context.Background(), c, chain.Operation{}, func(context.Context) error {
+			return clientErr
+		})
+	}
+	assert.Error(t, call()).Is(clientErr)
+	// Had the client error counted, this second call would be short-circuited.
+	assert.Error(t, call()).Is(clientErr)
 }

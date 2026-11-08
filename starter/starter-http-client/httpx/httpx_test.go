@@ -33,6 +33,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -51,7 +52,11 @@ var (
 		if err != nil {
 			panic(err)
 		}
-		return resilience.NewManager(resilience.NewDefaultDriver(), fact)
+		m, err := resilience.NewManager(fact)
+		if err != nil {
+			panic(err)
+		}
+		return m
 	}()
 	testInj   = clientfault.NewManager()
 	testLbMgr = mustLbManager()
@@ -197,10 +202,23 @@ func (errorDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, er
 
 func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 	rec := &recordRT{status: http.StatusInternalServerError}
+
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	mgr, err := resilience.NewManager(fact)
+	assert.That(t, err).Nil()
+	assert.Error(t, mgr.ApplyBreaker(resilience.BreakerSettings{Services: []resilience.BreakerService{{
+		Service: "http",
+		Rules: []resilience.BreakerRule{{
+			ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			BreakerPolicy: resilience.BreakerPolicy{ErrorThreshold: 2},
+		}},
+	}}})).Nil()
+	t.Cleanup(func() { _ = mgr.Close() })
+
 	rt, closeFn, err := NewTransport(Config{
-		ResilienceDriver:  resilience.NewDefaultDriver(),
-		ResilienceBreaker: resilience.BreakerPolicy{ErrorThreshold: 2},
-		Base:              rec,
+		Executor: mgr.Wrap("svc", nil),
+		Base:     rec,
 	}, testCenter(testMgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
@@ -298,10 +316,13 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), fact)
+	mgr, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
-		Executor: mgr.ExecutorFor("test-service"),
+		Executor: mgr.Wrap("test-service", nil),
 		WrapExec: func(e chain.Executor) chain.Executor {
 			called = true
 			return e
@@ -318,7 +339,7 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 }
 
 // TestNewTransport_ResilienceFollowsManager proves the default executor comes
-// from the injected manager — the same [resilience.Manager.ExecutorFor] path
+// from the injected manager — the same [resilience.Manager.Wrap] path
 // every other client starter takes — so arming that manager hot-swaps the policy
 // behind a transport that was already built, with no transport rebuild.
 func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
@@ -326,7 +347,10 @@ func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), fact)
+	mgr, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, testCenter(mgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
@@ -343,7 +367,13 @@ func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
 
 	// Arm the manager with an error-threshold breaker for the label and push it,
 	// exactly as the center does on a config change.
-	mgr.ApplyBreaker(resilience.BreakerSettings{Default: resilience.BreakerPolicy{ErrorThreshold: 2}})
+	mgr.ApplyBreaker(resilience.BreakerSettings{Services: []resilience.BreakerService{{
+		Service: "http:svc:80",
+		Rules: []resilience.BreakerRule{{
+			ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			BreakerPolicy: resilience.BreakerPolicy{ErrorThreshold: 2},
+		}},
+	}}})
 
 	// Two consecutive 5xx now trip the breaker; the third call is rejected
 	// before it reaches the base transport — no rebuild in between.
@@ -373,10 +403,14 @@ func testCenter(mgr *resilience.Manager, inj *clientfault.Manager, lb *loadbalan
 	if err != nil {
 		panic(err)
 	}
+	adm, err := admission.NewManager(fact)
+	if err != nil {
+		panic(err)
+	}
 	ctr := &governance.Runtime{
 		Resilience:  mgr,
 		LoadBalance: lb,
-		Admission:   admission.NewManager(fact),
+		Admission:   adm,
 		ClientFault: inj,
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

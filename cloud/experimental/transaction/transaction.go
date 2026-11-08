@@ -52,14 +52,14 @@ package transaction
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // Retry describes how an individual [Step] phase (action or compensation)
-// is retried on failure. It is [chain.Retry] — the same node that governs
+// is retried on failure. It is [resilience.Retry] — the same node that governs
 // outbound resilience retry — rather than a second knob set, so one retry
 // vocabulary covers both. The zero value means a single attempt with no retry.
-type Retry = chain.Retry
+type Retry = resilience.Retry
 
 // Step is one compensable unit of a [Saga]. Action is the forward operation;
 // Compensate undoes it if a later step fails.

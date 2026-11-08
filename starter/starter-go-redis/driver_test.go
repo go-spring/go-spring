@@ -46,10 +46,14 @@ func testCenter(t *testing.T, resClient *resilience.Manager, lb *loadbalance.Man
 	if err != nil {
 		t.Fatal(err)
 	}
+	adm, err := admission.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
 		LoadBalance: lb,
-		Admission:   admission.NewManager(fact),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -109,8 +113,12 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	resMgr, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	w, err := drv.CreateClient(context.Background(), cfg,
-		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(), fact), mgr))
+		testCenter(t, resMgr, mgr))
 	assert.Error(t, err).Nil()
 
 	// The rule gives this service a strategy the chain was not built with, and
@@ -143,8 +151,12 @@ func TestDriverChainNilIsFine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	resMgr, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	w, err := NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), Config{Addr: "10.0.0.1:6379"}, nil,
-		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(), fact), lb))
+		testCenter(t, resMgr, lb))
 	assert.Error(t, err).Nil()
 	assert.That(t, w.lbChain).Nil()
 }

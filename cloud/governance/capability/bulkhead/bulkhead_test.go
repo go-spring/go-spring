@@ -37,19 +37,16 @@ func mustAcquire(t *testing.T, b *bulkhead.Bulkhead) func() {
 	return release
 }
 
-// TestNewPanicsOnNonPositiveMaxConcurrent pins the constructor invariant: no
+// TestNewRejectsNonPositiveMaxConcurrent pins the constructor invariant: no
 // isolation is a nil *Bulkhead at the holder, never a disabled instance.
-func TestNewPanicsOnNonPositiveMaxConcurrent(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("New(0) did not panic")
-		}
-	}()
-	_ = bulkhead.New(0, bulkhead.WithQueueTimeout(time.Second))
+func TestNewRejectsNonPositiveMaxConcurrent(t *testing.T) {
+	if _, err := bulkhead.New(0, bulkhead.WithQueueTimeout(time.Second)); err == nil {
+		t.Fatal("New(0) did not fail")
+	}
 }
 
 func TestFullRejectsImmediately(t *testing.T) {
-	b := bulkhead.New(1)
+	b := mustBulkhead(t, 1)
 	release := mustAcquire(t, b)
 	if _, ok := b.Acquire(context.Background()); ok {
 		t.Fatal("Acquire admitted a caller while the only slot was held")
@@ -62,7 +59,7 @@ func TestFullRejectsImmediately(t *testing.T) {
 // one: capacity is conserved across the pair. Releasing twice or not at all is
 // outside the contract and would break this conservation silently.
 func TestReleaseReturnsExactlyOneSlot(t *testing.T) {
-	b := bulkhead.New(2)
+	b := mustBulkhead(t, 2)
 	first := mustAcquire(t, b)
 	second := mustAcquire(t, b)
 
@@ -81,7 +78,7 @@ func TestReleaseReturnsExactlyOneSlot(t *testing.T) {
 
 func TestQueueWaitsForRelease(t *testing.T) {
 	const queueTimeout = 2 * time.Second
-	b := bulkhead.New(1, bulkhead.WithQueueTimeout(queueTimeout))
+	b := mustBulkhead(t, 1, bulkhead.WithQueueTimeout(queueTimeout))
 	release := mustAcquire(t, b)
 	go func() {
 		time.Sleep(20 * time.Millisecond)
@@ -96,7 +93,7 @@ func TestQueueWaitsForRelease(t *testing.T) {
 
 func TestQueueTimesOut(t *testing.T) {
 	const queueTimeout = 20 * time.Millisecond
-	b := bulkhead.New(1, bulkhead.WithQueueTimeout(queueTimeout))
+	b := mustBulkhead(t, 1, bulkhead.WithQueueTimeout(queueTimeout))
 	release := mustAcquire(t, b)
 
 	start := time.Now()
@@ -116,7 +113,7 @@ func TestQueueHonorsCallerDeadline(t *testing.T) {
 		queueTimeout   = 5 * time.Second
 		callerDeadline = 20 * time.Millisecond
 	)
-	b := bulkhead.New(1, bulkhead.WithQueueTimeout(queueTimeout))
+	b := mustBulkhead(t, 1, bulkhead.WithQueueTimeout(queueTimeout))
 	release := mustAcquire(t, b)
 	defer release()
 
@@ -132,7 +129,7 @@ func TestQueueHonorsCallerDeadline(t *testing.T) {
 }
 
 func TestQueueHonorsCanceledContext(t *testing.T) {
-	b := bulkhead.New(1, bulkhead.WithQueueTimeout(time.Minute))
+	b := mustBulkhead(t, 1, bulkhead.WithQueueTimeout(time.Minute))
 	release := mustAcquire(t, b)
 	defer release()
 
@@ -149,7 +146,7 @@ func TestDoneContextIsRefusedWithoutTakingASlot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	b := bulkhead.New(1)
+	b := mustBulkhead(t, 1)
 	if _, ok := b.Acquire(ctx); ok {
 		t.Fatal("a done context must not acquire a slot")
 	}
@@ -160,7 +157,7 @@ func TestDoneContextIsRefusedWithoutTakingASlot(t *testing.T) {
 // goes to a waiter, and that waiter's release serves the next one.
 func TestQueueServesWaitingCallersInTurn(t *testing.T) {
 	const queueTimeout = 2 * time.Second
-	b := bulkhead.New(1, bulkhead.WithQueueTimeout(queueTimeout))
+	b := mustBulkhead(t, 1, bulkhead.WithQueueTimeout(queueTimeout))
 	release := mustAcquire(t, b)
 
 	var (
@@ -197,7 +194,7 @@ func TestInFlightNeverExceedsMaxConcurrent(t *testing.T) {
 		maxConcurrent = 4
 		callers       = 64
 	)
-	b := bulkhead.New(maxConcurrent)
+	b := mustBulkhead(t, maxConcurrent)
 
 	var (
 		wg       sync.WaitGroup
@@ -235,7 +232,7 @@ func TestInFlightNeverExceedsMaxConcurrent(t *testing.T) {
 // TestStatsTracksInUseAndQueued pins the occupancy a state observer reports:
 // held slots, queued callers, and total capacity.
 func TestStatsTracksInUseAndQueued(t *testing.T) {
-	b := bulkhead.New(1, bulkhead.WithQueueTimeout(time.Second))
+	b := mustBulkhead(t, 1, bulkhead.WithQueueTimeout(time.Second))
 	if s := b.Stats(); s.InUse != 0 || s.Queued != 0 || s.Capacity != 1 {
 		t.Fatalf("fresh stats = %+v", s)
 	}
@@ -269,4 +266,14 @@ func TestStatsTracksInUseAndQueued(t *testing.T) {
 	if s := b.Stats(); s.InUse != 0 || s.Queued != 0 {
 		t.Fatalf("drained stats = %+v", s)
 	}
+}
+
+// mustBulkhead builds a bulkhead, failing the test if its input is rejected.
+func mustBulkhead(t *testing.T, maxConcurrent int, opts ...bulkhead.Option) *bulkhead.Bulkhead {
+	t.Helper()
+	b, err := bulkhead.New(maxConcurrent, opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

@@ -29,16 +29,15 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-// installStateMeter wires an in-memory meter and resets the package-level
-// instrument set so this test binds to it rather than to whatever an earlier
-// test resolved against the no-op provider.
+// installStateMeter wires an in-memory meter for the rest of the test. The
+// manager resolves its state instruments when it is constructed, so constructing
+// it after this call is what binds them to the reader.
 func installStateMeter(t *testing.T) (sdkmetric.Reader, func()) {
 	t.Helper()
 	prev := otel.GetMeterProvider()
 	rdr := sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(rdr))
 	otel.SetMeterProvider(mp)
-	resetInstruments()
 	return rdr, func() {
 		otel.SetMeterProvider(prev)
 		_ = mp.Shutdown(context.Background())

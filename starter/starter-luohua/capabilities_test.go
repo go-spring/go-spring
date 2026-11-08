@@ -84,7 +84,10 @@ func TestLuohuaCatalog(t *testing.T) {
 
 // TestMemoryCacheRoundTrip exercises the luohua uniform driver backend.
 func TestMemoryCacheRoundTrip(t *testing.T) {
-	c := NewLuohuaCache()
+	c, err := NewLuohuaCache()
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 
 	if err := c.Set(ctx, "k", "v", 60); err != nil {

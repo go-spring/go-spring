@@ -93,7 +93,8 @@ func TestGormStore_MissingLoadReturnsNotFound(t *testing.T) {
 func TestGormStore_EndToEndExecuteThenRecover(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	coord := tcc.NewCoordinator(tcc.WithStore(store))
+	coord, err := tcc.NewCoordinator(tcc.WithStore(store))
+	assert.That(t, err).Nil()
 
 	// A healthy transaction commits: its log is deleted, so nothing is pending.
 	res, err := coord.Execute(ctx, tcc.Transaction{

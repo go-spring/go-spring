@@ -112,7 +112,7 @@ func TestRefusedRoundRecordsErrorType(t *testing.T) {
 		Start:     time.Now(),
 		Status:    chain.ClassifyStatus(chain.ErrBulkheadFull),
 		ErrorType: chain.ClassifyErrorType(chain.ErrBulkheadFull),
-		Error:       chain.ErrBulkheadFull,
+		Error:     chain.ErrBulkheadFull,
 	})
 
 	a, ok := rec.LastRound()
@@ -150,6 +150,24 @@ func TestClassifyAxes(t *testing.T) {
 	assert.That(t, chain.ClassifyErrorType(chain.ErrRetryExceeded)).Equal("retry_exceeded")
 	assert.That(t, chain.ClassifyErrorType(context.DeadlineExceeded)).Equal("timeout")
 	assert.That(t, chain.ClassifyErrorType(errors.New("downstream"))).Equal("")
+}
+
+// ClassifyOutcome is the CALL-level counterpart and is total: a failed call is
+// always attributable, and a caller abort is not read as a downstream failure.
+func TestClassifyOutcome(t *testing.T) {
+	assert.That(t, chain.ClassifyOutcome(context.Background(), nil)).Equal("")
+	assert.That(t, chain.ClassifyOutcome(context.Background(), chain.ErrCircuitOpen)).Equal("circuit_open")
+	assert.That(t, chain.ClassifyOutcome(context.Background(), context.DeadlineExceeded)).Equal("timeout")
+	assert.That(t, chain.ClassifyOutcome(context.Background(), errors.New("refused"))).Equal(chain.ErrorTypeDownstream)
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.That(t, chain.ClassifyOutcome(cancelled, context.Canceled)).Equal(chain.ErrorTypeCanceled)
+
+	// A deadline the CALLER set is an abandoned call, not the chain's budget.
+	expired, cancelDeadline := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelDeadline()
+	assert.That(t, chain.ClassifyOutcome(expired, context.DeadlineExceeded)).Equal(chain.ErrorTypeCanceled)
 }
 
 // chanErr keeps the test's second round's error simple and typed.

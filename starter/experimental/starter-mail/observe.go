@@ -56,9 +56,8 @@ var accessTag = log.RegisterAppTag("mail", "access")
 // log and never a label, which also levels a send's success log at Debug (a
 // send carries a count, so it almost always carries detail).
 //
-// The operation is declared non-idempotent: a resend is a second email, not a
-// second attempt, so the executor chain must not retry it however a governance
-// rule is configured.
+// Retry is governance-only: this call declares none, and a resend is a second
+// email, so the governance document must not configure a schedule for the label.
 func operation(ctx context.Context, prop traffic.Propagator, msgs []*Message) chain.Operation {
 	o := chain.NewOperation(ctx, prop)
 	o.Request.System = emailSystem

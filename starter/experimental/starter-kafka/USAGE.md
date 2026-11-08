@@ -243,8 +243,8 @@ client is built, not by a later step.
    Headers/Timestamp all survive the mapping [client.go:172-186]. The executor emits the consume's
    span, metrics and access log. ⚠ a handler error is still only logged afterwards — no
    nack/redelivery in this driver (franz-go group consumption commits regardless; design suspect,
-   §6) — and the consume is declared `NonIdempotent`, so a governance rule matching the label
-   cannot retry the handler in-process either: a second run would be a second side effect.
+   §6) — and retry is governance-only, so the document must configure no schedule for the
+   label: re-running the handler in-process would be a second side effect.
 7. `Close` cancels the loop and waits for `done`, idempotent via `sync.Once` [client.go:146-156].
 
 Two driver traps inherited from the franz-go construction constraint [client.go:43-51 comment]:

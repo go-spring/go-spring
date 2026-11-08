@@ -370,7 +370,7 @@ dubbo 调用时读 URL 参数）：配置一个独立的 consumer 文档
 ```
 consumer 文档源推送（fsnotify）─┐
                                ├→ poll() → 与上次快照 diff（无变化刷新跳过）
-治理中心推送 → OnLimits(label) ─┘   → mapconfig.RefreshOverrideRules
+治理中心推送 → limits source push ─┘   → mapconfig.RefreshOverrideRules
   → dubbo-go consumerConfigurationListener / referenceConfigurationListener
   → invoker URL 更新 → 下次调用生效
 ```

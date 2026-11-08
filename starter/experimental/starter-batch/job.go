@@ -58,15 +58,16 @@ type JobDefinition interface {
 // must register it with the container themselves, naming the bean and exporting
 // it as JobDefinition so the runner can collect it:
 //
-//	gs.Provide(batch.NewJob("reconcile", reconcileStep)).
-//	    Name("reconcile").Export(gs.As[batch.JobDefinition]())
+//	gs.Provide(func() (batch.JobDefinition, error) {
+//	    return batch.NewJob("reconcile", reconcileStep)
+//	}).Name("reconcile").Export(gs.As[batch.JobDefinition]())
 //
 // Prefer [Provide], which does exactly that in one call.
-func NewJob(name string, steps ...batch.Step) JobDefinition {
+func NewJob(name string, steps ...batch.Step) (JobDefinition, error) {
 	if name == "" {
-		panic("batch: job definition name must not be empty")
+		return nil, errutil.Explain(nil, "batch: job definition name must not be empty")
 	}
-	return &staticJob{name: name, steps: steps}
+	return &staticJob{name: name, steps: steps}, nil
 }
 
 // Provide registers a batch job in one call: it wraps steps in a
@@ -81,7 +82,7 @@ func NewJob(name string, steps ...batch.Step) JobDefinition {
 // other beans), implement [JobDefinition] on your own type and register it with
 // gs.Provide directly, exporting as JobDefinition.
 func Provide(name string, steps ...batch.Step) {
-	gs.Provide(NewJob(name, steps...)).
+	gs.Provide(func() (JobDefinition, error) { return NewJob(name, steps...) }).
 		Name(name).
 		Export(gs.As[JobDefinition]())
 }

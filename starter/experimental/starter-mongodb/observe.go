@@ -38,10 +38,10 @@ package StarterMongoDB
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
@@ -75,44 +75,48 @@ var accessTag = log.RegisterAppTag("mongodb", "access")
 // the resilience executor.
 type dbObserver struct {
 	system string
+
+	// ins is this observer's instrument set, resolved at construction.
+	ins *instrumentSet
 }
 
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever meter provider is current then,
-// and immutable afterwards. It holds no per-instance state — the db.system /
-// db.operation / status labels travel with each record, not here.
+// instrumentSet is this starter's instrument set: one per client observer,
+// resolved when the client is constructed. It holds no per-instance state — the
+// db.system / db.operation / status labels travel with each record, not here.
 type instrumentSet struct {
 	duration metric.Float64Histogram
 	active   metric.Int64UpDownCounter
 }
 
-// instruments is the one instrument set this starter uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments builds the OTel instruments from whatever meter provider is
-// current — resolved on first use, not at package init, so an SDK installed
-// later than this package's init still receives the records.
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this starter's instruments against the meter
+// provider the otel starter installs before any bean is built. The observer owns
+// the set, so a failed registration fails construction instead of silently
+// dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
-	duration, _ := m.Float64Histogram("db.client.operation.duration",
+	duration, err := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of "+mongodbSystem+" client operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("db.client.active_requests",
+	if err != nil {
+		return nil, errutil.Explain(err, "mongodb: register db.client.operation.duration")
+	}
+	active, err := m.Int64UpDownCounter("db.client.active_requests",
 		metric.WithDescription("Number of in-flight "+mongodbSystem+" client operations"),
 		metric.WithUnit("{request}"))
-	return &instrumentSet{duration: duration, active: active}
+	if err != nil {
+		return nil, errutil.Explain(err, "mongodb: register db.client.active_requests")
+	}
+	return &instrumentSet{duration: duration, active: active}, nil
 }
 
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
 // newDBObserver builds the observer for one instance.
-func newDBObserver() *dbObserver {
-	return &dbObserver{system: mongodbSystem}
+func newDBObserver() (*dbObserver, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
+	return &dbObserver{system: mongodbSystem, ins: ins}, nil
 }
 
 // Start begins one operation: it bumps the in-flight gauge, opens the
@@ -129,7 +133,7 @@ func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context
 		attribute.String("db.system", o.system),
 		attribute.String("db.operation", op),
 	)
-	instruments().active.Add(ctx, 1, inflight)
+	o.ins.active.Add(ctx, 1, inflight)
 	attrs := []attribute.KeyValue{
 		attribute.String("db.system", o.system),
 		attribute.String("db.operation", op),
@@ -173,12 +177,12 @@ func (s *dbSpan) End(err error) {
 	if err != nil {
 		status = "error"
 	}
-	instruments().duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
+	o.ins.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
 		attribute.String("db.system", o.system),
 		attribute.String("db.operation", s.op),
 		attribute.String("status", status),
 	))
-	instruments().active.Add(s.ctx, -1, s.inflight)
+	o.ins.active.Add(s.ctx, -1, s.inflight)
 	if s.span != nil {
 		if err != nil {
 			s.span.SetStatus(codes.Error, err.Error())

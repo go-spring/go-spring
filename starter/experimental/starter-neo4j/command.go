@@ -26,6 +26,7 @@ package StarterNeo4j
 
 import (
 	"context"
+	"errors"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
@@ -75,7 +76,37 @@ func Query[T any](
 	return resilience.Run(ctx, client.exec, op,
 		func(ctx context.Context) (T, error) {
 			return neo4j.ExecuteQuery(ctx, client, query, parameters, newResultTransformer, settings...)
-		})
+		}, neo4jOptions...)
+}
+
+// neo4jOptions is the call-outcome declaration every query shares: a client
+// error is a normal outcome, a transient error is retry-eligible.
+var neo4jOptions = []resilience.Option{
+	resilience.TolerateFunc(isClientError),
+	resilience.RetryOn(isRetriableError),
+}
+
+// isRetriableError reports whether Neo4j classified the failure as transient
+// (TransientError), which is the driver's own "another attempt is meaningful"
+// verdict.
+func isRetriableError(err error) bool {
+	var ne *neo4j.Neo4jError
+	return errors.As(err, &ne) && ne.IsRetriable()
+}
+
+// isClientError reports whether a query error is Neo4j's DEFINITE answer about
+// the request — a Cypher syntax error, a constraint violation, an invalid
+// parameter — rather than evidence that the database is unhealthy. The driver
+// classifies those as ClientError; they must neither trip the breaker nor
+// trigger a retry, while transient/database errors and transport failures stay
+// downstream faults. The error is still returned to the caller verbatim.
+//
+// The IsRetriable exclusion is not redundancy: the driver also marks a few
+// ClientError codes retriable (AuthorizationExpired, cluster NotALeader), and
+// those must reach the retry loop instead of being tolerated as final answers.
+func isClientError(err error) bool {
+	var ne *neo4j.Neo4jError
+	return errors.As(err, &ne) && ne.Classification() == "ClientError" && !ne.IsRetriable()
 }
 
 // RunWithResilience runs fn through client's resilience guard for the operation
@@ -91,11 +122,11 @@ func Query[T any](
 // neo4j access log) for the manual call as well; pass the zero [chain.Operation]
 // and the layer falls back to its generic resilience.* signals.
 func RunWithResilience(ctx context.Context, client *Client, op chain.Operation, fn func(context.Context) error) error {
-	if exec := client.exec; exec != nil {
-		op.Service = client.serviceLabel
-		return exec.Execute(ctx, op, nil, fn)
-	}
-	return fn(ctx)
+	op.Service = client.serviceLabel
+	_, err := resilience.Run(ctx, client.exec, op, func(attemptCtx context.Context) (struct{}, error) {
+		return struct{}{}, fn(attemptCtx)
+	}, neo4jOptions...)
+	return err
 }
 
 // Operation builds the semantic identity of a manual Neo4j operation (e.g. a

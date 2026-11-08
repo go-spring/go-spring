@@ -58,10 +58,9 @@ func (s syncState) ageAt(now time.Time) time.Duration {
 	return now.Sub(s.last)
 }
 
-// instrumentSet is the read-side instrument set: one per process, resolved
-// lazily on first use so it binds to whichever providers are current then, and
-// immutable afterwards. It holds no per-instance state — the value the
-// observable gauge reports lives in each Observer, not here.
+// instrumentSet is the read-side instrument set: one per observer, resolved
+// when the observer is constructed. It holds no per-instance state — the value
+// the observable gauge reports lives in each Observer, not here.
 //
 // The gauge is created WITHOUT a callback on purpose; see [Observer.register]
 // for why a creation-time callback would report only the first block.
@@ -71,25 +70,27 @@ type instrumentSet struct {
 	age       metric.Float64ObservableGauge
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The
+// observer owns the set, so a failed registration fails construction instead of
+// silently dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
 	in := &instrumentSet{meter: m}
-	in.syncTotal, _ = m.Int64Counter("discovery.sync_total",
+	var err error
+	in.syncTotal, err = m.Int64Counter("discovery.sync_total",
 		metric.WithDescription("Background endpoint-cache syncs, by outcome"))
-	in.age, _ = m.Float64ObservableGauge("discovery.cache.age_seconds",
+	if err != nil {
+		return nil, errutil.Explain(err, "discovery: register discovery.sync_total")
+	}
+	in.age, err = m.Float64ObservableGauge("discovery.cache.age_seconds",
 		metric.WithDescription("Seconds since the cached endpoint snapshot for this service was last confirmed fresh"),
 		metric.WithUnit("s"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "discovery: register discovery.cache.age_seconds")
+	}
+	return in, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // Observer reports one configured discovery block's READ side: the background
 // endpoint syncs and the freshness gauge they feed. The write side — publish /
@@ -105,11 +106,12 @@ type Observer struct {
 	system string
 	center string
 
-	// regOnce registers this block's gauge callback against the shared
-	// instruments. It runs on first use, not at construction: the callback must
-	// be in place before the first collection, and the instruments must be
-	// resolved after starter-otel has installed the global providers — which a
-	// test may also do later than this constructor runs.
+	// ins is this block's instrument set, resolved at construction.
+	ins *instrumentSet
+
+	// regOnce registers this block's gauge callback on the set resolved at
+	// construction. It runs on first use so a block that never reports never
+	// registers a callback.
 	regOnce sync.Once
 
 	// mu guards the state below: the map the observable gauge reads, and the
@@ -134,9 +136,14 @@ func NewObserver(system, center string) (*Observer, error) {
 	if center == "" {
 		return nil, errutil.Explain(nil, "discovery: observer center is required")
 	}
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return &Observer{
 		system: system,
 		center: center,
+		ins:    ins,
 		syncs:  map[string]*syncState{},
 	}, nil
 }
@@ -186,7 +193,7 @@ func (o *Observer) live() bool {
 // it is reversible.
 func (o *Observer) register() {
 	o.regOnce.Do(func() {
-		in := instruments()
+		in := o.ins
 		if reg, err := in.meter.RegisterCallback(o.observeAge, in.age); err == nil {
 			o.mu.Lock()
 			o.unregs = append(o.unregs, reg)
@@ -195,12 +202,10 @@ func (o *Observer) register() {
 	})
 }
 
-// ready resolves the shared instruments and registers this block's gauge
-// callback. Both happen once; calling it on every reporting path is what keeps
-// the resolution lazy — after starter-otel has installed the global providers,
-// and not at construction.
+// ready registers this block's gauge callback. The instruments were resolved at
+// construction; calling this on every reporting path is cheap because [register]
+// is once-only.
 func (o *Observer) ready() {
-	instruments()
 	o.register()
 }
 
@@ -215,7 +220,7 @@ func (o *Observer) observeAge(_ context.Context, ob metric.Observer) error {
 		snapshot[service] = s.ageAt(now)
 	}
 	o.mu.Unlock()
-	age := instruments().age
+	age := o.ins.age
 	for service, d := range snapshot {
 		ob.ObserveFloat64(age, d.Seconds(), metric.WithAttributes(o.attrs(attribute.String("service", service))...))
 	}
@@ -268,7 +273,7 @@ func (o *Observer) Synced(service string, err error) {
 	}
 	o.ready()
 	ctx := context.Background()
-	instruments().syncTotal.Add(ctx, 1, metric.WithAttributes(
+	o.ins.syncTotal.Add(ctx, 1, metric.WithAttributes(
 		o.attrs(
 			attribute.String("service", service),
 			attribute.String("status", StatusOf(err)),

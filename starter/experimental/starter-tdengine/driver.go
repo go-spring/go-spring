@@ -168,6 +168,15 @@ func (g guardedConn) QueryContext(ctx context.Context, query string, args []driv
 // preferred over a nil call error, and the operation's own error is returned
 // otherwise. When no executor is applied, Run runs the call inline, so the
 // operation is ignored — the zero-config pass-through.
+//
+// No Tolerate classification is passed, deliberately: driver-go exposes the
+// server's numeric code (*taoserrors.TaosError.Code) but no semantic grouping,
+// so telling a client fault ("table does not exist", syntax error) from a server
+// fault ("out of memory", disk full) would mean hard-coding code ranges the
+// driver does not publish. A guess in either direction is worse than the
+// default: every error counts as a downstream fault until a real code table is
+// available. For the same reason no retry class is declared — "transient" cannot
+// be told apart from "permanent client error" either.
 func (g guardedConn) run(ctx context.Context, op chain.Operation, call func(context.Context) error) error {
 	// Name the service on the operation: the fault layer matches its rules on it
 	// and sits outside this executor.

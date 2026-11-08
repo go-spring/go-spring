@@ -28,15 +28,20 @@ import (
 func TestNewCoordinator_TracingToggle(t *testing.T) {
 	// Both variants must produce a usable coordinator; the tracing flag only
 	// controls whether an observer is attached.
-	assert.That(t, newCoordinator(Config{Tracing: true}, &transaction.MemoryStore{})).NotNil()
-	assert.That(t, newCoordinator(Config{Tracing: false}, &transaction.MemoryStore{})).NotNil()
+	coord, err := newCoordinator(Config{Tracing: true}, &transaction.MemoryStore{})
+	assert.That(t, err).Nil()
+	assert.That(t, coord).NotNil()
+	coord, err = newCoordinator(Config{Tracing: false}, &transaction.MemoryStore{})
+	assert.That(t, err).Nil()
+	assert.That(t, coord).NotNil()
 }
 
 func TestOtelObserver_DrivesSagaWithoutPanic(t *testing.T) {
 	// With no TracerProvider installed the otel global is a no-op, but the
 	// observer must still return a usable context and an end func that records the
 	// outcome without panicking — exercised here through a real compensation path.
-	coord := transaction.NewCoordinator(transaction.WithObserver(transaction.SagaObserver{}))
+	coord, err := transaction.NewCoordinator(transaction.WithObserver(transaction.SagaObserver{}))
+	assert.That(t, err).Nil()
 
 	compensated := false
 	res, err := coord.Execute(context.Background(), transaction.Saga{
@@ -74,10 +79,12 @@ func TestRecoveryRunner_CompensatesPendingSaga(t *testing.T) {
 			Compensate: func(context.Context, any) error { order = append(order, "!b"); return nil }},
 	)
 
+	coord, err := transaction.NewCoordinator(transaction.WithStore(store))
+	assert.That(t, err).Nil()
 	r := &recoveryRunner{
 		Store:    store,
 		Registry: reg,
-		Coord:    transaction.NewCoordinator(transaction.WithStore(store)),
+		Coord:    coord,
 	}
 	assert.Error(t, r.Run(ctx)).Nil()
 	// In-flight b compensated first, then completed a.
@@ -88,10 +95,12 @@ func TestRecoveryRunner_CompensatesPendingSaga(t *testing.T) {
 }
 
 func TestRecoveryRunner_NoOpWhenNothingPending(t *testing.T) {
+	coord, err := transaction.NewCoordinator(transaction.WithStore(&transaction.MemoryStore{}))
+	assert.That(t, err).Nil()
 	r := &recoveryRunner{
 		Store:    &transaction.MemoryStore{},
 		Registry: transaction.NewStepRegistry(),
-		Coord:    transaction.NewCoordinator(transaction.WithStore(&transaction.MemoryStore{})),
+		Coord:    coord,
 	}
 	assert.Error(t, r.Run(context.Background())).Nil()
 }

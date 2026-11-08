@@ -26,7 +26,7 @@ import (
 // Address must be explicitly configured; the server won't start without it.
 //
 // Inbound (rate-limit / bulkhead) no longer has a per-server
-// resilience binding here: it flows through the neutral resilience.Manager.ExecutorFor
+// resilience binding here: it flows through the neutral governance.Runtime.ExecutorFor
 // seam (backed by the center when armed), so an incoming request's protection
 // policy is governed alongside every outbound client and hot-reloads without
 // this starter coupling to a control-plane root. Fault injection stays server-local (it

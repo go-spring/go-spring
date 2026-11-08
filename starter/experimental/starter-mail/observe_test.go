@@ -41,9 +41,8 @@ func attrsLine(attrs []attribute.KeyValue) string {
 
 // TestOperationDeclaresFamilyVocabulary proves one send declares the identity the
 // emitter needs: the span name, the family's metric prefix, the bounded email.*
-// labels and this starter's access-log tag. The non-idempotent marker that stops
-// a configured retry from sending the same mail twice now rides on the
-// [chain.Operation] passed to [resilience.Run] at the [GuardMailer] call site.
+// labels and this starter's access-log tag. Retry is governance-only — a resend
+// would deliver a second mail — so the operation carries nothing about it.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 	op := operation(context.Background(), testProp, []*Message{{To: []string{"alice@example.com"}, Subject: "hi"}})
 	assert.String(t, op.Request.Action).Equal("mail.send")

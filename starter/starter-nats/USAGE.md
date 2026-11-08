@@ -262,9 +262,9 @@ via `guard` [command.go:197-202] — and the executor is the **single emitter**:
 declared operation off the ctx and opens the call span, records the call-level
 `messaging.client.operation.duration` and attempt-level `messaging.client.attempt.duration`
 histograms, the in-flight gauge, the `resilience.client.calls` counter, and the one access log.
-The publish and consume operations are declared `NonIdempotent`, so a governance rule for the
-label that carries a retry policy has its retry **suppressed** (with one warning per service):
-re-publishing or re-running a handler is a second side effect, not a second attempt.
+Retry is governance-only: the publish and consume operations carry no call-site retry.
+Re-publishing or re-running a handler is a second side effect, not a second attempt, so the
+document configures no schedule for the label — whoever writes that document owns its effects.
 
 | Entry point | Emitted by | Resilience guard |
 |---|---|---|

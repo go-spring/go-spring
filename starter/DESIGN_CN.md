@@ -551,12 +551,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     会读到:钩子挂在 resilience round-tripper **下方**的传输层（见 `starter-s3`）要在它外面
     声明。
   - **日志分级归发射点**:失败 Warn、带 `Detail` 的成功 Debug（惰性）、不带 `Detail` 的成功 Info。
-  - **非幂等操作绝不重试**:重复一次会变成**第二个副作用**（而非第二次尝试）的调用 —— 发信、
-    向 broker 发布、处理一条消费记录 —— 在其重试节点（`chain.RetryPolicy`）上声明
-    `NonIdempotent: true`,执行器**只跑一次**,无论节点要求多少次重试（如此丢弃一个调度时,
-    每个 service 告警一次）。即使治理中心整体覆盖了重试节点,该声明也被保留:两个来源的
-    `NonIdempotent` 取 OR,运维的热修永远无法给有副作用的调用重开重试。只有客户端知道这一点,
-    所以这个声明归客户端做。
+  - **重试只由治理配置**:客户端代码不能自己要求重试。重复一次会变成**第二个副作用**（而非
+    第二次尝试）的调用 —— 发信、向 broker 发布、处理一条消费记录 —— 靠治理文档不给它的
+    label 声明调度来保护。谁配这份文档,谁负责它声明的效果。
   三条原则支撑这条规则,少一条就会走偏:
   - *完整性是发射点的义务,一次付清。* 这些信号 —— span、时长指标、在途 gauge,以及每调用
     一行访问日志 —— 以前是逐组件的清单,现在只在唯一的发射点上查一次,并对每个做了声明的
@@ -574,10 +571,10 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     比不同名更糟。HTTP 同此一刀:共用的轴是 `status`,细节是
     `http.response.status_code`。
     客户端发射点同此一刀:`status` 与别处一样是 `ok`/`error`,而
-    **`resilience.error_type`** 承载保护各阶段对这次调用做了什么
-    （`rate_limited`、`circuit_open`、`bulkhead_full`、`retry_budget_exceeded`、
-    `timeout`）—— 什么都没做时它**不出现**。把这些词放进 `status`,就是让一个键有两套
-    词表,正是这一档要防的失败。
+    **`resilience.error_type`** 承载这次调用唯一的结果词——保护各阶段施加的门禁
+    （`rate_limited`、`circuit_open`、`bulkhead_full`、`retry_exceeded`、
+    `timeout`），或 `downstream` / `canceled`。只有成功时**不出现**,因此失败的调用
+    永远可归因。把这些词放进 `status`,就是让一个键有两套词表,正是这一档要防的失败。
   - *日志必须能 join 指标。* 日志行里的身份键必须在某个属性（span 属性或 metric label）
     上同名存在,否则失败的指标落不到解释它的那行日志上。时长键（以 `_ms` 结尾）与
     `error` 是日志行自身的载荷,不是身份。这条规则针对的是**解释组件自己信号**的那行日志;

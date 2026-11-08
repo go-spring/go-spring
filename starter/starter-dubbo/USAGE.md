@@ -385,7 +385,7 @@ Two hot-reload lines (dyncPoller is dubbo's local dynamic-config manager):
 ```
 consumer document source push (fsnotify) ─┐
                                            ├→ poll() → diff vs last snapshot (no-op refreshes
-governance center push → OnLimits(label) ─┘     skipped) → mapconfig.RefreshOverrideRules
+governance center push → limits source push ─┘     skipped) → mapconfig.RefreshOverrideRules
   → dubbo-go consumerConfigurationListener / referenceConfigurationListener
   → invoker URL updated → next call uses new params
 ```

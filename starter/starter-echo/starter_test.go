@@ -31,9 +31,9 @@ import (
 	"go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -74,10 +74,18 @@ func testCenter(inj *serverfault.Manager) *governance.Runtime {
 	if err != nil {
 		panic(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		panic(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		panic(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: inj,
 		Directory:   discovery.NewManager(nil),

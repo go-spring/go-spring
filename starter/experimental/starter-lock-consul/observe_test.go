@@ -30,7 +30,8 @@ import (
 // passes through to the inner locker.
 func TestObserve_DefaultOn(t *testing.T) {
 	inner := lock.NewMemoryLocker()
-	l := wrapIfObserved(Config{ObserveEnabled: true}, inner)
+	l, err := wrapIfObserved(Config{ObserveEnabled: true}, inner)
+	assert.Error(t, err).Nil()
 	if l == lock.Locker(inner) {
 		t.Fatal("observe.enabled default must wrap the locker, got the bare locker back")
 	}
@@ -45,7 +46,8 @@ func TestObserve_DefaultOn(t *testing.T) {
 // unchanged — the opt-out path adds no wrapper.
 func TestObserve_OptOutBare(t *testing.T) {
 	inner := lock.NewMemoryLocker()
-	l := wrapIfObserved(Config{ObserveEnabled: false}, inner)
+	l, err := wrapIfObserved(Config{ObserveEnabled: false}, inner)
+	assert.Error(t, err).Nil()
 	if l != lock.Locker(inner) {
 		t.Fatal("observe.enabled=false must return the bare locker")
 	}

@@ -89,12 +89,16 @@ func WithCodec(c Codec) Option {
 // and opts replace them. bc is wrapped in the observability decorator, so
 // every method — typed or promoted — records the cache.operation metrics and
 // contributes the operation and the key to the call's span.
-func New(bc ByteCache, opts ...Option) *Cache {
+func New(bc ByteCache, opts ...Option) (*Cache, error) {
 	cfg := config{codec: JSONCodec{}}
 	for _, o := range opts {
 		o(&cfg)
 	}
-	return &Cache{ByteCache: newObservedCache(bc), cfg: cfg}
+	observed, err := newObservedCache(bc)
+	if err != nil {
+		return nil, err
+	}
+	return &Cache{ByteCache: observed, cfg: cfg}, nil
 }
 
 // configFor copies the cache's config and applies the per-call opts on top.

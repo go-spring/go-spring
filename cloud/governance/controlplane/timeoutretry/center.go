@@ -22,7 +22,7 @@
 // wins over the service marker. There is no global level: a label with no
 // matching rule runs unbounded.
 //
-// The document is [resilience.LimitsSettings] from the data plane — the root
+// The document is [resilience.TimeoutRetrySettings] from the data plane — the root
 // binds it, validates it at the source boundary and pushes it whole.
 package timeoutretry
 
@@ -39,7 +39,7 @@ import (
 //
 // It owns the DOCUMENT, not the request path. The authority it drives is the
 // same data-plane object the runtime holds; the center only calls
-// [resilience.Manager.ApplyLimits] and exposes nothing else. The request path is
+// [resilience.Manager.ApplyTimeoutRetry] and exposes nothing else. The request path is
 // unaffected either way: an executor reads the manager's published snapshot on
 // its next call.
 //
@@ -50,7 +50,7 @@ import (
 // the initial load happens during wiring, before the source's loop starts.
 type Center struct {
 	mgr *resilience.Manager
-	src source.Source[resilience.LimitsSettings]
+	src source.Source[resilience.TimeoutRetrySettings]
 }
 
 // NewCenter arms the limits root: it applies the source's snapshot, then
@@ -60,12 +60,12 @@ type Center struct {
 // serve fails startup instead of arming an unconfigured center. Later pushes
 // have no caller to intervene: [Center.Refresh] logs the cause and keeps the
 // last good document serving.
-func NewCenter(ctx context.Context, mgr *resilience.Manager, src source.Source[resilience.LimitsSettings]) (*Center, error) {
+func NewCenter(ctx context.Context, mgr *resilience.Manager, src source.Source[resilience.TimeoutRetrySettings]) (*Center, error) {
 	c := &Center{mgr: mgr, src: src}
 	if err := c.Refresh(ctx, c.src.Snapshot()); err != nil {
 		return nil, err
 	}
-	c.src.Subscribe(func(ctx context.Context, doc resilience.LimitsSettings) {
+	c.src.Subscribe(func(ctx context.Context, doc resilience.TimeoutRetrySettings) {
 		// A push has no caller; Refresh logs any rejection.
 		_ = c.Refresh(ctx, doc)
 	})
@@ -76,8 +76,8 @@ func NewCenter(ctx context.Context, mgr *resilience.Manager, src source.Source[r
 // not, logging each rejection at its branch. The caller decides what a failure
 // means: wiring propagates it and refuses to start; a source push ignores it —
 // the log is the intervention.
-func (c *Center) Refresh(ctx context.Context, doc resilience.LimitsSettings) error {
-	if err := c.mgr.ApplyLimits(doc); err != nil {
+func (c *Center) Refresh(ctx context.Context, doc resilience.TimeoutRetrySettings) error {
+	if err := c.mgr.ApplyTimeoutRetry(doc); err != nil {
 		log.Error(ctx, log.TagAppDef, err, "timeoutretry: config apply failed")
 		return err
 	}

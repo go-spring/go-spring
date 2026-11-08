@@ -171,7 +171,11 @@ func (e *callEmitter) call(ctx context.Context, op chain.Operation, rec *chain.R
 // after the inner call, so the recorder is complete.
 func (e *callEmitter) emit(ctx context.Context, start time.Time, status string, err error, op chain.Operation, hasOp bool, rec *chain.Recorder) {
 	dur := time.Since(start)
-	errorType := chain.ClassifyErrorType(err)
+	// The call's ONE outcome word, projected onto every signal below. It is
+	// total (see [chain.ClassifyOutcome]): a failed call is always attributable
+	// to a gate, the downstream, or the caller, so no reader has to infer
+	// "downstream" from an absent label.
+	errorType := chain.ClassifyOutcome(ctx, err)
 
 	// The status-classified call counter is the one signal both paths carry: it
 	// answers "was this rejected, or did the downstream fail", which nothing else
@@ -234,8 +238,10 @@ func (e *callEmitter) emit(ctx context.Context, start time.Time, status string, 
 		// its outcome naming the gate) — so the refused volume is visible here
 		// rather than silently missing.
 		for _, a := range rec.Rounds {
+			// The round's class is the one the retry loop already froze on it: an
+			// attempt label is per round, so it is read, never re-derived.
 			ins.attempts.Record(ctx, a.Duration.Seconds(),
-				metric.WithAttributes(e.callLabels(e.target(op), op.Observe.Metric.Attrs, a.Status, chain.ClassifyErrorType(a.Error))...))
+				metric.WithAttributes(e.callLabels(e.target(op), op.Observe.Metric.Attrs, a.Status, a.ErrorType)...))
 		}
 		if op.Observe.Log.Tag != nil {
 			tag = op.Observe.Log.Tag

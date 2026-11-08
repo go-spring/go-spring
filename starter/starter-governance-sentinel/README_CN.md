@@ -2,18 +2,13 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-governance-sentinel` 把 [alibaba/sentinel-golang][sentinel] 注册为
-[`cloud/governance/dataplane/outbound/resilience`](../../cloud/governance/dataplane/outbound/resilience) 韧性框架的生产 driver。
-空导入它,并在治理文档里
-写 `spring.resilience.driver=sentinel` —— 此后每个经治理中心解析 executor 的客户端,都在
-同一份中立 `Policy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
-也无需改代码。
+`starter-governance-sentinel` 让 [alibaba/sentinel-golang][sentinel] 回答出站
+resilience 引擎的**限流决策**。
 
-它属于 *global / infrastructure*(全局 / 基础设施)形态(见
-[starter/DESIGN.md](../DESIGN.md) §2.4):只贡献一个 bean —— 名为 `sentinel`
-的 `resilience.Driver`,由 [`cloud/governance/dataplane/outbound/resilience`](../../cloud/governance/dataplane/outbound/resilience) 收进 driver
-目录 —— 也不开监听端口。`sentinel.InitDefault` 在 import 时就执行,故环境异常
-在启动时立刻炸出,而不是等到第一次调用时才暴露。
+它贡献一个 `ratelimit.Provider` bean，导出算法名 `sentinel`。治理文档用
+`limiter: sentinel` 选中它，和内置的 `token-bucket` 完全同构；timeout、retry、
+熔断、规则匹配、per-rule key 和指标仍归 resilience 引擎所有——没有第二套 executor，
+也没有重复的管道。
 
 [sentinel]: https://github.com/alibaba/sentinel-golang
 
@@ -25,89 +20,65 @@ go get go-spring.org/starter-governance-sentinel
 
 ## 快速开始
 
-### 1. 导入 starter
-
 ```go
 import _ "go-spring.org/starter-governance-sentinel"
 ```
 
-`init` 会调用 `sentinel.InitDefault()`(失败即 panic),随后把后端贡献为名为
-`sentinel` 的 bean 并导出为 `resilience.Driver` —— resilience manager 按名注入该 bean,不再有
-任何注册或查表。
+导入即调用 `sentinel.InitDefault()`(失败 panic)，并把 provider 注册进进程的 limiter factory。
 
-### 2. 在治理文档里选它
-
-driver 是**全进程选一次**,不按客户端选:治理文档用 `spring.resilience.driver` 指定,每个经
-治理中心解析 executor 的客户端都会拿到它。`spring.governance.*` 键写在治理文档里 —— 那是
-它自己的一套系统,不是 `app.properties`(见
-[`cloud/governance/README.md`](../../cloud/governance/README.md)):
+在治理文档里选中它：
 
 ```properties
-spring.resilience.driver=default
-spring.resilience.driver=sentinel
-spring.governance.client.resilience.max-retries=3
-spring.governance.client.resilience.error-threshold=10
-spring.governance.client.resilience.timeout=1s
+# governance document
+spring.governance.rate-limit.services[0].service=orders
+spring.governance.rate-limit.services[0].limiter=sentinel
+spring.governance.rate-limit.services[0].rate-limit=100
 ```
 
-### 3. 或直接使用
+或程序化使用：
 
 ```go
-import "go-spring.org/cloud/governance/dataplane/outbound/resilience"
+import (
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	StarterGovernanceSentinel "go-spring.org/starter-governance-sentinel"
+)
 
-exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.Policy{
-    RateLimit:      100,
-    ErrorThreshold: 10,
-    OpenDuration:   30 * time.Second,
-    MaxRetries:     3,
-    Timeout:        time.Second,
+fact, _ := ratelimit.NewFactory([]ratelimit.Provider{
+	ratelimit.NewLocalProvider(),
+	StarterGovernanceSentinel.Provider{},
 })
+mgr := resilience.NewManager(fact)
+_ = mgr.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{
+	Limiter:   StarterGovernanceSentinel.LimiterAlgorithm,
+	RateLimit: 100,
+}})
+exec := mgr.ExecutorFor("orders")
 
-// 客户端传输
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, "orders", nil)}
 ```
 
-见 [`example/`](example) 的自包含冒烟——端到端验证限流 +
-熔断 + 重试的组合(无需 docker)。
+没有任何 provider 导出的算法名会在文档校验时被拒绝，拼错不会拖到第一次调用才暴露。
 
-## Policy 映射
+## 策略映射
 
-中立的 `resilience.Policy` / `ServerPolicy` 经共享的 rules.go 翻译
-（出站与入站引擎走同一份翻译，不会漂移）后按 service 懒加载到 sentinel 规则：
+| 中立旋钮 | Sentinel flow 规则 |
+| --- | --- |
+| `RateLimit` + `Window` | `Threshold` 按 `StatIntervalInMs`(每秒归一化到每窗口) |
+| `MaxWait` | `Throttling` + `MaxQueueingTimeMs`(排队而非拒绝) |
+| `WarmUp` / `ColdFactor` | `WarmUp` token 策略；预热优先于排队(sentinel 只允许 WarmUp+Reject) |
 
-| 策略旋钮 | Sentinel 规则 | 触发时的中立 error |
-| --- | --- | --- |
-| `RateLimit` + `Window` | flow `Threshold`（**按窗口归一化**：每秒 → 每 StatIntervalInMs）+ `StatIntervalInMs` | `ErrRateLimited` |
-| `RateLimitMaxWait` | flow `Throttling` + `MaxQueueingTimeMs`（排队而不是拒绝） | `ErrRateLimited` |
-| `RateLimitWarmUpDuration` / `WarmUpColdFactor` | flow `WarmUp` + `WarmUpPeriodSec` / `WarmUpColdFactor`（预热与排队互斥，sentinel 只允许 WarmUp+Reject，预热优先） | `ErrRateLimited` |
-| `breaker-strategy=error-rate` | breaker `ErrorRatio` | `ErrCircuitOpen` |
-| `breaker-strategy=slow-call`（+ 慢调用对） | breaker `SlowRequestRatio` + `MaxAllowedRtMs` | `ErrCircuitOpen` |
-| `breaker-strategy=error-count` | breaker `ErrorCount`（精确映射） | `ErrCircuitOpen` |
-| `breaker-strategy=consecutive`（默认） | breaker `ErrorCount` —— **近似**：sentinel 没有连续失败熔断，要精确映射请写 `error-count` | `ErrCircuitOpen` |
-| `HalfOpenRequests` | `ProbeNum`（半开放行试探数） | — |
-| `OpenDuration` | `RetryTimeoutMs` | — |
-| `MaxRetries` | 重试循环（sentinel 之外） | 最后一次尝试的 error |
-| `Timeout` | ctx 截止（sentinel 之外） | `context.DeadlineExceeded` |
+映射不了的旋钮不伪造：`Burst` 在 sentinel 没有对应项；规则的算法名是 `sentinel`，
+不再是 `token-bucket`。
 
-**合法忽略**（sentinel v1.0.4 无对应，文档注明而非伪造）：`Burst`、
-`Algorithm`（flow 无滑动窗口/突发旋钮）。
+## 边界
 
-sentinel 的 system / hotspot / 集群流控属 future work：它们是入站专用或参数
-维度的原语，还没有 policy 字段能承载；字段有了会落进 server executor。
+- **只做限流。** timeout、retry、熔断、按 service/action/metadata 的规则匹配、
+  指标与状态面全部留在 resilience 引擎。
+- **没有全局选择。** provider 按规则里的算法名选中；没有 `spring.resilience.driver`
+  键，也没有后端 bean。
+- **per-rule 预算。** 引擎把规则身份作为计数 scope，所以同一 service 的两条规则各自
+  独立计桶(默认规则的 scope 就是 service label)。
+- **sentinel v1.0.4 固定版本。** 后续 minor 改过规则结构字段，这个 pin 保持翻译稳定。
 
-## Default driver
-
-`cloud/governance/dataplane/outbound/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
-生产链路上得到实打实的限流与熔断,请导入本 starter;若无需即可继续使用
-`default`。
-
-## 设计说明
-
-* **本 starter 是引擎，不是缝隙。** 它不决定韧性*施加在哪里*——那是适配器的活：
-  HTTP 客户端经 `resilience.NewRoundTripper` 包，
-  入站准入中间件由各协议 starter 自建。单靠它本身，不会保护任何一次调用。
-* **规则按 service 懒加载。** sentinel 一切以 service 名为键，故某 service 的
-  策略 → 规则翻译发生在它首次 `Entry` 时，由互斥锁守护；从未被调用的 service 也
-  永远不会装规则。
-* **sentinel 锁死 v1.0.4。** 后续小版本调整了 flow / 熔断规则字段；锁版本让上游
-  回归在此处暴露，而非波及每个适配器。
+见 [`example/`](example) 的自包含冒烟(无需 docker)。

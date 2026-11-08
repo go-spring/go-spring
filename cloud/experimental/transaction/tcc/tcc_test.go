@@ -49,9 +49,17 @@ func toStr(v any) string {
 	return v.(string)
 }
 
+// transientErr is a retryable failure: retry is a whitelist, so a test that
+// expects another attempt must return an error that opts in.
+type transientErr struct{}
+
+func (transientErr) Error() string   { return "transient" }
+func (transientErr) Retryable() bool { return true }
+
 func TestExecute_CommitsWhenAllTrySucceed(t *testing.T) {
 	tr := &tracer{}
-	coord := NewCoordinator()
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
 	res, err := coord.Execute(context.Background(), Transaction{
 		ID:           "tx-1",
 		Participants: []Participant{okParticipant(tr, "a"), okParticipant(tr, "b")},
@@ -71,7 +79,8 @@ func TestExecute_CancelsTriedWhenATryFails(t *testing.T) {
 		Confirm: func(context.Context, any) error { return nil },
 		Cancel:  func(_ context.Context, v any) error { tr.mark("cancel:b:" + toStr(v)); return nil },
 	}
-	coord := NewCoordinator()
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
 	res, err := coord.Execute(context.Background(), Transaction{
 		ID:           "tx-2",
 		Participants: []Participant{okParticipant(tr, "a"), failing},
@@ -85,7 +94,8 @@ func TestExecute_CancelsTriedWhenATryFails(t *testing.T) {
 
 func TestExecute_RejectsMissingPhaseBeforeSideEffect(t *testing.T) {
 	tried := false
-	coord := NewCoordinator()
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
 	res, err := coord.Execute(context.Background(), Transaction{
 		ID: "tx-3",
 		Participants: []Participant{{
@@ -100,7 +110,8 @@ func TestExecute_RejectsMissingPhaseBeforeSideEffect(t *testing.T) {
 }
 
 func TestExecute_ConfirmFailureIsSurfaced(t *testing.T) {
-	coord := NewCoordinator()
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
 	res, err := coord.Execute(context.Background(), Transaction{
 		ID: "tx-4",
 		Participants: []Participant{{
@@ -130,7 +141,8 @@ func TestRecover_ConfirmsForwardWhenDecisionWasCommit(t *testing.T) {
 	})).Nil()
 
 	tr := &tracer{}
-	coord := NewCoordinator(WithStore(store))
+	coord, err := NewCoordinator(WithStore(store))
+	assert.That(t, err).Nil()
 	res, err := coord.Recover(ctx, Transaction{
 		ID:           "tx-5",
 		Method:       "OrderService.Place",
@@ -158,7 +170,8 @@ func TestRecover_CancelsBackwardWhenNoCommitDecision(t *testing.T) {
 	})).Nil()
 
 	tr := &tracer{}
-	coord := NewCoordinator(WithStore(store))
+	coord, err := NewCoordinator(WithStore(store))
+	assert.That(t, err).Nil()
 	res, err := coord.Recover(ctx, Transaction{
 		ID:           "tx-6",
 		Method:       "OrderService.Place",
@@ -173,7 +186,8 @@ func TestRecover_CancelsBackwardWhenNoCommitDecision(t *testing.T) {
 func TestRecover_NoOpWhenTerminalOrMissing(t *testing.T) {
 	ctx := context.Background()
 	store := &MemoryStore{}
-	coord := NewCoordinator(WithStore(store))
+	coord, err := NewCoordinator(WithStore(store))
+	assert.That(t, err).Nil()
 
 	// Missing log => treated as committed no-op.
 	res, err := coord.Recover(ctx, Transaction{ID: "gone",
@@ -190,7 +204,9 @@ func TestRecover_NoOpWhenTerminalOrMissing(t *testing.T) {
 }
 
 func TestRecover_RequiresStore(t *testing.T) {
-	_, err := NewCoordinator().Recover(context.Background(), Transaction{ID: "x",
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
+	_, err = coord.Recover(context.Background(), Transaction{ID: "x",
 		Participants: []Participant{okParticipant(&tracer{}, "a")}})
 	assert.Error(t, err).Matches("requires a Store")
 }
@@ -218,7 +234,8 @@ func TestStatusString(t *testing.T) {
 // TCC recovery depends on (Confirm must be idempotent because it is retried).
 func TestExecute_ConfirmRetriedUnderPolicy(t *testing.T) {
 	attempts := 0
-	coord := NewCoordinator()
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
 	res, err := coord.Execute(context.Background(), Transaction{
 		ID: "tx-r1",
 		Participants: []Participant{{
@@ -228,7 +245,7 @@ func TestExecute_ConfirmRetriedUnderPolicy(t *testing.T) {
 			Confirm: func(context.Context, any) error {
 				attempts++
 				if attempts == 1 {
-					return errutil.Explain(nil, "transient")
+					return transientErr{}
 				}
 				return nil
 			},
@@ -244,7 +261,8 @@ func TestExecute_ConfirmRetriedUnderPolicy(t *testing.T) {
 // Cancel failure is retried, so the transaction still reaches StatusCancelled.
 func TestExecute_CancelRetriedUnderPolicy(t *testing.T) {
 	cancels := 0
-	coord := NewCoordinator()
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
 	res, err := coord.Execute(context.Background(), Transaction{
 		ID: "tx-r2",
 		Participants: []Participant{{
@@ -255,7 +273,7 @@ func TestExecute_CancelRetriedUnderPolicy(t *testing.T) {
 			Cancel: func(context.Context, any) error {
 				cancels++
 				if cancels == 1 {
-					return errutil.Explain(nil, "transient")
+					return transientErr{}
 				}
 				return nil
 			},
@@ -272,8 +290,9 @@ func TestExecute_CancelRetriedUnderPolicy(t *testing.T) {
 }
 
 func TestExecute_RejectsDuplicateParticipantNames(t *testing.T) {
-	coord := NewCoordinator()
-	_, err := coord.Execute(context.Background(), Transaction{
+	coord, err := NewCoordinator()
+	assert.That(t, err).Nil()
+	_, err = coord.Execute(context.Background(), Transaction{
 		ID:           "tx-dup",
 		Participants: []Participant{okParticipant(&tracer{}, "a"), okParticipant(&tracer{}, "a")},
 	})
@@ -285,7 +304,8 @@ func TestExecute_RejectsDuplicateParticipantNames(t *testing.T) {
 // and every transaction reaches its own terminal status.
 func TestExecute_ConcurrentTransactions(t *testing.T) {
 	store := &MemoryStore{}
-	coord := NewCoordinator(WithStore(store))
+	coord, err := NewCoordinator(WithStore(store))
+	assert.That(t, err).Nil()
 
 	const n = 16
 	var wg sync.WaitGroup
@@ -320,7 +340,8 @@ func TestRecover_ConfirmFailedIsTerminal(t *testing.T) {
 	})).Nil()
 
 	confirms := 0
-	coord := NewCoordinator(WithStore(store))
+	coord, err := NewCoordinator(WithStore(store))
+	assert.That(t, err).Nil()
 	tx := Transaction{ID: "tx-cf", Participants: []Participant{{
 		Name:    "a",
 		Try:     func(context.Context) (any, error) { return "tok", nil },

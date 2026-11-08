@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -28,34 +29,36 @@ import (
 )
 
 const doc = `
-rules[0].service=redis:cache
-rules[0].action.prefix=GET /slow
-rules[0].rate-limit=0.001
-rules[0].burst=1
+services[0].service=redis:cache
+services[0].rules[0].action.prefix=GET /slow
+services[0].rules[0].rate-limit=0.001
+services[0].rules[0].burst=1
 `
 
 func TestDocumentBinds(t *testing.T) {
 	d, err := source.Parse[resilience.RateLimitSettings]("rate-limit.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	assert.Number(t, len(d.Rules)).Equal(1)
-	assert.That(t, d.Rules[0].Action.Prefix).Equal("GET /slow")
-	assert.Number(t, d.Rules[0].Burst).Equal(1)
+	assert.Number(t, len(d.Services)).Equal(1)
+	assert.Number(t, len(d.Services[0].Rules)).Equal(1)
+	assert.That(t, d.Services[0].Rules[0].ActionMatch.Prefix).Equal("GET /slow")
+	assert.Number(t, d.Services[0].Rules[0].Burst).Equal(1)
 	// An omitted limiter binds to the documented default, so no downstream
 	// consumer ever sees an empty kind.
-	assert.That(t, d.Rules[0].Limiter).Equal(ratelimit.TokenBucketAlgorithm)
+	assert.That(t, d.Services[0].Rules[0].Limiter).Equal(ratelimit.TokenBucketAlgorithm)
 }
 
-// TestDocumentRequiresInterfaceScope pins the binding boundary: conf.Bind runs
-// the data-plane Validate, so the service marker is rejected where the document
-// is read. The rule matrix itself lives in resilience's own tests.
-func TestDocumentRequiresInterfaceScope(t *testing.T) {
-	_, err := source.Parse[resilience.RateLimitSettings]("rate-limit.properties", []byte(`
-rules[0].service=redis:cache
-rules[0].action.exact=-
-rules[0].rate-limit=10
+// TestDocumentAcceptsServiceScope pins the binding boundary: conf.Bind runs the
+// data-plane Validate, and the service marker is a valid scope — a whole-service
+// fallback. The rule matrix itself lives in resilience's own tests.
+func TestDocumentAcceptsServiceScope(t *testing.T) {
+	d, err := source.Parse[resilience.RateLimitSettings]("rate-limit.properties", []byte(`
+services[0].service=redis:cache
+services[0].rules[0].action.exact=-
+services[0].rules[0].rate-limit=10
 `), "")
-	assert.Error(t, err).NotNil()
+	assert.Error(t, err).Nil()
+	assert.That(t, d.Services[0].Rules[0].ActionMatch.Exact).Equal(matcher.ServiceScopeAction)
 }
 
 func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
@@ -66,16 +69,19 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
 	}
 
-	e := mgr.ExecutorFor("redis:cache")
+	e := mgr.Wrap("redis:cache", nil)
 	noop := func(context.Context) error { return nil }
-	slow := chain.Operation{Request: chain.Request{Action: "GET /slow/x"}}
-	other := chain.Operation{Request: chain.Request{Action: "GET /fast"}}
+	slow := chain.Operation{Service: "redis:cache", Request: chain.Request{Action: "GET /slow/x"}}
+	other := chain.Operation{Service: "redis:cache", Request: chain.Request{Action: "GET /fast"}}
 
 	assert.Error(t, e.Execute(context.Background(), slow, new(chain.Recorder), noop)).Nil()
 	assert.Error(t, e.Execute(context.Background(), slow, new(chain.Recorder), noop)).Is(chain.ErrRateLimited)
@@ -86,9 +92,11 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 
 	// A document whose rule names a kind no provider exports cannot be built, so
 	// the previous one keeps the exhausted budget serving.
-	src.Push(context.Background(), resilience.RateLimitSettings{Rules: []resilience.RateLimitRule{{
+	src.Push(context.Background(), resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
 		Service: "redis:cache",
-		Policy:  ratelimit.Policy{RateLimit: 1, Limiter: "redis:unregistered"},
+		Rules: []resilience.RateLimitRule{{
+			Policy: ratelimit.Policy{RateLimit: 1, Limiter: "redis:unregistered"},
+		}},
 	}}})
 	assert.Error(t, e.Execute(context.Background(), slow, new(chain.Recorder), noop)).Is(chain.ErrRateLimited)
 }
@@ -101,11 +109,16 @@ func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	src := source.NewPushSource(resilience.RateLimitSettings{
-		Rules: []resilience.RateLimitRule{{
+		Services: []resilience.RateLimitService{{
 			Service: "redis:cache",
-			Policy:  ratelimit.Policy{RateLimit: 1, Limiter: "redis:unregistered"},
+			Rules: []resilience.RateLimitRule{{
+				Policy: ratelimit.Policy{RateLimit: 1, Limiter: "redis:unregistered"},
+			}},
 		}},
 	})
 	if _, err := NewCenter(context.Background(), mgr, src); err == nil {

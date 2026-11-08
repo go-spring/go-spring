@@ -56,7 +56,10 @@ func inboundFor(t *testing.T, p admission.Policy) *inbound.Inbound {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := admission.NewManager(fact)
+	mgr, err := admission.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_ = mgr.Apply(admission.Settings{Default: p})
 	in, err := inbound.Over("thrift", "thrift:test", mgr)
 	if err != nil {

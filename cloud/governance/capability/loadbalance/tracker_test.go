@@ -27,7 +27,8 @@ import (
 
 func TestTrackerSuspendAndRecover(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		tr := NewTracker(TrackerConfig{Threshold: 2, SuspendFor: time.Second})
+		tr, err := NewTracker(TrackerConfig{Threshold: 2, SuspendFor: time.Second})
+		assert.That(t, err).Nil()
 
 		// One failure is below threshold: still eligible.
 		tr.Record(context.Background(), "a", false)
@@ -63,7 +64,8 @@ func TestTrackerSuspendAndRecover(t *testing.T) {
 }
 
 func TestTrackerDisabled(t *testing.T) {
-	tr := NewTracker(TrackerConfig{Threshold: 0})
+	tr, err := NewTracker(TrackerConfig{Threshold: 0})
+	assert.That(t, err).Nil()
 	tr.Record(context.Background(), "a", false)
 	tr.Record(context.Background(), "a", false)
 	tr.Record(context.Background(), "a", false)
@@ -73,7 +75,8 @@ func TestTrackerDisabled(t *testing.T) {
 
 func TestTrackerIgnoresOutcomesDuringCoolDown(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+		tr, err := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+		assert.That(t, err).Nil()
 		tr.Record(context.Background(), "a", false)
 		assert.That(t, suspended(tr, "a")).True()
 
@@ -92,7 +95,8 @@ func TestTrackerIgnoresOutcomesDuringCoolDown(t *testing.T) {
 }
 
 func TestTrackerPruneDropsVanishedEndpoints(t *testing.T) {
-	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr, err := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	assert.That(t, err).Nil()
 	tr.Record(context.Background(), "a", false)
 	tr.Record(context.Background(), "b", false)
 	assert.Number(t, tr.suspendedCount()).Equal(2)
@@ -106,7 +110,8 @@ func TestTrackerPruneDropsVanishedEndpoints(t *testing.T) {
 }
 
 func TestTrackerPruneIgnoresEmptyEndpointSet(t *testing.T) {
-	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr, err := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	assert.That(t, err).Nil()
 	tr.Record(context.Background(), "a", false)
 
 	// A source that momentarily advertises nothing is no evidence that "a" is gone.
@@ -116,14 +121,16 @@ func TestTrackerPruneIgnoresEmptyEndpointSet(t *testing.T) {
 }
 
 func TestTrackerSuccessLeavesNoState(t *testing.T) {
-	tr := NewTracker(TrackerConfig{Threshold: 1})
+	tr, err := NewTracker(TrackerConfig{Threshold: 1})
+	assert.That(t, err).Nil()
 	tr.Record(context.Background(), "a", true)
 	tr.Record(context.Background(), "a", true)
 	assert.Number(t, len(tr.states)).Equal(0)
 }
 
 func TestTrackerRecordAfterCloseIsDropped(t *testing.T) {
-	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr, err := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	assert.That(t, err).Nil()
 	tr.Close()
 
 	// An in-flight request of a retired generation settles late: it must not
@@ -135,7 +142,8 @@ func TestTrackerRecordAfterCloseIsDropped(t *testing.T) {
 }
 
 func TestTrackerCloseDropsState(t *testing.T) {
-	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr, err := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	assert.That(t, err).Nil()
 	tr.Record(context.Background(), "a", false)
 	assert.Number(t, tr.suspendedCount()).Equal(1)
 
@@ -148,7 +156,8 @@ func TestTrackerCloseDropsState(t *testing.T) {
 func TestTrackerAllSuspendedFallsBack(t *testing.T) {
 	// Black-holing all traffic is worse than probing a degraded instance: when
 	// every endpoint is suspended, Allows returns its input unchanged.
-	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr, err := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	assert.That(t, err).Nil()
 	tr.Record(context.Background(), "a", false)
 	tr.Record(context.Background(), "b", false)
 	assert.That(t, suspended(tr, "a")).True()

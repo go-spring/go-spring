@@ -34,9 +34,13 @@ func newTestTable(t *testing.T) *RouteTable {
 	if err != nil {
 		t.Fatal(err)
 	}
+	obs, err := newObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
 	tbl := &RouteTable{
 		ctx:       context.Background(),
-		obs:       newObserver(),
+		obs:       obs,
 		ctr:       nil, // no governance: the center's methods are nil-safe, giving observed pass-throughs
 		lbMgr:     lbMgr,
 		factories: factories,

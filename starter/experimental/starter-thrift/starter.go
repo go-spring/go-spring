@@ -194,7 +194,11 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	// it costs a call frame and changes nothing else.
 	var mws []thrift.ProcessorMiddleware
 	if s.cfg.Observer.Tracing.Enabled || s.cfg.Observer.Metrics.Enabled {
-		mws = append(mws, Observe())
+		mw, err := Observe()
+		if err != nil {
+			return err
+		}
+		mws = append(mws, mw)
 	}
 	mws = append(mws, AccessLog())
 	admit, err := Admit(label.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center)

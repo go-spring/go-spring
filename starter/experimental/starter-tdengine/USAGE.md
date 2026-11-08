@@ -298,8 +298,7 @@ point on the executor chain that sees a whole call, emits every signal from that
 | Metric | `db.client.operation.duration` (histogram, s) — per call, retries included | `db.system`, `db.operation`, `status` |
 | Metric | `db.client.attempt.duration` (histogram, s) — per downstream attempt | `db.system`, `db.operation`, `status` |
 | Metric | `db.client.active_requests` (up-down counter) | `db.system`, `db.operation` |
-| Metric | `resilience.client.calls` (counter) | `system=tdengine`, `service`, `status=ok\|error` (plus `resilience.error_type` when protection refused the call) |
-| Metric | `resilience.client.breaker.state` (gauge, 1-hot), `...transitions_total{to}` | `service`, `unit`, `state`/`to` |
+| Metric | `resilience.client.calls` (counter) | `system=tdengine`, `service`, `status=ok\|error`, plus a total `resilience.error_type` (a gate word, `downstream`, or `canceled`) |
 | Log | tag `_app_tdengine_access` | db.system=tdengine db.operation=… status duration_ms; error → Warn, success with the SQL → Debug, plain success → Info |
 
 Without starter-otel, spans/metrics are no-ops (global providers empty) — only the access

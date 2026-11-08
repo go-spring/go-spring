@@ -108,9 +108,9 @@ type Client struct {
 //
 // The service label falls back across the address fields via the shared
 // [label.ServiceLabel] helper, so limiter and breaker state is scoped per
-// Elasticsearch cluster rather than per request. The manager's ExecutorFor
-// resolves its backing executor lazily, on each Execute, so the call order
-// relative to the center's wiring is irrelevant.
+// Elasticsearch cluster rather than per request. Runtime.ExecutorFor resolves
+// the executor lazily, on each Execute, so the call order relative to the
+// center's wiring is irrelevant.
 func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Config, center *governance.Runtime) *Client {
 	c := &Client{
 		Client: client,

@@ -34,7 +34,7 @@
 //     balancer, a retry re-picks a fresh endpoint and the breaker keys on the
 //     logical service name. When no explicit executor is supplied, it comes from
 //     the injected [resilience.Manager] under Service — the same
-//     [resilience.Manager.ExecutorFor] path every other client starter uses;
+//     [resilience.Manager.Wrap] path every other client starter uses;
 //   - TLS — the certificate surface for https targets is built into the base
 //     transport;
 //
@@ -57,7 +57,6 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/ratelimit"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
@@ -114,24 +113,8 @@ type Config struct {
 	// protects.
 	Service string
 
-	// ResilienceDriver is the resilience backend to protect calls with. The
-	// caller resolves it from the container (the ${spring.resilience.driver} bean)
-	// and passes the driver itself, since this
-	// package is container-free. When neither chain.Executor nor ResilienceDriver is
-	// set, the executor is resolved from the injected [resilience.Manager] under
-	// Service; with governance off the armed policy is zero and the executor is
-	// a transparent pass-through.
-	ResilienceDriver resilience.Driver
-
-	// The three fields below are the backend-neutral protection applied when
-	// ResilienceDriver is set. They are independent capabilities, like the
-	// governance document's blocks.
-	ResilienceLimits    resilience.Limits
-	ResilienceBreaker   resilience.BreakerPolicy
-	ResilienceRateLimit ratelimit.Policy
-
-	// Executor is a pre-built resilience executor to use in place of the
-	// ResilienceDriver+ResiliencePolicy pair. When non-nil it takes precedence:
+	// Executor is a pre-built resilience executor. When set it is used instead of
+	// the injected [resilience.Manager]'s chain; when non-nil it takes precedence:
 	// the caller builds the executor (e.g. from a centralized governance center
 	// that owns its hot-reload), and httpx only wraps the transport with it. This
 	// lets a caller attach a policy that refreshes externally without httpx
@@ -214,9 +197,9 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 		}
 		// Endpoint selection is governed unconditionally: the chain is built
 		// through the center's manager and registers itself under the service's
-		// label as it is built. A caller-supplied Executor or ResilienceDriver
-		// replaces the PROTECTION executor below (see the switch), but it no
-		// longer opts the client out of selection governance.
+		// label as it is built. A caller-supplied Executor replaces the
+		// PROTECTION executor below (see the switch), but it no longer opts the
+		// client out of selection governance.
 		//
 		// Building the chain IS the registration: the selection in force applies
 		// from the first request, and a rule that moves this service's selection
@@ -242,43 +225,19 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 	// Resilience wraps the (possibly balanced) transport so a retry re-enters
 	// the balancer and picks a fresh endpoint, and the breaker keys on
 	// cfg.service() — the same label the policy is resolved under, so limiter/
-	// breaker state and driver rule names agree with the governance rule that armed
-	// them. Three executor sources, first match wins: a pre-built chain.Executor, an
-	// explicit ResilienceDriver+Policy, or — the default, and the same path every
-	// other client starter takes — the injected [resilience.Manager] under
-	// Service. The manager owns that executor: it is built once per label, shared
-	// by every user of the label, refreshes itself on a policy change, and
-	// already carries the observe layer; with governance off the armed policy is
-	// zero and it is a transparent pass-through.
-	var exec chain.Executor
+	// breaker state and rule names agree with the governance rule that armed
+	// them. Two executor sources, first match wins: a pre-built chain.Executor, or
+	// — the default, and the same path every other client starter takes — the
+	// injected [resilience.Manager] under Service. The manager owns that engine:
+	// it is built once per label, shared by every user of the label, follows a
+	// policy change, and is a transparent pass-through when governance is off.
+	var raw chain.Executor
 	managerOwned := false
 	switch {
 	case cfg.Executor != nil:
-		exec = cfg.Executor
-	case cfg.ResilienceDriver != nil:
-		// The driver builds an executor over a manager, so an explicit
-		// driver+policy triple is just a private, single-label manager.
-		fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
-		if err != nil {
-			closeAll(closeFns)
-			return nil, nil, err
-		}
-		mgr := resilience.NewManager(cfg.ResilienceDriver, fact)
-		if err = mgr.ApplyLimits(resilience.LimitsSettings{Default: cfg.ResilienceLimits}); err != nil {
-			closeAll(closeFns)
-			return nil, nil, err
-		}
-		if err = mgr.ApplyBreaker(resilience.BreakerSettings{Default: cfg.ResilienceBreaker}); err != nil {
-			closeAll(closeFns)
-			return nil, nil, err
-		}
-		if err = mgr.ApplyRateLimit(resilience.RateLimitSettings{Default: cfg.ResilienceRateLimit}); err != nil {
-			closeAll(closeFns)
-			return nil, nil, err
-		}
-		exec = mgr.ExecutorFor(cfg.service())
+		raw = cfg.Executor
 	default:
-		exec = center.Resilience.ExecutorFor(cfg.service())
+		raw = center.Resilience.Wrap(cfg.service(), nil)
 		managerOwned = true
 		// The chain's endpoint-selection half follows the governance rule through
 		// the registration its construction performed — the protection policy
@@ -286,35 +245,27 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 		// takes effect on its own path. Direct addressing has no chain.
 	}
 
-	// Default wrap: fault( observe( rawExec ) ) — observe is applied first, on
-	// the still-private raw executor, so it attaches its breaker listener at
-	// construction; fault then injects outside it, but the injected error still
-	// flows through the real executor's retry loop and breaker. observe records
-	// the final outcome (span, outcome-classified metrics, access log).
-	//
-	// The manager-owned executor is already instrumented — the manager applies
-	// the same observe layer when it builds the backing executor, which is how
-	// every client starter gets it — so only fault is added on top; an executor
-	// httpx built itself gets observe here. WrapExec, when set, replaces this
+	// Default stack, written in the order it runs: fault innermost (its next is
+	// nil, so it fires just before the real call), resilience in the middle (its
+	// retry loop runs the fault per attempt), observability outermost. The
+	// manager-owned path relies on otelhttp for its client span, so it adds no
+	// observe layer; a caller's executor is observed here. WrapExec replaces the
 	// stack entirely and receives the raw executor either way.
-	wrap := cfg.WrapExec
-	if wrap == nil {
-		if managerOwned {
-			wrap = func(e chain.Executor) chain.Executor {
-				return center.ClientFault.WrapClientExecutor(e)
-			}
-		} else {
-			wrap = func(e chain.Executor) chain.Executor {
-				return center.ClientFault.WrapClientExecutor(observability.WrapClientExecutor(e, "http", cfg.service()))
-			}
-		}
+	var exec chain.Executor
+	switch {
+	case cfg.WrapExec != nil:
+		exec = cfg.WrapExec(raw)
+	case cfg.Executor != nil:
+		exec = observability.WrapClientExecutor(
+			center.ClientFault.WrapClientExecutor(raw), "http", cfg.service())
+	default:
+		exec = center.Resilience.Wrap(cfg.service(), center.ClientFault.WrapClientExecutor(nil))
 	}
-	exec = wrap(exec)
 	base = resilience.NewRoundTripper(base, exec, cfg.service(), func(req *http.Request) chain.Operation {
 		return callFor(req, prop)
 	})
-	// The manager owns its executor for the process lifetime, so closing it with
-	// one transport would be wrong; only an httpx-built one is released here.
+	// The process-owned manager's engine lives for the process, so it is never
+	// closed with one transport; an httpx-built chain releases its own stack.
 	if !managerOwned {
 		closeFns = append(closeFns, exec.Close)
 	}

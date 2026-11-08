@@ -241,8 +241,8 @@ manager 是必需的 —— 这个 starter 传递链接各策略根，"关治理
 4. resilience observe 打开名为 `publish` 的调用 span，并在调用返回后发射调用级
    `messaging.client.operation.duration`、尝试级 `messaging.client.attempt.duration`、
    `resilience.client.calls` 计数器与唯一一条访问日志 —— 全部从声明读取。publish 与 consume
-   声明为 `NonIdempotent`，故针对该 label 的重试策略会被**抑制**（每个 service 告警一次）：
-   重新发布或再跑一遍 handler 是第二个副作用，不是第二次尝试。
+   重试只由治理配置，这里不带调用侧重试：重新发布或再跑一遍 handler 是第二个副作用，
+   不是第二次尝试，所以文档不应给该 label 配置调度——写文档的人自己负责它的效果。
 5. resilience 策略：服务 `mqtt:<broker>` 上的限流器 / 熔断器；被拒时返回 sentinel
    错误且 **paho Publish 根本不会执行**。
 6. `cl.Publish(topic, qos, retained, payload)` 交给 paho 出站队列；`token.Wait()`

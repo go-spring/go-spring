@@ -45,6 +45,7 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel"
@@ -253,7 +254,7 @@ func (o *ObsProducer) SendSync(ctx context.Context, msg *primitive.Message) (*pr
 	if o.obs == nil {
 		return o.next.SendSync(ctx, msg)
 	}
-	err := o.obs.Observe(ctx, operation(ctx, o.prop, opSend, msg.Topic), nil, func(callCtx context.Context) error {
+	err := o.obs.Observe(ctx, operation(ctx, o.prop, opSend, msg.Topic), new(chain.Recorder), func(callCtx context.Context) error {
 		var serr error
 		res, serr = o.next.SendSync(callCtx, msg)
 		return serr

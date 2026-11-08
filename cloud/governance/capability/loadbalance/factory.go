@@ -104,7 +104,10 @@ func (f *Factory) Create(selection Selection) (Balancer, error) {
 	// here — one owner, every provider included — rather than being one strategy
 	// among them.
 	if selection.ZoneAware {
-		bal = NewZoneAware(bal, selection.ZoneKey)
+		bal, err = NewZoneAware(bal, selection.ZoneKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return bal, nil
 }

@@ -37,9 +37,9 @@ import (
 
 	// Blank-import both starters: starter-go-redis publishes the *goredis.Client
 	// bean named by spring.ratelimit.redis.client, and starter-ratelimit-redis
-	// contributes the Redis-backed limiter provider — the one the
-	// resilience driver injects, in place of the private per-executor budgets a
-	// container with no store bean gets.
+	// contributes the Redis-backed limiter provider — the one the resilience
+	// manager injects, in place of the private per-executor budgets a container
+	// with no store bean gets.
 	_ "go-spring.org/starter-go-redis"
 	_ "go-spring.org/starter-ratelimit-redis"
 )
@@ -85,7 +85,7 @@ func executor(center *governance.Runtime) chain.Executor {
 func serve(exec chain.Executor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		op := chain.Operation{Request: chain.Request{Action: "serve"}}
-		err := exec.Execute(r.Context(), op, nil, func(context.Context) error { return nil })
+		err := exec.Execute(r.Context(), op, new(chain.Recorder), func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			_, _ = w.Write([]byte("ok"))

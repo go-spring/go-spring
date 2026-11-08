@@ -54,6 +54,7 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
@@ -127,11 +128,20 @@ func main() {
 	if err != nil {
 		fail("ratelimit factory: %v", err)
 	}
-	rmgr := resilience.NewManager(resilience.NewDefaultDriver(), rfact)
-	if err = rmgr.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 3}}); err != nil {
+	rmgr, err := resilience.NewManager(rfact)
+	if err != nil {
+		fail("resilience manager: %v", err)
+	}
+	if err = rmgr.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+		Service: "echo:demo",
+		Rules: []resilience.RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			Policy:      ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 3},
+		}},
+	}}}); err != nil {
 		fail("resilience executor: %v", err)
 	}
-	exec = rmgr.ExecutorFor("echo:demo")
+	exec = rmgr.Wrap("echo:demo", nil)
 
 	// Wire the echo routes. The RouterRegister receives the Config bean through
 	// the container, so /greeting reads the live Dync value.
@@ -148,7 +158,7 @@ func main() {
 			// A rate-limited route: the handler body runs through the resilience
 			// executor, so excess requests are shed with HTTP 429.
 			e.GET("/limited", func(ctx echo.Context) error {
-				err := exec.Execute(ctx.Request().Context(), chain.Operation{}, nil, func(context.Context) error {
+				err := exec.Execute(ctx.Request().Context(), chain.Operation{Service: "echo:demo"}, new(chain.Recorder), func(context.Context) error {
 					return ctx.String(http.StatusOK, "ok")
 				})
 				if errors.Is(err, chain.ErrRateLimited) {
@@ -203,7 +213,15 @@ func runTest() {
 	if err != nil {
 		fail("new balancer: %v", err)
 	}
-	pick, err := loadbalance.NewPool(resolver, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{}).Pick(ctx, loadbalance.PickInfo{})
+	tracker, err := loadbalance.NewTracker(loadbalance.TrackerConfig{})
+	if err != nil {
+		fail("new tracker: %v", err)
+	}
+	pool, err := loadbalance.NewPool(resolver, bal, tracker, loadbalance.Selection{})
+	if err != nil {
+		fail("new pool: %v", err)
+	}
+	pick, err := pool.Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		fail("resolve: %v", err)
 	}
@@ -216,7 +234,7 @@ func runTest() {
 	// --- 3. Resilience ---------------------------------------------------
 	var admitted, rejected int
 	for range 15 {
-		err := exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })
+		err := exec.Execute(ctx, chain.Operation{Service: "echo:demo"}, new(chain.Recorder), func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			admitted++

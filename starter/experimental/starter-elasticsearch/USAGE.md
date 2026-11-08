@@ -336,8 +336,8 @@ docker start starter-elasticsearch
   histograms plus the in-flight `db.client.active_requests` gauge — attributes
   `db.system=elasticsearch`, `db.operation=<METHOD>` (bounded), `status` = ok/error, none
   of them carrying the URL path. The same layer emits the `resilience.client.calls` counter
-  with `status` ∈ {ok, error}, plus `resilience.error_type` ∈ {rate_limited, circuit_open,
-  bulkhead_full, retry_budget_exceeded, timeout} when protection refused the call.
+  with `status` ∈ {ok, error}, plus a total `resilience.error_type` ∈ {rate_limited,
+  circuit_open, bulkhead_full, retry_exceeded, timeout, downstream, canceled}.
 - **Spans**: one span per request, opened by the resilience layer (internal kind), named like
   `POST /demo-docs/_search`, with `db.system`/`db.operation` attributes plus `db.statement` =
   the URL path. Verify: `curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`

@@ -172,10 +172,13 @@
   + `<family>.operation.duration`，status 轴互斥（sum over status = 操作数，无双重
   计数），duration 用显式桶界
 - **事件类节点**（低频但语义重大的状态变迁）：专用计数器按事件本身命名
-  （`lock.lost.total`、`resilience.client.breaker.transitions_total`），不用 total/duration
+  （`lock.lost.total`、`loadbalance.endpoint.suspension.total`），不用 total/duration
   模板——事件不是操作
 - **状态类节点**（需要知道"现在怎样"）：gauge（`messaging.operation.active`、
-  `config.refresh.last_success_timestamp`、断路器状态）
+  `config.refresh.last_success_timestamp`、`resilience.server.bulkhead.usage_ratio`）
+
+已经由调用结果承载的影响不再作为状态重复上报：出站保护拒绝就是调用计数上的
+`resilience.error_type=circuit_open`，不另设断路器 gauge。
 
 维度纪律：无界基数（key、地址、destination 值）永不进指标，只进 span/日志；status
 轴承载结果。纯配置变更类低频事件（如治理策略应用）日志足够，不强求指标。

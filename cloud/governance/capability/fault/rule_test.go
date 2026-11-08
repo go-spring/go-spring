@@ -57,7 +57,7 @@ func TestRule_Matches(t *testing.T) {
 	base := Rule{
 		Name:          "r",
 		Service:       "svc",
-		Action:        matcher.ActionMatch{Prefix: "GET /users"},
+		ActionMatch:   matcher.ActionMatch{Prefix: "GET /users"},
 		MetadataMatch: map[string]matcher.StringMatch{"tenant": {Exact: "acme"}},
 	}
 
@@ -144,8 +144,8 @@ func TestRule_BindsMatchAndAction(t *testing.T) {
 	assert.Number(t, len(c.Rules)).Equal(2)
 	r0 := c.Rules[0]
 	assert.String(t, r0.Service).Equal("gin")
-	assert.String(t, r0.Action.Exact).Equal("GET /users/{id}")
-	assert.String(t, r0.Action.Prefix).Equal("")
+	assert.String(t, r0.ActionMatch.Exact).Equal("GET /users/{id}")
+	assert.String(t, r0.ActionMatch.Prefix).Equal("")
 	assert.String(t, r0.MetadataMatch["tenant"].Exact).Equal("acme")
 	assert.String(t, r0.MetadataMatch["region"].Exact).Equal("cn")
 	assert.Number(t, int(c.Rules[1].Rate)).Equal(0)

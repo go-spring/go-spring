@@ -157,7 +157,7 @@ func isLoggableContentType(ct string) bool {
 // = false) and owns its chain can install the unified observe middleware at a
 // chosen point. See ApplyMiddlewares for the full chain and the manual-mode
 // recipe.
-func Observe(cfg AccessLogConfig) gin.HandlerFunc {
+func Observe(cfg AccessLogConfig) (gin.HandlerFunc, error) {
 	// Build the skip set once at registration; the skip check consults it per
 	// request. applyMiddlewares folds the health endpoint path into cfg.SkipPaths
 	// so liveness/readiness probes don't flood the backends.
@@ -166,11 +166,15 @@ func Observe(cfg AccessLogConfig) gin.HandlerFunc {
 		skip[p] = struct{}{}
 	}
 
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	// The three signal objects are built once at registration and shared across
 	// requests (they hold only per-middleware state - instruments, tracer, config -
 	// never per-request data, so they're concurrency-safe).
 	tracer := newHTTPTracer()
-	metrics := newHTTPMetrics(cfg.Metrics)
+	metrics := newHTTPMetrics(cfg.Metrics, ins)
 	logger := newHTTPAccessLog(cfg)
 
 	return func(c *gin.Context) {
@@ -279,7 +283,7 @@ func Observe(cfg AccessLogConfig) gin.HandlerFunc {
 		}()
 
 		c.Next()
-	}
+	}, nil
 }
 
 // requestFacts bundles the request-side facts Observe derives up front and feeds
@@ -478,36 +482,34 @@ type instrumentSet struct {
 	sseInterval  metric.Float64Histogram
 }
 
-// instruments is the one instrument set this starter uses for the whole
-// process. Resolution is deferred to the first use, not run at package init, so
-// the instruments bind to whichever providers are current then - starter-otel
-// installs them before any middleware runs, but a test may replace them later
-// and a value resolved at init would keep pointing at the old SDK.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this starter's instruments against the meter
+// provider the otel starter installs before any middleware is built. The
+// middleware owns the set, so a failed registration fails server construction
+// instead of silently dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
 	in := &instrumentSet{meter: m}
-	in.duration, _ = m.Float64Histogram(
+	var err error
+	in.duration, err = m.Float64Histogram(
 		"http.server.request.duration",
 		metric.WithDescription("Duration of HTTP server requests"),
 		metric.WithUnit("s"),
 		// OTel HTTP semconv recommended buckets (seconds).
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
-	in.sseCounter, _ = m.Int64Counter(
+	if err != nil {
+		return nil, errutil.Explain(err, "gin: register http.server.request.duration")
+	}
+	in.sseCounter, err = m.Int64Counter(
 		"http.server.sse.events",
 		metric.WithDescription("Number of SSE events streamed by the server"),
 		metric.WithUnit("{event}"),
 	)
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "gin: register http.server.sse.events")
+	}
+	return in, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // activeRequests returns the shared in-flight gauge, creating it on first use.
 func (in *instrumentSet) activeRequests() metric.Int64UpDownCounter {
@@ -559,10 +561,11 @@ func (in *instrumentSet) eventInterval() metric.Float64Histogram {
 // the inflight attribute set) is passed to its methods.
 type httpMetrics struct {
 	activeRequests bool
+	ins            *instrumentSet
 }
 
-func newHTTPMetrics(cfg MetricsConfig) *httpMetrics {
-	return &httpMetrics{activeRequests: cfg.ActiveRequests}
+func newHTTPMetrics(cfg MetricsConfig, ins *instrumentSet) *httpMetrics {
+	return &httpMetrics{activeRequests: cfg.ActiveRequests, ins: ins}
 }
 
 // active returns the in-flight gauge this middleware records through: the shared
@@ -576,7 +579,7 @@ func (m *httpMetrics) active() metric.Int64UpDownCounter {
 	if !m.activeRequests {
 		return metricnoop.Int64UpDownCounter{}
 	}
-	return instruments().activeRequests()
+	return m.ins.activeRequests()
 }
 
 // Begin bumps the in-flight gauge (+1) and returns the attribute set the matching
@@ -620,7 +623,7 @@ func (m *httpMetrics) End(ff finalizeFacts, inflight metric.MeasurementOption) {
 	if mf.wasSSE {
 		durAttrs = append(durAttrs, attribute.String(attrHTTPResponseStream, "sse"))
 	}
-	instruments().duration.Record(ff.ctx, time.Since(ff.start).Seconds(), metric.WithAttributes(durAttrs...))
+	m.ins.duration.Record(ff.ctx, time.Since(ff.start).Seconds(), metric.WithAttributes(durAttrs...))
 	if !mf.skipped {
 		m.active().Add(ff.ctx, -1, inflight)
 	}

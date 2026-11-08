@@ -83,6 +83,9 @@ type Job struct {
 	run     func(ctx context.Context) error
 	trigger Trigger
 	opts    []Option
+
+	// ins is this job's instrument set, resolved at construction.
+	ins *instrumentSet
 }
 
 // NewJob builds a [Job]. It returns an error on an empty name, a nil run
@@ -99,7 +102,11 @@ func NewJob(name string, trigger Trigger, run func(ctx context.Context) error, o
 	if trigger == nil {
 		return nil, errutil.Explain(nil, "scheduling: job %q has no trigger; pass FixedRate, FixedDelay, After or ParseCron", name)
 	}
-	return &Job{name: name, trigger: trigger, run: run, opts: opts}, nil
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
+	return &Job{name: name, trigger: trigger, run: run, opts: opts, ins: ins}, nil
 }
 
 // Name returns the job's name: the scheduler's task name, and the default
@@ -253,6 +260,10 @@ type event struct {
 	// dropped it) or "lock" (another replica held the lock, or acquiring it
 	// failed).
 	Reason string
+
+	// ins is the job's instrument set, supplied by the task that reports the
+	// fire.
+	ins *instrumentSet
 }
 
 // NewScheduler returns a [Scheduler]. Nothing runs until Start.
@@ -474,7 +485,7 @@ func (t *task) dispatch(ctx context.Context, scheduled time.Time) {
 		if t.running {
 			if t.queued {
 				t.mu.Unlock()
-				recordSkip(scheduled, t.job.name, "policy")
+				recordSkip(scheduled, t.job.name, "policy", t.job.ins)
 				return
 			}
 			t.queued, t.queuedAt = true, scheduled
@@ -501,7 +512,7 @@ func (t *task) dispatch(ctx context.Context, scheduled time.Time) {
 		t.mu.Lock()
 		if t.running {
 			t.mu.Unlock()
-			recordSkip(scheduled, t.job.name, "policy")
+			recordSkip(scheduled, t.job.name, "policy", t.job.ins)
 			return
 		}
 		t.running = true
@@ -571,12 +582,12 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 		}
 		l, ok, err := t.opts.Locker.TryAcquire(ctx, key, opts...)
 		if err != nil {
-			record(event{Name: t.job.name, Scheduled: scheduled, Err: err, Skipped: true, Reason: "lock"})
+			record(event{Name: t.job.name, Scheduled: scheduled, Err: err, Skipped: true, Reason: "lock", ins: t.job.ins})
 			return
 		}
 		if !ok {
 			// Another replica holds the lock; this replica skips this fire.
-			recordSkip(scheduled, t.job.name, "lock")
+			recordSkip(scheduled, t.job.name, "lock", t.job.ins)
 			return
 		}
 		// An unlock failure is not the run's outcome (the run already finished
@@ -616,6 +627,7 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 		Start:     start,
 		Duration:  end.Sub(start),
 		Err:       err,
+		ins:       t.job.ins,
 	})
 }
 

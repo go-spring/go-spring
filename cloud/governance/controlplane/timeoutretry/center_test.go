@@ -29,27 +29,27 @@ import (
 )
 
 const doc = `
-rules[0].service=redis:cache
-rules[0].action.exact=-
-rules[0].timeout=100ms
-rules[0].retry.max-retries=2
+services[0].service=redis:cache
+services[0].rules[0].action.exact=-
+services[0].rules[0].timeout=100ms
+services[0].rules[0].retry.max-retries=2
 
-rules[1].service=redis:cache
-rules[1].action.prefix=GET /slow
-rules[1].match.tenant.exact=core
-rules[1].timeout=2s
+services[0].rules[1].action.prefix=GET /slow
+services[0].rules[1].match.tenant.exact=core
+services[0].rules[1].timeout=2s
 `
 
 func TestDocumentBinds(t *testing.T) {
-	d, err := source.Parse[resilience.LimitsSettings]("timeoutretry.properties", []byte(doc), "")
+	d, err := source.Parse[resilience.TimeoutRetrySettings]("timeoutretry.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	assert.Number(t, len(d.Rules)).Equal(2)
-	assert.That(t, d.Rules[0].Action.Exact).Equal("-")
-	assert.That(t, d.Rules[0].Timeout).Equal(100 * time.Millisecond)
-	assert.Number(t, d.Rules[0].Retry.MaxRetries).Equal(2)
-	assert.That(t, d.Rules[1].Action.Prefix).Equal("GET /slow")
-	assert.That(t, d.Rules[1].Timeout).Equal(2 * time.Second)
+	assert.Number(t, len(d.Services)).Equal(1)
+	assert.Number(t, len(d.Services[0].Rules)).Equal(2)
+	assert.That(t, d.Services[0].Rules[0].ActionMatch.Exact).Equal("-")
+	assert.That(t, d.Services[0].Rules[0].Timeout).Equal(100 * time.Millisecond)
+	assert.Number(t, d.Services[0].Rules[0].Retry.MaxRetries).Equal(2)
+	assert.That(t, d.Services[0].Rules[1].ActionMatch.Prefix).Equal("GET /slow")
+	assert.That(t, d.Services[0].Rules[1].Timeout).Equal(2 * time.Second)
 }
 
 // TestDocumentScopeRules pins the binding boundary: conf.Bind runs the
@@ -57,35 +57,45 @@ func TestDocumentBinds(t *testing.T) {
 // interface rule where the document is read. The rule matrix itself lives in
 // resilience's own tests.
 func TestDocumentScopeRules(t *testing.T) {
-	_, err := source.Parse[resilience.LimitsSettings]("timeoutretry.properties", []byte(`
-rules[0].service=redis:cache
-rules[0].action.prefix=GET /
-rules[0].retry.retry-budget=4
+	_, err := source.Parse[resilience.TimeoutRetrySettings]("timeoutretry.properties", []byte(`
+services[0].service=redis:cache
+services[0].rules[0].action.prefix=GET /
+services[0].rules[0].retry.retry-budget=4
 `), "")
 	assert.Error(t, err).NotNil()
 }
 
 func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
-	d, err := source.Parse[resilience.LimitsSettings]("timeoutretry.properties", []byte(doc), "")
+	d, err := source.Parse[resilience.TimeoutRetrySettings]("timeoutretry.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
 	}
 
-	// The service label resolves the service-level rule.
-	assert.That(t, mgr.LimitsFor("redis:cache").Timeout).Equal(100 * time.Millisecond)
+	// The service label resolves the service-level rule. The policy is observed
+	// the way a client sees it: through a call's record.
+	rec := new(chain.Recorder)
+	assert.Error(t, mgr.Wrap("redis:cache", nil).Execute(
+		context.Background(), chain.Operation{Service: "redis:cache"}, rec,
+		func(context.Context) error { return nil })).Nil()
+	assert.That(t, rec.Timeout).Equal(100 * time.Millisecond)
 
 	// The interface rule wins for a matching call.
-	got := mgr.Resolve(chain.Operation{
-		Service: "redis:cache",
-		Request: chain.Request{Action: "GET /slow/x", Metadata: map[string]string{"tenant": "core"}},
-	}).Limits.Timeout
-	assert.That(t, got).Equal(2 * time.Second)
+	rec = new(chain.Recorder)
+	assert.Error(t, mgr.Wrap("redis:cache", nil).Execute(
+		context.Background(), chain.Operation{
+			Service: "redis:cache",
+			Request: chain.Request{Action: "GET /slow/x", Metadata: map[string]string{"tenant": "core"}},
+		}, rec, func(context.Context) error { return nil })).Nil()
+	assert.That(t, rec.Timeout).Equal(2 * time.Second)
 }

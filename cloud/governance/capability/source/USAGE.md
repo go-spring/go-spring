@@ -458,8 +458,8 @@ printf '' > conf/governance.yaml                              # EMPTY: no spring
 # log: governance file source: reload conf/governance.yaml failed (keeping last good config): ...
 ```
 
-Turning governance off is publishing a document that configures nothing — empty `client`/`server`, a
-zero `Default`, no rules — yet still carries one `spring.governance.*` key (e.g.
+Turning governance off is publishing a document that configures nothing — empty `client`/`server`, no
+rules — yet still carries one `spring.governance.*` key (e.g.
 `spring.governance.client.resilience.timeout=1s`); never an emptied file.
 
 ### 4.2 Fault drill, no restart
@@ -535,12 +535,12 @@ is a restart.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Everything configured, nothing governed | No rule matches the call's label, or the resolved `Default` is all-zero | Give the service a matching rule (or a non-zero `Default`) — there is no master switch. |
+| Everything configured, nothing governed | No rule matches the call's label | Give the service a matching rule — there is no master switch. |
 | Rules file edited, policy never changes | Wrong path; or the file is a symlink target the dir-watch misses (rare) | Check the startup-armed path; check the log tag `governance` for `reload ... failed`. |
 | `reload ... failed (keeping last good config)` in logs | Truncated/emptied document (no `spring.governance.*` key) or syntax error | Fix the document; "off" is a document that configures nothing yet still carries a `spring.governance.*` key, not an empty file. |
 | Startup error `governance source: ... contains no spring.governance.* keys` | First load of an empty document | Same as above, at construction time — deliberate. |
 | Custom Source bean silently ignored | Missing `Export(gs.As[source.Source[governance.Config]]())` | Add the Export — without it the bean is invisible to interface injection. |
-| Per-service rule killed the default's retries | Matched rule fully REPLACES default (no merge) | Restate every knob you want kept in the rule. |
+| A specific rule killed a broader rule's retries | The most specific matching rule fully REPLACES the less specific one (no merge) | Restate every knob you want kept in the rule. |
 | Fault `max-duration` raised but fire stays out | Lengthening does not un-trip an expired fire | The window is measured from the rule's first affected call and survives config pushes; re-arm by changing the rule identity (e.g. its position) or restarting. |
 | RunTest asserts on governance, sees disabled center | RunTest clones beans; the center you build or configure lives outside the clone | Inject the authority bean your code takes, or build a center with `governance.NewCenter` in the test. |
 | A Rooter bean starts before governance is armed | Rooter-vs-Rooter order is unspecified | Inject the center as a constructor dependency — gs wires the dependents after it, so they always see a live center. |

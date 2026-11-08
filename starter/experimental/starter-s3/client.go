@@ -93,7 +93,7 @@ type Client struct {
 // [resilience.Manager]: [governance.Runtime.ResilienceClient] is required, so a nil
 // center is a construction error — never a graceful downgrade.
 //
-// The manager's ExecutorFor resolves its backing executor lazily, on each
+// Runtime.ExecutorFor resolves the executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, center *governance.Runtime) *Client {

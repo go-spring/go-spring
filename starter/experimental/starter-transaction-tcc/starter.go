@@ -112,7 +112,7 @@ var recoverOnStart = gs.OnProperty("spring.transaction.tcc.recover-on-start").Ha
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
 // TCC-log Store and, when tracing is enabled, the otel observer.
-func newCoordinator(c Config, store tcc.Store) tcc.Coordinator {
+func newCoordinator(c Config, store tcc.Store) (tcc.Coordinator, error) {
 	opts := []tcc.Option{tcc.WithStore(store)}
 	if c.Tracing {
 		opts = append(opts, tcc.WithObserver(transaction.TccObserver{}))

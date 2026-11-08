@@ -16,9 +16,8 @@
 
 // executor.go is the bundled "default" engine for OUTBOUND calls and the
 // organs only it composes: the client executor (timeout + retry
-// around the shared rate-limit and circuit-breaker organs), the retry
-// classification and backoff that pace its attempts, and the [Fallback]
-// degradation helper. Every capability the outbound side offers — rate
+// around the shared rate-limit and circuit-breaker organs) and the backoff
+// that paces its attempts. Every capability the outbound side offers — rate
 // limiting, circuit breaking, isolation, retry, timeout — is composed here.
 //
 // The breaker and the rate budget are not implemented here: they are the
@@ -36,34 +35,35 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
-
 	"go-spring.org/cloud/governance/capability/circuitbreaker"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/timeutil"
 )
 
-// warnedNonIdempotent records the services already told that a configured retry
-// was dropped because their operations are non-idempotent, so the warning is one
-// per service rather than one per call.
-var warnedNonIdempotent sync.Map
-
-// defaultExecutor protects ONE service — the one it was built for — so that a
-// misbehaving downstream does not trip protection for any other.
+// Executor is the ONE outward type of this package: the resilience stage of a
+// chain. It owns the rest of the chain (next) and the per-label protection state
+// it runs on, so one label is one scope — build it once and hold it. The manager
+// keeps the object for the process (a client holds it for life), so a push moves
+// the state inside it, never the shell.
 //
-// # A stable shell over three replaceable generations
+// next nil means the attempt is the call itself: [chain.Next] invokes fn. A
+// non-nil next is what puts a layer INSIDE the retry loop — the loop calls it
+// once per attempt — which is how the composition root places fault injection
+// below governance without wrapping the whole stack from outside.
 //
-// The executor is the object the client holds for life, so it is never rebuilt.
-// What it MATERIALIZES is: the per-key breaker table, the per-key rate-budget
-// table, and the label-level retry budget — each following its OWN generation.
-// [defaultExecutor.snapshot] compares each organ's generation against the one
-// its manager resolves and replaces only the organ whose knobs moved, so a
+// # Three independently replaceable organs
+//
+// What the executor MATERIALIZES is: the per-key breaker table, the per-key
+// rate-budget table, and the label-level retry budget. The manager owns the
+// push: [Manager.ApplyBreaker] and [Manager.ApplyRateLimit] reach into the
+// registered executors and move only the organ whose configuration moved, so a
 // breaker change leaves a live rate budget counting and vice versa. Nothing
-// about a generation survives into the next one, which is what lets a config
-// change be a plain construction instead of a per-organ merge of "what can be
-// kept".
+// about a replaced breaker table survives into the next one, which is what lets
+// a config change be a plain construction instead of a per-organ merge of "what
+// can be kept".
 //
 // A call already in flight when a swap happens keeps the organs it loaded: its
 // outcome lands on organs nobody will consult again, which costs one lost sample
@@ -71,33 +71,33 @@ var warnedNonIdempotent sync.Map
 //
 // # State is per key
 //
-// Protective state is partitioned by the identity key the manager resolves (see
-// [CallPolicy.Key]): a matched rule's identity, or the service name under the
-// default policy. A call governed by one rule gets its own breaker and rate
-// budget, so a downstream that misbehaves for one traffic class cannot trip
-// another's protection. Metadata selects a rule but never becomes a key — a key must stay
+// Protective state is partitioned by the identity the resolver produces: a
+// matched rule's identity — its index for the breaker, its selector-derived key
+// ([rateKey]) for a rate limit. A call governed by one rule gets its own breaker
+// and rate budget, so a downstream that misbehaves for one traffic class cannot
+// trip another's protection. Metadata selects a rule but never becomes a key — a key must stay
 // bounded by the config. The retry budget is the one organ that is NOT per key:
 // it is a per-label guard by design.
-type defaultExecutor struct {
+//
+// The Mutex makes this type non-copyable; it is only ever used through a pointer.
+type Executor struct {
 	service string
 
-	// localLimiters holds one counter per rate key, built by the factory the
-	// key's rule names. It lives on the executor, not on a policy generation, so
-	// a configuration change updates the existing counter (the rule travels with
+	// localLimiters holds one counter per rate key, built by the limiterFactory the
+	// key's rule names. It lives on the executor, not on a pushed document, so a
+	// configuration change updates the existing counter (the rule travels with
 	// every call) instead of replacing its state. A change of limiter KIND
-	// replaces the entry, because the factory (and so the state shape) changed.
+	// replaces the entry, because the limiterFactory (and so the state shape) changed.
 	localLimiters sync.Map // key -> *limiterEntry
-	rateGen       atomic.Uint64
 
-	// The breaker and retry organs are materialized per generation: a change to
-	// one organ's knobs leaves the others' state untouched. An atomic pointer
-	// keeps the fast path — generation unchanged, key already built — entirely
-	// lock-free.
+	// The breaker and retry organs are materialized by the manager's push: a
+	// change to one organ's knobs leaves the others' state untouched. An atomic
+	// pointer keeps the call path — key already built — lock-free.
 	breaker atomic.Pointer[breakerSlot]
 	retry   atomic.Pointer[retrySlot]
 
-	// mu serializes materialization: the first build of a generation and the
-	// first build of a key. It is never held on the fast path, and the manager is
+	// mu serializes materialization — the first build of a key and the manager's
+	// slot swap. It is never held on the fast path, and the manager is
 	// never called under it.
 	mu sync.Mutex
 
@@ -106,20 +106,15 @@ type defaultExecutor struct {
 	// of its own. It must NOT call back into this executor.
 	mgr *Manager
 
-	// obsMu guards the observer registration lifecycle only: a Close racing the
-	// first call's registration is the one real race on that state.
-	obsMu       sync.Mutex
-	observeOnce sync.Once
-	observeReg  metric.Registration
-	closed      bool
+	// next is the rest of the chain this stage delegates to.
+	next chain.Executor
 }
 
-// breakerSlot is one generation of the breaker table: the breakers of every key
-// this executor has resolved under one breaker generation. The table fills
-// lazily; a generation change replaces the whole slot, so state built here never
-// migrates to another generation and another generation's state never leaks in.
+// breakerSlot is the breaker table the executor currently serves: a breaker per
+// key, filled lazily on first use. A push that moves the label's breaker content
+// replaces the whole slot, so state built under one configuration never migrates
+// into the next and the next configuration's state never leaks in.
 type breakerSlot struct {
-	gen  uint64
 	keys sync.Map // key -> *breakerCell
 }
 
@@ -127,19 +122,25 @@ type breakerSlot struct {
 // *Breaker in a sync.Map would be indistinguishable from a missing entry).
 type breakerCell struct{ b *circuitbreaker.Breaker }
 
-// retrySlot is the label-level retry budget. It is keyed by its declared
-// capacity rather than a generation: the capacity IS the whole configuration, so
-// a change is visible as a different capacity.
+// retrySlot is the label-level retry budget. The channel's capacity IS the
+// declared budget, so no separate copy of the value is stored: a change is
+// visible as a different cap.
 type retrySlot struct {
-	capacity int
-	sem      chan struct{}
+	sem chan struct{}
 }
 
-// organs is the materialized protection one call runs under.
-type organs struct {
-	breaker *circuitbreaker.Breaker // nil = the stage is off
-	rate    ratelimit.Limiter       // nil = no rate limit configured
-	retry   chan struct{}           // nil = no budget
+// callPlan is one call's governance plan: the values this call reads, the knobs
+// its gates apply, and the handles that enforce them. Everything here is ready
+// to use — matching, materialization and the retry merge happen together in
+// [Executor.planFor].
+type callPlan struct {
+	timeout    time.Duration
+	retry      Retry                   // the effective schedule; the budget lives in budget, not here
+	attempts   int                     // retry.MaxRetries + 1
+	breaker    *circuitbreaker.Breaker // nil = the breaker stage is off
+	rate       ratelimit.Limiter       // nil = no rate limit configured
+	ratePolicy ratelimit.Policy        // what the limiter charges against
+	budget     chan struct{}           // nil = no retry budget
 }
 
 // limiterEntry binds one counter to the kind that built it; a change of kind
@@ -149,101 +150,103 @@ type limiterEntry struct {
 	limiter ratelimit.Limiter
 }
 
-// newExecutor builds the executor for service. Nothing is materialized
-// here — not even the retry budget, which now belongs to the first generation:
-// the organs are built on first use by [defaultExecutor.snapshot]. The
-// executor's own state observer registers on that first call too (see
-// observe.go), because the global meter provider may be installed after this
-// returns.
-func newExecutor(service string, m *Manager) *defaultExecutor {
-	return &defaultExecutor{service: service, mgr: m}
-}
-
-// callPolicy asks the manager what this call runs under. The executor holds no
-// configuration: every call reads the manager's current snapshot.
-func (e *defaultExecutor) callPolicy(op chain.Operation) CallPolicy {
-	// The executor knows the service it was built for; a call that names none must
-	// still resolve against that service's rules, so fill it in before resolving —
-	// otherwise the manager sees an empty service and every undeclared call would
-	// fall to Default.
-	//
-	// This is a fallback for old/direct callers, NOT a substitute for stating the
-	// service: op is a local COPY (the declaration travels by value), so the fill
-	// is invisible to every layer above this executor — the fault layer among them
-	// — and a client that leaves it blank will not match their service-scoped
-	// rules. Clients are expected to name the service on the operation they build.
-	if op.Service == "" {
-		op.Service = e.service
-	}
-	// Resolve OUTSIDE the lock: the manager reads its published snapshot
-	// lock-free, and calling it while holding e.mu would nest a call-path lock
-	// inside one the manager's build path takes.
-	return e.mgr.Resolve(op)
-}
-
-// snapshot resolves the call and materializes every organ it needs, each from
-// its own capability's generation. Deferring the build to the first call costs
-// nothing to composition: an organ is built from its capability's policy alone,
-// and the executor's own state observer reads whatever generations are current
-// at collection time.
+// Wrap returns service's resilience node with next as the rest of the chain. The
+// node owns its protection state: one label is one protection scope, so the
+// caller must build it once and hold it.
 //
-// The fast path — generation unchanged, key already built — is entirely
-// lock-free: one atomic load per organ plus one table lookup. The lock is taken
-// only to materialize, and a materialization re-checks under it, so a key is
-// built exactly once per generation however many calls race onto it.
-func (e *defaultExecutor) snapshot(op chain.Operation) (CallPolicy, organs) {
-	c := e.callPolicy(op)
-	// Collect counters whose rule disappeared before deciding whether this call
-	// needs one: a generation that turns the stage OFF must still prune.
-	if e.rateGen.Load() != c.Rate.Gen {
-		e.pruneLocalLimiters(c.Rate.Gen)
+// The executor registers with the manager, which is how a later push reaches it.
+// Registration happens at wiring; pushes run on the source loop afterwards.
+//
+// The executor publishes no state of its own: what an operator needs to know
+// about protection is carried by the outcome of the calls it governs — a
+// refusal is a call whose error names the gate — so there is no second series
+// to keep in step with the call plane.
+func (m *Manager) Wrap(service string, next chain.Executor) *Executor {
+	e := &Executor{service: service, mgr: m, next: next}
+	e.breaker.Store(&breakerSlot{})
+	m.executors[e] = struct{}{}
+	return e
+}
+
+// Close drops this executor from its manager's registration table and closes the
+// part of the chain it owns. It runs at destroy, after the source loops have
+// stopped, so a later push cannot reach this shell.
+func (e *Executor) Close() error {
+	delete(e.mgr.executors, e)
+	if e.next == nil {
+		return nil
 	}
-	var rate ratelimit.Limiter
-	if c.Rate.Policy.RateLimit > 0 {
-		rate = e.rateLimiter(c.Rate)
+	return e.next.Close()
+}
+
+// planFor answers, for ONE call, which policy applies, which state handles
+// enforce it, and the retry node — and attempt count — the call runs under. The
+// manager only publishes: matching depends on the operation, so it happens here,
+// together with the first-use materialization of the organs.
+//
+// Timeout and retry come from the policy document alone; a call cannot declare
+// them. The caller keeps only its context deadline, which can tighten the
+// policy's budget but never extend it.
+//
+// The fast path — keys already built — is entirely lock-free: one atomic load per
+// capability plus one table lookup. The lock is taken only to materialize, and a
+// materialization re-checks under it, so a key is built exactly once however many
+// calls race onto it.
+func (e *Executor) planFor(op chain.Operation) callPlan {
+	trs := e.mgr.timeoutRetrySettings()
+	tr, _ := trs.findRule(op)
+	br, brOn := e.mgr.breakerSettings().findRule(op)
+	rr, rateOn := e.mgr.rateLimitSettings().findRule(op)
+
+	plan := callPlan{
+		timeout:  tr.Timeout,
+		retry:    tr.Retry,
+		attempts: tr.Retry.MaxRetries + 1,
+		budget:   e.retryBudget(trs.labelBudget(op.Service)),
 	}
-	return c, organs{
-		breaker: e.breakerFor(c.Breaker),
-		rate:    rate,
-		retry:   e.retryBudget(c.LabelLimits.Retry.RetryBudget),
+	if brOn {
+		plan.breaker = e.loadBreaker(ruleKey(op.Service, br.ActionMatch), br)
+	}
+	if rateOn && rr.Policy.RateLimit > 0 {
+		plan.rate = e.rateLimiter(ruleKey(op.Service, rr.ActionMatch), rr)
+		plan.ratePolicy = rr.Policy
+	}
+	return plan
+}
+
+// ruleKey is the state key of a rule: derived from its SELECTOR, not its index,
+// so reordering a document never moves a breaker or a rate budget, and two
+// replicas serving different document versions still agree on the key. The
+// service-scope key is the bare label.
+func ruleKey(service string, m matcher.ActionMatch) string {
+	switch {
+	case m.Exact == matcher.ServiceScopeAction:
+		return service
+	case m.Exact != "":
+		return service + "#exact:" + m.Exact
+	default:
+		return service + "#prefix:" + m.Prefix
 	}
 }
 
-// breakerFor returns this call's breaker, materializing its generation and key
-// on first use. The fast path is one atomic load plus one table lookup; the lock
-// is taken only to materialize, and a materialization re-checks under it, so a
-// key is built exactly once per generation however many calls race onto it.
-func (e *defaultExecutor) breakerFor(r BreakerRef) *circuitbreaker.Breaker {
+// loadBreaker returns this call's breaker, materializing its key on first use.
+// The fast path is one atomic load plus one table lookup; the lock is taken only
+// to materialize, and a materialization re-checks under it, so a key is built
+// exactly once however many calls race onto it.
+func (e *Executor) loadBreaker(key string, r BreakerRule) *circuitbreaker.Breaker {
 	st := e.breaker.Load()
-	if st == nil || st.gen != r.Gen {
-		st = e.newBreakerSlot(r.Gen)
-	}
-	if v, ok := st.keys.Load(r.Key); ok {
+	if v, ok := st.keys.Load(key); ok {
 		return v.(*breakerCell).b
 	}
-	return e.newBreaker(st, r)
-}
 
-func (e *defaultExecutor) newBreakerSlot(gen uint64) *breakerSlot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if st := e.breaker.Load(); st != nil && st.gen == gen {
-		return st // built while we waited
-	}
-	st := &breakerSlot{gen: gen}
-	e.breaker.Store(st)
-	return st
-}
-
-func (e *defaultExecutor) newBreaker(st *breakerSlot, r BreakerRef) *circuitbreaker.Breaker {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if v, ok := st.keys.Load(r.Key); ok {
-		return v.(*breakerCell).b
+	if v, ok := st.keys.Load(key); ok {
+		return v.(*breakerCell).b // built while we waited
 	}
 	cell := &breakerCell{}
-	if r.Policy.Enabled() {
-		b, err := circuitbreaker.New(r.Policy.Spec())
+	if r.BreakerPolicy.Enabled() {
+		b, err := circuitbreaker.New(r.BreakerPolicy.Spec())
 		if err != nil {
 			// The policy is validated before publication; reaching this means the
 			// validator and the materializer drifted.
@@ -251,99 +254,102 @@ func (e *defaultExecutor) newBreaker(st *breakerSlot, r BreakerRef) *circuitbrea
 		}
 		cell.b = b
 	}
-	st.keys.Store(r.Key, cell)
+	st.keys.Store(key, cell)
 	return cell.b
 }
 
-// rateLimiter returns the counter this call charges, built by the factory from
+// resetBreakerIfChanged replaces the breaker table with an empty one when this
+// label's breaker content moved between prev and next. The comparison is by
+// CONTENT, not by the fact that a push ran, so a push that changes nothing keeps
+// the live state. A call that already loaded the old slot keeps it until it
+// returns.
+func (e *Executor) resetBreakerIfChanged(prev, next *BreakerSettings) {
+	if breakerGen(e.service, prev) == breakerGen(e.service, next) {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.breaker.Store(&breakerSlot{})
+}
+
+// rateLimiter returns the counter this call charges, built by the limiterFactory from
 // the kind its rule names. The counter lives for the executor's lifetime, not
-// for a policy generation, so a rule change updates it in place (numerics travel
-// per call); a change of KIND replaces it, because the factory changed. A
-// generation change also collects counters whose rule disappeared.
-func (e *defaultExecutor) rateLimiter(r RateRef) ratelimit.Limiter {
+// for a pushed document, so a rule change updates it in place (numerics travel
+// per call); a change of KIND replaces it, because the limiterFactory changed.
+// Counters whose rule disappeared are collected by the manager's push.
+func (e *Executor) rateLimiter(key string, r RateLimitRule) ratelimit.Limiter {
 	kind := r.Policy.Limiter
-	if v, ok := e.localLimiters.Load(r.Key); ok {
+	if v, ok := e.localLimiters.Load(key); ok {
 		old := v.(*limiterEntry)
 		if old.kind == kind {
 			return old.limiter
 		}
 	}
-	lim, err := e.mgr.limiters.NewLimiter(kind, e.service)
+	// The scope is the RULE identity, not the label: two rules of one service
+	// keep independent budgets on any backend (a shared store included). The
+	// service-scope rule's key IS the label, so the common case stays stable
+	// across document edits.
+	lim, err := e.mgr.limiterFactory.NewLimiter(kind, key)
 	if err != nil {
 		// Apply built this kind through the same call; a failure now is the
 		// backend's own.
 		panic(err)
 	}
 	entry := &limiterEntry{kind: kind, limiter: lim}
-	actual, _ := e.localLimiters.LoadOrStore(r.Key, entry)
+	actual, _ := e.localLimiters.LoadOrStore(key, entry)
 	if old, ok := actual.(*limiterEntry); ok && old.kind != kind {
-		e.localLimiters.Store(r.Key, entry)
+		e.localLimiters.Store(key, entry)
 		return lim
 	}
 	return actual.(*limiterEntry).limiter
 }
 
-// pruneLocalLimiters drops counters whose keys are no longer part of the label's
-// rate rules. A call that already holds a dropped counter keeps using it until
-// it returns; the next call rebuilds a fresh one if the key is active again.
-func (e *defaultExecutor) pruneLocalLimiters(gen uint64) {
+// deleteUnusedLimiters drops counters whose keys the label no longer resolves to
+// under s — one key per rule naming it. It is idempotent and never touches an
+// active key, so a push that changes nothing leaves every live budget counting.
+// A call that already holds a dropped counter keeps using it until it returns;
+// the next call rebuilds a fresh one if the key is active again.
+func (e *Executor) deleteUnusedLimiters(s RateLimitSettings) {
+	active := make(map[string]struct{})
+	for i := range s.Services {
+		g := &s.Services[i]
+		if g.Service != e.service {
+			continue
+		}
+		for j := range g.Rules {
+			active[ruleKey(e.service, g.Rules[j].ActionMatch)] = struct{}{}
+		}
+		break // first group naming the label wins, as in findRule
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.rateGen.Load() == gen {
-		return
-	}
-	if active := e.mgr.activeRateKeys(e.service); active != nil {
-		e.localLimiters.Range(func(k, _ any) bool {
-			if _, ok := active[k.(string)]; !ok {
-				e.localLimiters.Delete(k)
-			}
-			return true
-		})
-	}
-	e.rateGen.Store(gen)
+	e.localLimiters.Range(func(k, _ any) bool {
+		if _, ok := active[k.(string)]; !ok {
+			e.localLimiters.Delete(k)
+		}
+		return true
+	})
 }
 
-// retryBudget returns the label-level retry budget, rebuilt only when its
-// declared capacity changes. RetryBudget is process-level state read from the
-// LABEL-level policy — a per-call node's budget is deliberately ignored, since an
-// unshared budget would not be a process-wide cap.
-func (e *defaultExecutor) retryBudget(capacity int) chan struct{} {
-	if st := e.retry.Load(); st != nil && st.capacity == capacity {
+// retryBudget returns the label-level retry budget, rebuilt only when the
+// declared capacity changes. The capacity is read from the raw limit each call;
+// the channel is the only state kept, and its cap is the budget itself.
+func (e *Executor) retryBudget(capacity int) chan struct{} {
+	if st := e.retry.Load(); st != nil && cap(st.sem) == capacity {
 		return st.sem
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if st := e.retry.Load(); st != nil && st.capacity == capacity {
+	if st := e.retry.Load(); st != nil && cap(st.sem) == capacity {
 		return st.sem
 	}
-	st := &retrySlot{capacity: capacity}
+	var sem chan struct{}
 	if capacity > 0 {
-		st.sem = make(chan struct{}, capacity)
+		sem = make(chan struct{}, capacity)
 	}
+	st := &retrySlot{sem: sem}
 	e.retry.Store(st)
-	return st.sem
-}
-
-// releaseRetryBudget returns a held retry-budget slot to the channel it was
-// taken from (no-op for nil/-1). Releasing into the CAPTURED channel — not
-// whichever budget the executor is on now — is what makes a generation swap
-// safe mid-flight: a call that took a slot from the old generation's budget
-// returns it there, and the swap stays race-free.
-func releaseRetryBudget(sem chan struct{}, held int) {
-	if sem == nil || held < 0 {
-		return
-	}
-	<-sem
-}
-
-// CallerAborted reports whether err is the CALLER's own cancellation rather
-// than the downstream's verdict. Only the parent context counts: a timeout
-// derived from the policy budget means the unit did not serve within the budget
-// and remains a failure, while a caller that walked away says nothing about the
-// unit's health and must carry no verdict. Engines use it to exclude such a call
-// from the breaker's sample.
-func CallerAborted(ctx context.Context, err error) bool {
-	return ctx.Err() != nil && errors.Is(err, ctx.Err())
+	return sem
 }
 
 // refusedRound records a gate's verdict as the call's round. A refusal IS a
@@ -368,144 +374,83 @@ func refusedRound(rec *chain.Recorder, err error) {
 	})
 }
 
-func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
-	e.readyObserve()
-	c, org := e.snapshot(op)
+// Execute is the whole pipeline, in blocks:
+//
+//	deadline  → retry plan → rate gate → breaker gate → attempts → settlement
+//
+// It is the only outward seam. Everything it touches is either per-composition
+// (next) or per-label state held by the executor itself.
+func (e *Executor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	plan := e.planFor(op)
 
-	// Record the policy this call ran under — the rule that was matched and the
-	// effective knobs it resolved to, after a hot-fix override, not the compiled
-	// defaults — so "what governed this call" is answerable from the call's own
-	// record.
-	rec.Timeout = c.Limits.Timeout
+	// What governed this call, for the record.
+	rec.Timeout = plan.timeout
 
-	// Timeout bounds the whole call — every round and the backoff between them —
-	// as ONE deadline applied here and inherited by everything below. It only
-	// tightens the caller's own context; there is no separate per-round bound, so
-	// the rounds share this budget rather than each getting their own.
+	// One deadline bounds every round and the backoff between them; it only
+	// tightens the caller's own context. A zero budget leaves the context
+	// untouched.
 	callCtx := ctx
-	if c.Limits.Timeout > 0 {
-		var cancel context.CancelFunc
-		callCtx, cancel = context.WithTimeout(ctx, c.Limits.Timeout)
-		defer cancel()
+	cancel := func() {}
+	if plan.timeout > 0 {
+		callCtx, cancel = context.WithTimeout(ctx, plan.timeout)
+	}
+	defer cancel()
+
+	// Rate limit: every attempt is a real downstream request. The first charge
+	// runs before the breaker gate so a limited call never spends a half-open
+	// trial permit.
+	if err := chargeRate(callCtx, plan.rate, plan.ratePolicy); err != nil {
+		refusedRound(rec, err)
+		return err
 	}
 
-	// eff is the retry node this call runs under: the policy's node when the
-	// governance center pushed a schedule (it wins whole — a pushed value is how
-	// an operator hot-fixes a live incident), otherwise the call's own node. When
-	// neither declares one there is no retry and the call runs exactly once.
-	eff := EffectiveRetry(c.Limits.Retry, op.Retry)
-	attempts := eff.MaxRetries + 1
-	// A non-idempotent call is run once whatever the schedule says: its retry
-	// would repeat the side effect — a second email, a second published message —
-	// and no downstream stage can undo that. The client declares it on the call's
-	// retry node (see [chain.Retry.NonIdempotent]); dropping the retry here
-	// is the framework acting on that declaration, and it says so once per target,
-	// because a silently ignored rule is worse than one that was never written.
-	if attempts > 1 {
-		if eff.NonIdempotent {
-			attempts = 1
-			if _, seen := warnedNonIdempotent.LoadOrStore(e.service, struct{}{}); !seen {
-				log.Warn(ctx, log.TagAppDef,
-					"resilience: retries suppressed — operations are non-idempotent, "+
-						"so a retry would repeat the side effect rather than the attempt",
-					log.String("service", e.service))
-			}
-		}
+	// Breaker: admits the LOGICAL call once and settles exactly one sample on
+	// every return path, so a retried call cannot amplify one failure into N. A
+	// nil breaker admits everything.
+	var (
+		err        error
+		attemptDur time.Duration
+		ran        bool
+		permit     circuitbreaker.Permit
+	)
+	admitted := true
+	if plan.breaker != nil {
+		permit, admitted = plan.breaker.Allow()
 	}
-	var err error
-	var attemptDur time.Duration // duration of the last run attempt, for slow-call counting
-	ran := false                 // whether at least one attempt actually invoked fn this call
-	budgetHeld := -1             // attempt index currently holding a retry-budget slot
-	var budgetSem chan struct{}  // the channel that slot was taken from
-
-	// The rate-limit stage charges every attempt — each attempt is a real
-	// downstream request the budget exists to bound. The first charge happens
-	// before the breaker gate so a rate-limited call never spends a half-open
-	// trial permit. A store failure is not a budget decision: the call proceeds
-	// rather than turning an unreachable counter backend into an outage.
-	if admitted, lerr := allowRate(callCtx, org.rate, c.Rate.Policy, 1); lerr != nil {
-		log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
-			log.Err(lerr))
-	} else if !admitted {
-		refusedRound(rec, chain.ErrRateLimited)
-		return chain.ErrRateLimited
+	if !admitted {
+		refusedRound(rec, chain.ErrCircuitOpen)
+		return chain.ErrCircuitOpen
+	}
+	if plan.breaker != nil {
+		defer func() { settleBreaker(plan.breaker, permit, err, attemptDur, ran, ctx) }()
 	}
 
-	// The breaker admits the LOGICAL call once, not each retry: the permit
-	// settles exactly one sample, which is what the breaker counts. Recording
-	// once per Execute also stops a retrying client from amplifying one
-	// downstream failure into N breaker samples (the "resilience on => breaker
-	// trips instantly" symptom). The deferred Record runs on every return path,
-	// so an admitted call is never left unsettled — a half-open trial whose
-	// outcome vanished would pin the round until its deadline.
-	if br := org.breaker; br != nil {
-		permit, ok := br.Allow()
-		if !ok {
-			refusedRound(rec, chain.ErrCircuitOpen)
-			return chain.ErrCircuitOpen
-		}
-		defer func() {
-			// One sample per LOGICAL call. A panic before fn returns leaves ran
-			// false: settle it as a failure rather than leaving a half-open trial
-			// unspent. A caller cancellation (or the caller's own deadline) is not
-			// evidence about the unit, so it carries no verdict; a timeout from our
-			// own policy budget is evidence, and stays a failure.
-			switch {
-			case !ran:
-				br.Record(permit, false, attemptDur)
-			case err == nil:
-				br.Record(permit, true, attemptDur)
-			case CallerAborted(ctx, err):
-				br.RecordIgnored(permit)
-			case !CountsAsFailure(err):
-				// A failure the caller classifies as not evidence against the
-				// downstream — an injected "business" fault, or a 4xx-style error
-				// from an adapter. It carries no verdict for this breaker, exactly
-				// like a caller cancellation: counting it would open the circuit
-				// against a healthy downstream.
-				br.RecordIgnored(permit)
-			default:
-				br.Record(permit, false, attemptDur)
-			}
-		}()
-	}
-
-	for i := range attempts {
-		// The retry budget gates attempts after the first: when the executor-
-		// wide in-flight retry cap is exhausted, this call stops with
-		// [chain.ErrRetryExceeded] instead of piling one more retry onto a
-		// downstream that is already being retried by everyone.
-		if sem := org.retry; sem != nil && i > 0 {
-			select {
-			case sem <- struct{}{}:
-				budgetSem, budgetHeld = sem, i
-			default:
-				refusedRound(rec, chain.ErrRetryExceeded)
-				return chain.ErrRetryExceeded
-			}
-		}
-		// Every attempt past the first is charged here; the first was charged
-		// before the breaker gate.
+	// Attempts.
+	budget := retryBudget{sem: plan.budget}
+	for i := range plan.attempts {
 		if i > 0 {
-			if admitted, lerr := allowRate(callCtx, org.rate, c.Rate.Policy, 1); lerr != nil {
-				log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
-					log.Err(lerr))
-			} else if !admitted {
-				refusedRound(rec, chain.ErrRateLimited)
-				releaseRetryBudget(budgetSem, budgetHeld)
-				return chain.ErrRateLimited
+			// The budget gates retries only: an exhausted cap stops the call
+			// instead of piling one more retry on a downstream everyone is
+			// already retrying.
+			if rerr := budget.take(); rerr != nil {
+				refusedRound(rec, rerr)
+				return rerr
+			}
+			if rerr := chargeRate(callCtx, plan.rate, plan.ratePolicy); rerr != nil {
+				budget.release()
+				refusedRound(rec, rerr)
+				return rerr
 			}
 		}
 
 		start := time.Now()
-		err = fn(callCtx)
+		err = chain.Next(e.next, callCtx, op, rec, fn)
 		attemptDur = time.Since(start)
 		ran = true
 		// The attempt's own cost and outcome, recorded where only this loop can
-		// see them. The status is classified HERE, not at the emitter: the words
-		// are this package's (the sentinels above), and an emitter that had to
-		// classify would have to depend on this package — the reverse of the
-		// import direction. The raw error rides along for the failure log.
+		// see them. Status is classified HERE: the words are this package's, and
+		// an emitter that had to classify would depend on this package — the
+		// reverse import direction.
 		rec.AddRound(chain.Round{
 			Start:     start,
 			Duration:  attemptDur,
@@ -513,97 +458,99 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 			ErrorType: chain.ClassifyErrorType(err),
 			Error:     err,
 		})
-		if err == nil {
+		if err == nil || callCtx.Err() != nil || !ShouldRetry(err) || i == plan.attempts-1 {
 			break
 		}
-		// A cancelled/expired deadline (caller cancel or [Policy.Timeout])
-		// ends the loop before the predicate is consulted: there is no budget left
-		// for another attempt regardless of why the last one failed.
-		if callCtx.Err() != nil {
-			break
-		}
-		if !ShouldRetry(err) {
-			break
-		}
-		if i == attempts-1 {
-			break // last attempt — no backoff sleep after it
-		}
-		backoff := Backoff(eff, i)
-		if !timeutil.Sleep(callCtx, backoff) {
+		if !timeutil.Sleep(callCtx, Backoff(plan.retry, i)) {
 			break // backoff interrupted by ctx cancellation
 		}
-		// The sleep is not recorded as a field of its own: the next round's
-		// [chain.Round.Start] is an absolute instant, so this gap is exactly
-		// Start[i+1] - (Start[i] + Duration[i]) — the retry policy's own cost,
-		// derived by the reader instead of stored twice.
-		releaseRetryBudget(budgetSem, budgetHeld)
-		budgetHeld = -1 // the slot covers the attempt, not the backoff sleep
+		// The slot covers the attempt, not the backoff sleep. The sleep itself is
+		// not recorded: the next round's Start minus this round's end IS the
+		// retry cost, derived instead of stored twice.
+		budget.release()
 	}
-	releaseRetryBudget(budgetSem, budgetHeld)
+	budget.release()
 	return err
 }
 
-// Close releases the executor's state observer and marks it closed. A later
-// Execute still runs (governance degrades to the zero policy), but it will not
-// re-register the observer.
-func (e *defaultExecutor) Close() error {
-	e.closeObserve()
+// chargeRate charges one attempt. A store failure is not a budget decision: the
+// call proceeds rather than turning an unreachable counter backend into an
+// outage.
+func chargeRate(ctx context.Context, limiter ratelimit.Limiter, policy ratelimit.Policy) error {
+	if limiter == nil {
+		return nil
+	}
+	admitted, err := limiter.Allow(ctx, policy, 1)
+	if err != nil {
+		log.Warn(ctx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
+			log.Err(err))
+		return nil
+	}
+	if !admitted {
+		return chain.ErrRateLimited
+	}
 	return nil
 }
 
-// EffectiveRetry resolves the retry node one call runs under, from the two
-// sources: the policy node (a governance center's push, or a directly
-// constructed policy) and the call's own node ([chain.Operation.Retry]). It is
-// the ONE place the two are merged, so the engines cannot drift.
-//
-// Precedence is whole-node: when the policy node declares a retry schedule it
-// wins entirely, because a pushed value is how an operator hot-fixes a live
-// incident and must not be second-guessed by the code it is fixing. When it
-// declares nothing the call's node applies, so a center that pushes no retry
-// leaves the caller in charge.
-//
-// NonIdempotent is the exception to whole-node precedence: it is OR-ed across
-// BOTH nodes. It is a property of the CALL, not of the schedule, and a governance
-// override that replaced the whole node would otherwise silently drop a caller's
-// non-idempotent declaration — re-enabling retry on a call whose repetition
-// doubles a side effect. The safety flag survives regardless of who wins.
-func EffectiveRetry(policy, call chain.Retry) chain.Retry {
-	eff := call
-	if policy.HasSchedule() {
-		eff = policy
+// settleBreaker records the one sample a logical call owes. A panic before fn
+// returns leaves ran false and settles a failure; a caller abort and an error
+// the caller classifies as not evidence (an injected business fault, a 4xx-style
+// adapter error) carry no verdict rather than opening the circuit against a
+// healthy downstream.
+func settleBreaker(br *circuitbreaker.Breaker, permit circuitbreaker.Permit, err error, dur time.Duration, ran bool, ctx context.Context) {
+	switch {
+	case !ran:
+		br.Record(permit, false, dur)
+	case err == nil:
+		br.Record(permit, true, dur)
+	case ctx.Err() != nil && errors.Is(err, ctx.Err()), !CountsAsFailure(err):
+		// A caller abort is not evidence against the downstream. Only the PARENT
+		// context counts: a timeout derived from the policy budget means the unit
+		// did not serve within the budget and remains a failure, while a caller
+		// that walked away says nothing about the unit's health.
+		br.RecordIgnored(permit)
+	default:
+		br.Record(permit, false, dur)
 	}
-	eff.NonIdempotent = policy.NonIdempotent || call.NonIdempotent
-	return eff
 }
 
-// ShouldRetry reports whether err ought to trigger another attempt, for a retry
-// node p. The classification is shared by every engine so retry decisions
-// cannot drift: an error implementing [Retryable] opts itself in or out
-// explicitly (the caller knows the concrete error type — a non-idempotent write
-// opts out); every other non-nil error retries. It reads no field of p and
-// exists as a replacement for the historical policy method, now that retry is
-// declared per call rather than on the policy.
-func ShouldRetry(err error) bool {
-	if err == nil {
-		return false
+// retryBudget is the in-flight retry slot one attempt holds.
+type retryBudget struct {
+	sem  chan struct{}
+	held bool
+}
+
+func (b *retryBudget) take() error {
+	if b.sem == nil {
+		return nil
 	}
-	var r Retryable
-	if errors.As(err, &r) {
-		return r.Retryable()
+	select {
+	case b.sem <- struct{}{}:
+		b.held = true
+		return nil
+	default:
+		return chain.ErrRetryExceeded
 	}
-	return true
+}
+
+func (b *retryBudget) release() {
+	if !b.held {
+		return
+	}
+	<-b.sem
+	b.held = false
 }
 
 // Backoff returns the sleep before the retry following the (0-indexed) attempt-th
 // failure, applying exponential growth and jitter per p. Both engines call it so
 // the math cannot drift.
 //
-// The schedule grows [chain.Retry.InitialInterval] by
-// [chain.Retry.Multiplier] each step up to
-// [chain.Retry.MaxInterval], then decorrelates concurrent callers by ±
-// [chain.Retry.RandomizationFactor]. A zero InitialInterval yields 0 (no
+// The schedule grows [Retry.InitialInterval] by
+// [Retry.Multiplier] each step up to
+// [Retry.MaxInterval], then decorrelates concurrent callers by ±
+// [Retry.RandomizationFactor]. A zero InitialInterval yields 0 (no
 // backoff), so a node that sets only MaxRetries retries back to back.
-func Backoff(p chain.Retry, attempt int) time.Duration {
+func Backoff(p Retry, attempt int) time.Duration {
 	if p.InitialInterval <= 0 {
 		return 0
 	}
@@ -625,35 +572,4 @@ func Backoff(p chain.Retry, attempt int) time.Duration {
 		d = d + (rand.Float64()*2-1)*delta
 	}
 	return time.Duration(d)
-}
-
-// Fallback runs fn through exec and, when the operation is rejected (rate
-// limited, circuit open, bulkhead full) or fails after all retries, invokes
-// degrade to produce a graceful result instead of surfacing the error. It is
-// the degradation stage of the framework and composes with any [chain.Executor]
-// regardless of driver: degrade receives the triggering error so it can serve
-// cached data for [chain.ErrCircuitOpen] yet propagate a genuine bug, for example.
-//
-// degrade's own error (or nil) becomes the final result. When exec is nil the
-// call is a transparent pass-through: fn runs once and its error, if any, still
-// reaches degrade, so wiring stays a no-op until a policy is configured.
-//
-// The record it hands down describes the CALL that failed — every round, and the
-// rejection that triggered the degrade among them. Degradation itself leaves no
-// mark on it: a degraded call is a call whose rounds failed and whose caller was
-// served something else, and the rounds are the evidence of that. A caller that
-// needs to tell degrade's result from a real one has degrade's error, which is
-// what this returns.
-func Fallback(ctx context.Context, exec chain.Executor, call chain.Operation, rec *chain.Recorder,
-	fn func(context.Context) error, degrade func(context.Context, error) error) error {
-	var err error
-	if exec == nil {
-		err = fn(ctx)
-	} else {
-		err = exec.Execute(ctx, call, rec, fn)
-	}
-	if err == nil {
-		return nil
-	}
-	return degrade(ctx, err)
 }

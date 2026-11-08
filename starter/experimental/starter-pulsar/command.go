@@ -234,7 +234,7 @@ func observe(ctx context.Context, cl pulsar.Client, op chain.Operation, call fun
 	if !ok {
 		return call(ctx)
 	}
-	return v.(*clientObserver).obs.Observe(ctx, op, nil, call)
+	return v.(*clientObserver).obs.Observe(ctx, op, new(chain.Recorder), call)
 }
 
 // GuardedSend sends msg synchronously on producer, routed through the resilience

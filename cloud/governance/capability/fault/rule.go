@@ -117,8 +117,9 @@ type Rule struct {
 	// the interface being invoked ("insert", "GET /users/{id}"). Empty matches
 	// every action, so a rule without one fires the whole service. This is what
 	// makes INTERFACE-level fault injection possible: fire one endpoint, one
-	// method. See [matcher.ActionMatch].
-	Action matcher.ActionMatch `value:"${action:=}"`
+	// method. See [matcher.ActionMatch]. The config key stays `action.` (e.g.
+	// action.exact=GET /users/{id}).
+	ActionMatch matcher.ActionMatch `value:"${action:=}"`
 
 	// Rate is the per-call probability (0..1) of injecting the configured Error.
 	// 0 means never inject; 1 means every call fails. Latency, when set, is
@@ -246,7 +247,7 @@ type Config struct {
 	// Rules are an ORDERED list. The FIRST rule whose conditions match a call
 	// governs it — evaluation stops there, so a call is never affected by more
 	// than one rule. Order is precedence among rules on the SAME service (see
-	// [evaluate]). Bind via indexed properties — the same shape on either side,
+	// [Manager.Fire]). Bind via indexed properties — the same shape on either side,
 	// under that side's block, e.g.:
 	//
 	//	spring.fault.client.rules[0].name=redis-errors
@@ -272,16 +273,16 @@ func (r Rule) Matches(t Target) bool {
 	if r.Service != t.Service {
 		return false
 	}
-	if !r.Action.Matches(t.Action) {
+	if !r.ActionMatch.Matches(t.Action) {
 		return false
 	}
-	return matcher.Matches(r.MetadataMatch, t.Metadata)
+	return matcher.MetadataMatches(r.MetadataMatch, t.Metadata)
 }
 
 // roll draws this rule's dose for one attempt into a [Result]: the latency
 // first (always, when Latency > 0), then the error at Rate. Latency and error
 // are independent knobs; either one counts as affected for the guardrails. One
-// rule produces one result, and [evaluate] stops at the first matching rule, so
+// rule produces one result, and [Manager.Fire] stops at the first matching rule, so
 // a call is governed by exactly one. [Result.RunID] is left empty — the kernel,
 // not the rule, knows which document it published.
 //

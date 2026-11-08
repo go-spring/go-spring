@@ -166,13 +166,14 @@ gs.Run()
 3. **声明** —— `Send` 把本次批量发送的语义身份
    （`chain.Operation`：span 名 `mail.send`、指标前缀 `email.client`、有界 label
    `email.system=smtp` / `email.operation=send`、批量大小作为 `Detail`）
-   经 `chain.WithOperation` 放到 context 上；调用的身份
-   （`chain.Call{NonIdempotent: true}`）则作为 `resilience.Run` 的参数显式传递，再把投递
-   交给 mailer 的 resilience 执行器。发送只**声明**，自身不发任何信号。身份走签名，命名走 ctx。
+   经 `chain.WithOperation` 放到 context 上，把投递交给 mailer 的 resilience 执行器。
+   重试不在调用方声明——它只由治理文档配置。发送只 **声明**，自身不发任何信号。身份走签名，
+   命名走 ctx。
    - detail 是**收件人数量，绝不是收件人地址或主题**：二者都是个人数据，而失败的发送会
      无条件在 Warn 级别写出 detail —— 地址会在发送正出问题时被记下来。它们留在调用方
      自己的记录里。
-   - **非幂等标记**是阻止重试的东西：重发是第二封邮件，不是第二次尝试。见 §2.3。
+   - **发送不能被重试**：重发是第二封邮件，不是第二次尝试，所以治理文档不应给该 label
+     配置重试调度。见 §2.3。
 4. **发射（resilience 层）** —— 执行器链上的 observe 包裹层是唯一**发射点**：它开启调用
    span `mail.send`（覆盖全部 attempt），记录调用级 `email.client.operation.duration`、
    尝试级 `email.client.attempt.duration` 直方图（下游自身每次尝试的耗时）、在途
@@ -185,16 +186,11 @@ gs.Run()
 span、指标与访问日志**全都活在** `Send` 路由经过的那个执行器内部，因此无论调用方有没有
 持开 span，一次发送都会被度量——没有需要记住的调用侧夹持。
 
-### 2.3 重试语义：发送永不重试
+### 2.3 重试语义：只由治理配置
 
-`Send` 经过 mailer 的 resilience 执行器，所以针对它 service label
-（`mail:<name 或 host>`）的治理规则*可以*带重试策略——而该策略会被**忽略**：操作声明了
-`NonIdempotent`，执行器只跑一次，无论 `max-retries` 配了多少。重试会投出第二封邮件，
-下游任何环节都收不回来。
-
-这个抑制不是静默的：第一次本该重试时，执行器会按 service 告警一次
-（`resilience: retries configured for service "mail:..." are suppressed — its operations
-are non-idempotent ...`）。超时、限流、熔断、隔舱都仍然生效——只丢重试这一级。
+重试只由治理文档配置。mail 的 label（`mail:<name 或 host>`）不应配置重试调度，因为一次
+重试就是第二封邮件，下游任何环节都收不回来。调用方代码本身也无法声明重试，所以默认只发
+一次；如果推了调度，那是写配置的人自己的决定。超时、限流、熔断、隔舱仍然生效。
 
 ---
 

@@ -27,9 +27,11 @@ package StarterCassandra
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 )
 
@@ -147,45 +149,96 @@ func (g *GuardQuery) op(ctx context.Context, kind string) chain.Operation {
 // so this layer has nothing of its own to take away.
 func (g *GuardQuery) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
 
+// queryOptions is the business-error declaration every terminal call shares:
+// "no rows" and a CQL client-side verdict are normal outcomes, returned
+// verbatim but counted against neither the breaker nor the retry schedule.
+var queryOptions = []resilience.Option{
+	resilience.Tolerate(gocql.ErrNotFound),
+	resilience.TolerateFunc(isClientQueryError),
+	resilience.RetryOn(isRetryableQueryError),
+}
+
+// isRetryableQueryError reports whether the CQL protocol classifies the failure
+// as transient: the node could not serve this attempt but another may succeed
+// (unavailable, overloaded, a coordinator still bootstrapping, a read/write
+// timeout or failure, a partially-applied CAS). Client verdicts and transport
+// errors are not retried.
+func isRetryableQueryError(err error) bool {
+	var re gocql.RequestError
+	if !errors.As(err, &re) {
+		return false
+	}
+	switch re.Code() {
+	case gocql.ErrCodeUnavailable, gocql.ErrCodeOverloaded, gocql.ErrCodeBootstrapping,
+		gocql.ErrCodeWriteTimeout, gocql.ErrCodeReadTimeout, gocql.ErrCodeReadFailure,
+		gocql.ErrCodeWriteFailure, gocql.ErrCodeCASWriteUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 func (g *GuardQuery) Exec(ctx context.Context) error {
-	return g.exec.Execute(ctx, g.op(ctx, "exec"), nil, func(context.Context) error { return g.next.Exec(ctx) })
+	_, err := resilience.Run(ctx, g.exec, g.op(ctx, "exec"),
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, g.next.Exec(ctx) },
+		queryOptions...)
+	return err
 }
 
 func (g *GuardQuery) Iter(ctx context.Context) *gocql.Iter {
-	var it *gocql.Iter
-	_ = g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error {
-		it = g.next.Iter(ctx)
-		return nil
-	})
+	it, _ := resilience.Run(ctx, g.exec, g.op(ctx, "query"),
+		func(ctx context.Context) (*gocql.Iter, error) { return g.next.Iter(ctx), nil },
+		queryOptions...)
 	return it
 }
 
 func (g *GuardQuery) Scan(ctx context.Context, dest ...any) error {
-	return g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error { return g.next.Scan(ctx, dest...) })
+	_, err := resilience.Run(ctx, g.exec, g.op(ctx, "query"),
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, g.next.Scan(ctx, dest...) },
+		queryOptions...)
+	return err
 }
 
 func (g *GuardQuery) ScanCAS(ctx context.Context, dest ...any) (bool, error) {
-	var applied bool
-	err := g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error {
-		var e error
-		applied, e = g.next.ScanCAS(ctx, dest...)
-		return e
-	})
-	return applied, err
+	return resilience.Run(ctx, g.exec, g.op(ctx, "query"),
+		func(ctx context.Context) (bool, error) { return g.next.ScanCAS(ctx, dest...) },
+		queryOptions...)
 }
 
 func (g *GuardQuery) MapScan(ctx context.Context, m map[string]any) error {
-	return g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error { return g.next.MapScan(ctx, m) })
+	_, err := resilience.Run(ctx, g.exec, g.op(ctx, "query"),
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, g.next.MapScan(ctx, m) },
+		queryOptions...)
+	return err
 }
 
 func (g *GuardQuery) MapScanCAS(ctx context.Context, m map[string]any) (bool, error) {
-	var applied bool
-	err := g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error {
-		var e error
-		applied, e = g.next.MapScanCAS(ctx, m)
-		return e
-	})
-	return applied, err
+	return resilience.Run(ctx, g.exec, g.op(ctx, "query"),
+		func(ctx context.Context) (bool, error) { return g.next.MapScanCAS(ctx, m) },
+		queryOptions...)
+}
+
+// isClientQueryError reports whether Cassandra gave a DEFINITE verdict on the
+// request itself — the CQL protocol's client-side error codes — rather than a
+// condition of the cluster. Those must neither trip the breaker nor trigger a
+// retry; unavailable/overloaded/timeout/failure codes and transport errors stay
+// downstream faults. Codes follow the native protocol spec (section 8).
+func isClientQueryError(err error) bool {
+	var re gocql.RequestError
+	if !errors.As(err, &re) {
+		return false
+	}
+	switch re.Code() {
+	case gocql.ErrCodeProtocol, gocql.ErrCodeCredentials,
+		gocql.ErrCodeSyntax, gocql.ErrCodeUnauthorized, gocql.ErrCodeInvalid,
+		gocql.ErrCodeConfig, gocql.ErrCodeAlreadyExists:
+		return true
+	default:
+		// Server error, unavailable, overloaded, bootstrapping, truncate,
+		// read/write timeout and failure, function failure, CDC failure,
+		// CAS-write-unknown, unprepared: the cluster did not serve us.
+		return false
+	}
 }
 
 // Query wraps a *gocql.Query so its execution methods (Exec, Iter, Scan,

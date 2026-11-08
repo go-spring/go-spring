@@ -34,6 +34,7 @@ import (
 	"context"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel"
@@ -195,7 +196,7 @@ func (o *ObsPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, 
 	if o.obs == nil {
 		return o.next.Publish(ctx, ch, exchange, key, mandatory, immediate, pub)
 	}
-	return o.obs.Observe(ctx, operation(ctx, o.prop, opSend, dest), nil, func(callCtx context.Context) error {
+	return o.obs.Observe(ctx, operation(ctx, o.prop, opSend, dest), new(chain.Recorder), func(callCtx context.Context) error {
 		return o.next.Publish(callCtx, ch, exchange, key, mandatory, immediate, pub)
 	})
 }

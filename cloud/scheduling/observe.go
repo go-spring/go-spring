@@ -19,11 +19,11 @@ package scheduling
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -65,44 +65,46 @@ var lagBuckets = []float64{0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0
 // accessTag is the static log tag for the per-fire log lines.
 var accessTag = log.RegisterAppTag("scheduler", "access")
 
-// instrumentSet bundles the metrics a fire records: one per process, resolved
-// lazily on first use so the set binds to whichever OTel global provider is
-// current then (it is installed during wiring, after package inits), and
-// immutable afterwards. It holds no per-fire state.
+// instrumentSet bundles the metrics a fire records: one per job, resolved when
+// the job is constructed. It holds no per-fire state.
 type instrumentSet struct {
 	runs     metric.Int64Counter
 	duration metric.Float64Histogram
 	lag      metric.Float64Histogram
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The job
+// owns the set, so a failed registration fails construction instead of silently
+// dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
-	runs, _ := m.Int64Counter("scheduling.runs",
+	runs, err := m.Int64Counter("scheduling.runs",
 		metric.WithDescription("Scheduled job fires by status"),
 		metric.WithUnit("{fire}"))
-	duration, _ := m.Float64Histogram("scheduling.run.duration",
+	if err != nil {
+		return nil, errutil.Explain(err, "scheduling: register scheduling.runs")
+	}
+	duration, err := m.Float64Histogram("scheduling.run.duration",
 		metric.WithDescription("Duration of a job run"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
+	if err != nil {
+		return nil, errutil.Explain(err, "scheduling: register scheduling.run.duration")
+	}
 	// A rising lag is the scheduler's own health signal: the schedule is not
 	// drifting (the next fire stays anchored on the planned instant), but runs are
 	// starting later and later, which points at a process that is saturated or
 	// stalled.
-	lag, _ := m.Float64Histogram("scheduling.lag",
+	lag, err := m.Float64Histogram("scheduling.lag",
 		metric.WithDescription("Delay between a fire's scheduled instant and the start of its run"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(lagBuckets...))
-	return &instrumentSet{runs: runs, duration: duration, lag: lag}
+	if err != nil {
+		return nil, errutil.Explain(err, "scheduling: register scheduling.lag")
+	}
+	return &instrumentSet{runs: runs, duration: duration, lag: lag}, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // statusOfRun classifies a run's outcome.
 func statusOfRun(err error) string {
@@ -133,7 +135,7 @@ func statusOf(ev event) string {
 func record(ev event) {
 	status := statusOf(ev)
 	ctx := context.Background()
-	ins := instruments()
+	ins := ev.ins
 
 	ins.runs.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("job", ev.Name),
@@ -181,8 +183,8 @@ func record(ev event) {
 }
 
 // recordSkip reports a fire that did not run, with reason "policy" or "lock".
-func recordSkip(scheduled time.Time, name, reason string) {
-	record(event{Name: name, Scheduled: scheduled, Skipped: true, Reason: reason})
+func recordSkip(scheduled time.Time, name, reason string, ins *instrumentSet) {
+	record(event{Name: name, Scheduled: scheduled, Skipped: true, Reason: reason, ins: ins})
 }
 
 // traceRun opens the span for one run of t's job and returns the run's

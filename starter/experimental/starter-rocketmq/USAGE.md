@@ -318,7 +318,7 @@ grep, no extras on either side.
 | `access-key` | string | `""` | ACL access key. ⚠ Must pair with `secret-key` — one-sided fails the boot with an error naming the client [starter.go:60-62]. | One-sided → boot error; wrong value → first produce/consume fails (probe is TCP-only). |
 | `secret-key` | string | `""` | ACL secret key pairing with access-key [config.go:48]. | Same as above. |
 | `send-timeout` | duration | `3s` | Stamped onto every producer (`WithSendMsgTimeout`) [client.go:73]. | Too low → sync sends time out under load. |
-| `retry` | int | `2` | Producer-internal retries before a sync send fails (`WithRetry`); 2 = up to 3 attempts [client.go:74, config.go:55]. This is the SDK's loop and the only one that fires: the publish/consume operations are declared `NonIdempotent`, so a governance-side retry rule for the label is suppressed. | Large value + slow broker → latency amplification. |
+| `retry` | int | `2` | Producer-internal retries before a sync send fails (`WithRetry`); 2 = up to 3 attempts [client.go:74, config.go:55]. Retry is governance-only, so this SDK loop is the only one that fires unless the document configures a retry schedule for the label — which would add a second loop. | Large value + slow broker → latency amplification. |
 | `ping` | bool | `false` | Opt-in TCP dial against the name server list at bean creation; first reachable address satisfies it, 3s per dial [driver.go:146-160]. | true → wrong addresses abort boot; false → surface only on first use. |
 
 ---
@@ -379,8 +379,8 @@ curl -s :9090/metrics | grep resilience_calls
   `resilience.client.calls` counter always counts the call. Access log tag `_app_rocketmq_access`:
   fields `messaging.operation`, `messaging.destination.name` (truncated to 512), `status`,
   `duration_ms`; success with a topic at Debug, error at Warn.
-- Guarded path (undeclared fallback): histogram `resilience.client.duration` and counters
-  `resilience.client.calls` / `resilience.client.breaker.transitions_total`, log tag `_app_resilience`.
+- Guarded path (undeclared fallback): histogram `resilience.client.duration` and counter
+  `resilience.client.calls` (with the total `resilience.error_type`), log tag `_app_resilience`.
 - Manual helpers (raw client): spans `rocketmq.produce` / `rocketmq.consume <topic>` from tracer
   `go-spring.org/starter-rocketmq` with `messaging.system/destination.name/operation` attributes
   [command.go]; W3C context rides the user properties via `msgCarrier` (round-trip proved by

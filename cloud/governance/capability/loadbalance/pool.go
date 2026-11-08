@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Pool is the INNER layer of client-side load balancing: ONE immutable
@@ -84,11 +85,11 @@ type Pool struct {
 //
 // A standalone caller — one with no governance document behind it — passes
 // Selection{}, which [Pool.Selection] reports as the zero value.
-func NewPool(src discovery.Resolver, bal Balancer, tracker *Tracker, sel Selection) *Pool {
+func NewPool(src discovery.Resolver, bal Balancer, tracker *Tracker, sel Selection) (*Pool, error) {
 	if src == nil || bal == nil || tracker == nil {
-		panic("loadbalance: NewPool requires non-nil resolver, balancer and tracker")
+		return nil, errutil.Explain(nil, "loadbalance: pool requires non-nil resolver, balancer and tracker")
 	}
-	return &Pool{src: src, bal: bal, tracker: tracker, sel: sel}
+	return &Pool{src: src, bal: bal, tracker: tracker, sel: sel}, nil
 }
 
 // Selection returns the selection this pool was built from. It is the chain's

@@ -419,7 +419,7 @@ printf '' > conf/governance.yaml                              # 空：无 spring
 # log: governance file source: reload conf/governance.yaml failed (keeping last good config): ...
 ```
 
-关治理的正确姿势是发布一份什么都不配的文档——空的 `client`/`server`、零值 `Default`、无规则——但仍要带一个 `spring.governance.*` key（如 `spring.governance.client.resilience.timeout=1s`）；绝不是清空文件。
+关治理的正确姿势是发布一份什么都不配的文档——空的 `client`/`server`、无规则——但仍要带一个 `spring.governance.*` key（如 `spring.governance.client.resilience.timeout=1s`）；绝不是清空文件。
 
 ### 4.2 放火演练，不重启
 
@@ -490,7 +490,7 @@ source；中心从不合并——整体替换；换 source 即重启。
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 全配了却没治理 | 没有规则匹配调用的 label，或解析出的 `Default` 全零 | 给该服务配一条匹配规则（或非零 `Default`）——没有总开关。 |
+| 全配了却没治理 | 没有规则匹配调用的 label | 给该服务配一条匹配规则——没有总开关。 |
 | 改了规则文件 policy 不动 | 路径错；或目录监听漏掉的罕见 symlink 场景 | 核对启动时 arm 的路径；看日志 tag `governance` 有没有 `reload ... failed`。 |
 | 日志出现 `reload ... failed (keeping last good config)` | 文档被截断/清空（无 `spring.governance.*` key）或语法错 | 修文档；"关"是一份什么都不配、但仍带 `spring.governance.*` key 的文档，不是空文件。 |
 | 启动报错 `governance source: ... contains no spring.governance.* keys` | 首次加载到空文档 | 同上，发生在构造期——刻意设计。 |

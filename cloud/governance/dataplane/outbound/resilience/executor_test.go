@@ -37,32 +37,72 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
+// svcRate is a whole-service rate rule for the test label "svc".
+func svcRate(p ratelimit.Policy) RateLimitRule {
+	return RateLimitRule{
+		ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+		Policy:      p,
+	}
+}
+
+// svcTimeout is a whole-service timeout/retry rule for the test label "svc".
+func svcTimeout(tr TimeoutRetry) TimeoutRetryRule {
+	return TimeoutRetryRule{
+		ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+		TimeoutRetry: tr,
+	}
+}
+
+// svcBreaker is a whole-service breaker rule for the test label "svc".
+func svcBreaker(bp BreakerPolicy) BreakerRule {
+	return BreakerRule{
+		ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+		BreakerPolicy: bp,
+	}
+}
+
+// svcRateSettings arms the whole-service rate rule for label "svc".
+func svcRateSettings(p ratelimit.Policy) RateLimitSettings {
+	return RateLimitSettings{Services: []RateLimitService{{Service: "svc", Rules: []RateLimitRule{svcRate(p)}}}}
+}
+
+// svcTimeoutSettings arms the whole-service timeout/retry rule for label "svc".
+func svcTimeoutSettings(tr TimeoutRetry) TimeoutRetrySettings {
+	return TimeoutRetrySettings{Services: []TimeoutRetryService{{Service: "svc", Rules: []TimeoutRetryRule{svcTimeout(tr)}}}}
+}
+
+// svcBreakerSettings arms the whole-service breaker rule for label "svc".
+func svcBreakerSettings(bp BreakerPolicy) BreakerSettings {
+	return BreakerSettings{Services: []BreakerService{{Service: "svc", Rules: []BreakerRule{svcBreaker(bp)}}}}
+}
+
 // newBuiltin builds the bundled client engine for one service under cfg. It is
 // the shared entry the executor, retry, breaker and emit tests all start from.
 //
-// cfg is one capability's policy — Limits, BreakerPolicy or ratelimit.Policy —
+// cfg is one capability's policy — TimeoutRetry, BreakerPolicy or ratelimit.Policy —
 // because the three are independent and most tests exercise one at a time.
 func newBuiltin(t *testing.T, cfg any) chain.Executor {
 	t.Helper()
-	return newBuiltinManager(t, cfg).ExecutorFor("svc")
+	return newBuiltinManager(t, cfg).Wrap("svc", nil)
 }
 
 // newBuiltinManager arms a manager over the bundled driver with cfg as the
-// default policy of its capability. Tests that move the config mid-flight keep
-// the manager.
+// whole-service policy of its capability. Tests that move the config mid-flight
+// keep the manager.
 func newBuiltinManager(t *testing.T, cfg any) *Manager {
 	t.Helper()
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := NewManager(NewDefaultDriver(), factories)
+	m, err := NewManager(factories)
+	assert.That(t, err).Nil()
 	switch v := cfg.(type) {
 	case nil:
-	case Limits:
-		assert.Error(t, m.ApplyLimits(LimitsSettings{Default: v})).Nil()
+	case TimeoutRetry:
+		assert.Error(t, m.ApplyTimeoutRetry(svcTimeoutSettings(v))).Nil()
 	case BreakerPolicy:
-		assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: v})).Nil()
+		assert.Error(t, m.ApplyBreaker(svcBreakerSettings(v))).Nil()
 	case ratelimit.Policy:
-		assert.Error(t, m.ApplyRateLimit(RateLimitSettings{Default: v})).Nil()
+		assert.Error(t, m.ApplyRateLimit(svcRateSettings(v))).Nil()
 	default:
 		t.Fatalf("unsupported test policy %T", cfg)
 	}
@@ -75,9 +115,9 @@ func newBuiltinManager(t *testing.T, cfg any) *Manager {
 
 func TestBuiltinPassThrough(t *testing.T) {
 	// A zero policy protects nothing: fn runs once and its result flows back.
-	e := newBuiltin(t, Limits{})
+	e := newBuiltin(t, TimeoutRetry{})
 	var calls int
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		calls++
 		return nil
 	})
@@ -88,8 +128,8 @@ func TestBuiltinPassThrough(t *testing.T) {
 // TestExecuteTimeout pins the one bound: a call given a Timeout is cut off by it,
 // as a deadline its fn observes rather than an error the executor invents.
 func TestExecuteTimeout(t *testing.T) {
-	e := newBuiltin(t, Limits{Timeout: 20 * time.Millisecond})
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(ctx context.Context) error {
+	e := newBuiltin(t, TimeoutRetry{Timeout: 20 * time.Millisecond})
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -105,7 +145,7 @@ func TestRateLimit(t *testing.T) {
 	// but owes a full second; the 2nd, immediately after, is rejected.
 	e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 2})
 	run := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+		return e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Is(chain.ErrRateLimited)
@@ -117,14 +157,14 @@ func TestRateLimitQueueing(t *testing.T) {
 	// maxWait=0 would reject — instead waits for the next token and succeeds.
 	e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 20, Burst: 1, MaxWait: 200 * time.Millisecond})
 	run := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+		return e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
 	// And with no wait budget the same shape rejects.
 	e2 := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 20, Burst: 1})
-	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
+	assert.Error(t, e2.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e2.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
 }
 
 // TestWarmUpColdStart pins the warm-up knob on the default driver's token
@@ -145,18 +185,18 @@ func TestWarmUpColdStart(t *testing.T) {
 	})
 	// The first call is granted at the head but owes the cold price; the
 	// second, immediately after, is rejected.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrRateLimited)
 }
 
 func TestRetrySucceedsAfterTransientFailure(t *testing.T) {
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 2}})
+	e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 2}})
 	var attempts int
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		attempts++
 		if attempts < 3 {
-			return errutil.Explain(nil, "transient")
+			return transient{}
 		}
 		return nil
 	})
@@ -167,8 +207,8 @@ func TestRetrySucceedsAfterTransientFailure(t *testing.T) {
 func TestRetryBackoffSleeps(t *testing.T) {
 	// With InitialInterval set, retries are paced: the gap between attempt 1
 	// and attempt 2 must be at least one backoff interval.
-	e := newBuiltin(t, Limits{
-		Retry: chain.Retry{
+	e := newBuiltin(t, TimeoutRetry{
+		Retry: Retry{
 			MaxRetries:      1,
 			InitialInterval: 40 * time.Millisecond,
 		},
@@ -176,7 +216,7 @@ func TestRetryBackoffSleeps(t *testing.T) {
 	var attempts int
 	var firstSaw, secondSaw time.Duration
 	start := time.Now()
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		attempts++
 		if attempts == 1 {
 			firstSaw = time.Since(start)
@@ -184,7 +224,7 @@ func TestRetryBackoffSleeps(t *testing.T) {
 			secondSaw = time.Since(start)
 		}
 		if attempts < 2 {
-			return errutil.Explain(nil, "transient")
+			return transient{}
 		}
 		return nil
 	})
@@ -198,17 +238,17 @@ func TestRetryRespectsTimeout(t *testing.T) {
 	// Timeout caps the whole call: even with many retries permitted, the loop
 	// stops once the deadline is reached — the rounds share one budget, so a late
 	// retry gets whatever is left.
-	e := newBuiltin(t, Limits{
-		Retry: chain.Retry{
+	e := newBuiltin(t, TimeoutRetry{
+		Retry: Retry{
 			MaxRetries:      20,
 			InitialInterval: 20 * time.Millisecond,
 		},
 		Timeout: 60 * time.Millisecond,
 	})
 	var attempts int
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		attempts++
-		return errutil.Explain(nil, "always fails")
+		return transient{}
 	})
 	// Not all 21 attempts ran — the budget cut the loop short.
 	assert.That(t, attempts < 21).True()
@@ -218,9 +258,9 @@ func TestRetryRespectsTimeout(t *testing.T) {
 func TestRetryableFalseStopsRetry(t *testing.T) {
 	// A Retryable() false error stops the loop after the first failure, even
 	// though MaxRetries would allow more attempts.
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 3}})
+	e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 3}})
 	var attempts int
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		attempts++
 		return nonRetryableErr{}
 	})
@@ -233,89 +273,25 @@ type nonRetryableErr struct{}
 func (nonRetryableErr) Error() string   { return "permanent" }
 func (nonRetryableErr) Retryable() bool { return false }
 
+// transient is a retryable failure: retry is a WHITELIST, so every test that
+// expects another attempt returns this rather than a generic error.
+type transient struct{}
+
+func (transient) Error() string   { return "transient" }
+func (transient) Retryable() bool { return true }
+
 // TestRetryDefaultsToSingleAttempt pins the new default: with neither a policy
 // retry node nor a call retry node, a failing call runs exactly ONCE. Retry is
 // opt-in — the zero value of the node is "no retry".
 func TestRetryDefaultsToSingleAttempt(t *testing.T) {
-	e := newBuiltin(t, Limits{})
+	e := newBuiltin(t, TimeoutRetry{})
 	var attempts int
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		attempts++
 		return errutil.Explain(nil, "boom")
 	})
 	assert.Error(t, err).NotNil()
 	assert.That(t, attempts).Equal(1)
-}
-
-// TestCallDeclaredRetryDrivesTheLoop proves the caller's node on the operation is
-// enough on its own: an empty policy plus op.Retry{MaxRetries: 2} retries the
-// call (3 attempts total). This is the "decision at the caller" path.
-func TestCallDeclaredRetryDrivesTheLoop(t *testing.T) {
-	e := newBuiltin(t, Limits{})
-	var attempts int
-	op := chain.Operation{Retry: chain.Retry{MaxRetries: 2}}
-	err := e.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
-		attempts++
-		if attempts < 3 {
-			return errutil.Explain(nil, "transient")
-		}
-		return nil
-	})
-	assert.Error(t, err).Nil()
-	assert.That(t, attempts).Equal(3)
-}
-
-// TestPolicyRetryOverridesCallRetry proves whole-node precedence: when the
-// governance center pushes a retry schedule (through the policy), it wins over
-// the call's own node — a pushed value is how an operator hot-fixes a live
-// incident. The call asks for 3 retries, the policy for 1, so 2 attempts run.
-func TestPolicyRetryOverridesCallRetry(t *testing.T) {
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 1}})
-	var attempts int
-	op := chain.Operation{Retry: chain.Retry{MaxRetries: 3}}
-	err := e.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
-		attempts++
-		return errutil.Explain(nil, "boom")
-	})
-	assert.Error(t, err).NotNil()
-	assert.That(t, attempts).Equal(2)
-}
-
-// TestNonIdempotentSurvivesPolicyOverride proves the safety flag is OR-ed across
-// both sources rather than replaced: a policy push that replaces the whole node
-// must NOT drop the caller's non-idempotent declaration — otherwise a hot-fix
-// would re-enable retry on a side-effecting call. The policy here declares an
-// (idempotent-assuming) schedule; the call declares non-idempotent; the call must
-// still run once.
-func TestNonIdempotentSurvivesPolicyOverride(t *testing.T) {
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 2}})
-	var attempts int
-	op := chain.Operation{Retry: chain.Retry{NonIdempotent: true}}
-	err := e.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
-		attempts++
-		return errutil.Explain(nil, "boom")
-	})
-	assert.Error(t, err).NotNil()
-	assert.That(t, attempts).Equal(1)
-}
-
-// TestPolicyBudgetAloneDoesNotOverrideCallSchedule proves the merge keys on the
-// SCHEDULE, not on any retry field: a center that pushes only a process-level
-// retry-budget declares no schedule, so the call's own retry node still applies.
-// The budget caps in-flight retries; it must not wipe the caller's retry.
-func TestPolicyBudgetAloneDoesNotOverrideCallSchedule(t *testing.T) {
-	e := newBuiltin(t, Limits{Retry: chain.Retry{RetryBudget: 8}})
-	var attempts int
-	op := chain.Operation{Retry: chain.Retry{MaxRetries: 2}}
-	err := e.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
-		attempts++
-		if attempts < 3 {
-			return errutil.Explain(nil, "transient")
-		}
-		return nil
-	})
-	assert.Error(t, err).Nil()
-	assert.That(t, attempts).Equal(3)
 }
 
 func TestRetryBudget(t *testing.T) {
@@ -323,28 +299,28 @@ func TestRetryBudget(t *testing.T) {
 	// flight, blocked inside fn) holds the single budget slot, so call B's
 	// retry is rejected with chain.ErrRetryExceeded. First attempts never take
 	// budget. Both calls run through one executor, which serves one service.
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 1, RetryBudget: 1}})
+	e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 1, RetryBudget: 1}})
 	inRetry := make(chan struct{})
 	unblock := make(chan struct{})
 	aDone := make(chan error, 1)
 	go func() {
 		calls := 0
-		aDone <- e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+		aDone <- e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 			calls++
 			if calls == 2 { // the retry attempt: hold the budget slot
 				close(inRetry)
 				<-unblock
 			}
-			return errutil.Explain(nil, "boom")
+			return transient{}
 		})
 	}()
 	<-inRetry // A is now blocked inside its retry, holding the only slot
 
 	// B's first attempt runs fine; its retry finds the budget spent.
 	bCalls := 0
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		bCalls++
-		return errutil.Explain(nil, "boom")
+		return transient{}
 	})
 	assert.Error(t, err).Is(chain.ErrRetryExceeded)
 	assert.That(t, bCalls).Equal(1)
@@ -355,20 +331,20 @@ func TestRetryBudget(t *testing.T) {
 	}
 }
 
-// TestGenerationChangeRebuildsState pins the contract the pull design buys: the
-// executor's materialized state belongs to ONE generation, and moving to the next
-// one rebuilds it — a tripped breaker is CLOSED again, because the state of a
-// superseded generation is not carried over. It also pins the other half, which
-// is what makes that safe: while the generation does NOT move, the state is
-// reused, so a config push that changes nothing costs nothing.
-func TestGenerationChangeRebuildsState(t *testing.T) {
+// TestBreakerPushRebuildsState pins what the manager's push buys: the executor's
+// breaker table belongs to ONE configuration, and moving to the next one rebuilds
+// it — a tripped breaker is CLOSED again, because the state of a superseded
+// configuration is not carried over. It also pins the other half, which is what
+// makes that safe: while the content does NOT move, the state is reused, so a
+// config push that changes nothing costs nothing.
+func TestBreakerPushRebuildsState(t *testing.T) {
 	p := BreakerPolicy{ErrorThreshold: 2, OpenDuration: time.Hour}
 	m := newBuiltinManager(t, p)
-	e := m.ExecutorFor("svc")
+	e := m.Wrap("svc", nil)
 
 	boom := errutil.Explain(nil, "boom")
 	fail := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return boom })
+		return e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return boom })
 	}
 
 	// Trip the breaker open.
@@ -376,14 +352,14 @@ func TestGenerationChangeRebuildsState(t *testing.T) {
 	assert.Error(t, fail()).Is(boom)
 	assert.Error(t, fail()).Is(chain.ErrCircuitOpen)
 
-	// The same document again: content-derived generation, so the state is reused
+	// The same document again: content-derived comparison, so the state is reused
 	// and the circuit stays open — an unrelated push costs this label nothing.
-	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: p})).Nil()
+	assert.Error(t, m.ApplyBreaker(svcBreakerSettings(p))).Nil()
 	assert.Error(t, fail()).Is(chain.ErrCircuitOpen)
 
-	// A different document moves the generation: the state is rebuilt, so the
+	// A different document moves the content: the state is rebuilt, so the
 	// breaker starts over CLOSED and the call reaches the downstream again.
-	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{ErrorThreshold: 2, OpenDuration: 2 * time.Hour}})).Nil()
+	assert.Error(t, m.ApplyBreaker(svcBreakerSettings(BreakerPolicy{ErrorThreshold: 2, OpenDuration: 2 * time.Hour}))).Nil()
 	assert.Error(t, fail()).Is(boom)
 }
 
@@ -396,49 +372,53 @@ func TestCapabilityGenerationsAreIndependent(t *testing.T) {
 	ctx := context.Background()
 	boom := errutil.Explain(nil, "boom")
 	noop := func(context.Context) error { return nil }
-	spend := func(e chain.Executor) error { return e.Execute(ctx, chain.Operation{}, new(chain.Recorder), noop) }
+	spend := func(e chain.Executor) error {
+		return e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), noop)
+	}
 	trip := func(e chain.Executor) error {
-		return e.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return boom })
+		return e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return boom })
 	}
 
 	// A change to the limits half must not refill the rate budget.
 	rate := ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 0.001, Burst: 1}
 	m := newBuiltinManager(t, rate)
-	e := m.ExecutorFor("svc")
+	e := m.Wrap("svc", nil)
 	defer func() { _ = m.Close() }()
 
 	assert.Error(t, spend(e)).Nil()                    // spends the only token
 	assert.Error(t, spend(e)).Is(chain.ErrRateLimited) // budget exhausted
 
-	assert.Error(t, m.ApplyLimits(LimitsSettings{Default: Limits{Timeout: time.Second}})).Nil()
+	assert.Error(t, m.ApplyTimeoutRetry(svcTimeoutSettings(TimeoutRetry{Timeout: time.Second}))).Nil()
 	assert.Error(t, spend(e)).Is(chain.ErrRateLimited) // budget survived
 
 	// A rate change updates the EXISTING budget; it does not refill it, so the
 	// spent token is still spent.
 	rate.Burst = 10
-	assert.Error(t, m.ApplyRateLimit(RateLimitSettings{Default: rate})).Nil()
+	assert.Error(t, m.ApplyRateLimit(svcRateSettings(rate))).Nil()
 	assert.Error(t, spend(e)).Is(chain.ErrRateLimited)
 
 	// The new rule does reach the existing state: a high refill rate fills the
 	// bucket without resetting it.
 	rate.RateLimit = 1e9
-	assert.Error(t, m.ApplyRateLimit(RateLimitSettings{Default: rate})).Nil()
+	assert.Error(t, m.ApplyRateLimit(svcRateSettings(rate))).Nil()
 	assert.Error(t, spend(e)).Nil()
 
 	// A rate-only change must not close a tripped breaker.
 	rb := BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour}
 	m2 := newBuiltinManager(t, rb)
-	e2 := m2.ExecutorFor("svc")
+	e2 := m2.Wrap("svc", nil)
 	defer func() { _ = m2.Close() }()
 	assert.Error(t, trip(e2)).Is(boom) // trips the breaker (threshold 1)
 	assert.Error(t, spend(e2)).Is(chain.ErrCircuitOpen)
 
-	assert.Error(t, m2.ApplyRateLimit(RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1e6, Burst: 100}})).Nil()
+	assert.Error(t, m2.ApplyRateLimit(svcRateSettings(
+		ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1e6, Burst: 100},
+	))).Nil()
 	assert.Error(t, spend(e2)).Is(chain.ErrCircuitOpen) // breaker survived
 
 	// A breaker change rebuilds it, so the call reaches the downstream again.
 	rb.ErrorThreshold = 5
-	assert.Error(t, m2.ApplyBreaker(BreakerSettings{Default: rb})).Nil()
+	assert.Error(t, m2.ApplyBreaker(svcBreakerSettings(rb))).Nil()
 	assert.Error(t, spend(e2)).Nil()
 }
 
@@ -447,26 +427,29 @@ func TestCapabilityGenerationsAreIndependent(t *testing.T) {
 func TestLocalLimitersPrunedOnRuleRemoval(t *testing.T) {
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := NewManager(NewDefaultDriver(), factories)
+	m, err := NewManager(factories)
+	assert.That(t, err).Nil()
 	defer func() { _ = m.Close() }()
 
 	rule := RateLimitRule{
-		Service: "svc-prune",
-		Action:  matcher.ActionMatch{Exact: "limited"},
-		Policy:  ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
+		ActionMatch: matcher.ActionMatch{Exact: "limited"},
+		Policy:      ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
 	}
-	if err := m.ApplyRateLimit(RateLimitSettings{Rules: []RateLimitRule{rule}}); err != nil {
+	if err := m.ApplyRateLimit(RateLimitSettings{Services: []RateLimitService{{
+		Service: "svc-prune",
+		Rules:   []RateLimitRule{rule},
+	}}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	exec := m.ExecutorFor("svc-prune").(*defaultExecutor)
+	exec := m.Wrap("svc-prune", nil)
 	noop := func(context.Context) error { return nil }
 	call := func() {
 		_ = exec.Execute(context.Background(),
-			chain.Operation{Request: chain.Request{Action: "limited"}}, new(chain.Recorder), noop)
+			chain.Operation{Service: "svc-prune", Request: chain.Request{Action: "limited"}}, new(chain.Recorder), noop)
 	}
 
 	call()
-	key := ruleKey("svc-prune", 0)
+	key := "svc-prune#exact:limited"
 	if _, ok := exec.localLimiters.Load(key); !ok {
 		t.Fatal("rule-key counter was not materialized")
 	}
@@ -474,7 +457,7 @@ func TestLocalLimitersPrunedOnRuleRemoval(t *testing.T) {
 	if err := m.ApplyRateLimit(RateLimitSettings{}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	call() // resolves the default again, and collects the retired rule key
+	// The push collected it; no extra call is needed to observe the sweep.
 	if _, ok := exec.localLimiters.Load(key); ok {
 		t.Fatal("stale counter survived the rule removal")
 	}
@@ -484,7 +467,7 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 	e := newBuiltin(t, BreakerPolicy{ErrorThreshold: 2, OpenDuration: 50 * time.Millisecond})
 	boom := errutil.Explain(nil, "boom")
 	fail := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return boom })
+		return e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return boom })
 	}
 
 	// Two consecutive failures trip the breaker open.
@@ -496,8 +479,8 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 
 	// After the cool-down a trial request is admitted; a success closes it.
 	time.Sleep(60 * time.Millisecond)
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
 }
 
 // A caller that walks away says nothing about the unit: cancelling must not
@@ -508,14 +491,14 @@ func TestCallerCancelIsIgnored(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := e.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(ctx context.Context) error {
+	err := e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(ctx context.Context) error {
 		return ctx.Err()
 	})
 	assert.Error(t, err).Is(context.Canceled)
 
 	// Recorded as a failure, this next call would be short-circuited. It must
 	// still reach fn.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		return nil
 	})).Nil()
 }
@@ -524,7 +507,7 @@ func TestCallerCancelIsIgnored(t *testing.T) {
 // the next request becomes the deciding trial.
 func TestHalfOpenCallerCancelReturnsPermit(t *testing.T) {
 	e := newBuiltin(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		return errutil.Explain(nil, "boom")
 	})
 	assert.Error(t, err).NotNil()
@@ -532,12 +515,12 @@ func TestHalfOpenCallerCancelReturnsPermit(t *testing.T) {
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err = e.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(ctx context.Context) error { return ctx.Err() })
+	err = e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(ctx context.Context) error { return ctx.Err() })
 	assert.Error(t, err).Is(context.Canceled)
 
 	// The trial permit came back: a success closes the circuit instead of being
 	// refused as a spent half-open round.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		return nil
 	})).Nil()
 	assert.That(t, breakerStats(t, e, "svc").State).Equal(circuitbreaker.StateClosed)
@@ -546,17 +529,18 @@ func TestHalfOpenCallerCancelReturnsPermit(t *testing.T) {
 func TestPolicyTimeoutIsFailure(t *testing.T) {
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := NewManager(NewDefaultDriver(), factories)
-	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour}})).Nil()
-	assert.Error(t, m.ApplyLimits(LimitsSettings{Default: Limits{Timeout: 20 * time.Millisecond}})).Nil()
-	e := m.ExecutorFor("svc")
-	err = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(ctx context.Context) error {
+	m, err := NewManager(factories)
+	assert.That(t, err).Nil()
+	assert.Error(t, m.ApplyBreaker(svcBreakerSettings(BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour}))).Nil()
+	assert.Error(t, m.ApplyTimeoutRetry(svcTimeoutSettings(TimeoutRetry{Timeout: 20 * time.Millisecond}))).Nil()
+	e := m.Wrap("svc", nil)
+	err = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	})
 	assert.Error(t, err).Is(context.DeadlineExceeded)
 
-	err = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	err = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
@@ -567,7 +551,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	e := newBuiltin(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
 	// Trip the circuitbreaker.
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		return errutil.Explain(nil, "boom")
 	})
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
@@ -578,7 +562,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	var ran, rejected int32
 	for range 2 {
 		wg.Go(func() {
-			err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+			err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 				atomic.AddInt32(&ran, 1)
 				// Hold long enough that the sibling surely evaluates allow() too.
 				time.Sleep(20 * time.Millisecond)
@@ -601,30 +585,31 @@ func TestHalfOpenTrialKeepsItsPermitAcrossRetries(t *testing.T) {
 	// the half-open gate spent and leaving the round unresolved.
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := NewManager(NewDefaultDriver(), factories)
-	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
+	m, err := NewManager(factories)
+	assert.That(t, err).Nil()
+	assert.Error(t, m.ApplyBreaker(svcBreakerSettings(BreakerPolicy{
 		ErrorThreshold:   1,
 		HalfOpenRequests: 1,
 		OpenDuration:     30 * time.Millisecond,
-	}})).Nil()
-	assert.Error(t, m.ApplyLimits(LimitsSettings{Default: Limits{
-		Retry: chain.Retry{MaxRetries: 1},
-	}})).Nil()
-	e := m.ExecutorFor("svc")
+	}))).Nil()
+	assert.Error(t, m.ApplyTimeoutRetry(svcTimeoutSettings(TimeoutRetry{
+		Retry: Retry{MaxRetries: 1},
+	}))).Nil()
+	e := m.Wrap("svc", nil)
 
 	// Trip the breaker.
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
-		return errutil.Explain(nil, "boom")
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
+		return transient{}
 	})
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
 
 	// The trial fails once and succeeds on its retry; the logical call succeeds
 	// and closes the circuit.
 	attempts := 0
-	err = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		attempts++
 		if attempts == 1 {
-			return errutil.Explain(nil, "boom")
+			return transient{}
 		}
 		return nil
 	})
@@ -633,7 +618,7 @@ func TestHalfOpenTrialKeepsItsPermitAcrossRetries(t *testing.T) {
 
 	// Closed: the next call reaches fn instead of being refused.
 	ran := false
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		ran = true
 		return nil
 	})).Nil()
@@ -651,7 +636,7 @@ func TestHalfOpenTrialPanicSettlesAsFailure(t *testing.T) {
 	})
 
 	// Trip the breaker.
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		return errutil.Explain(nil, "boom")
 	})
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
@@ -660,14 +645,14 @@ func TestHalfOpenTrialPanicSettlesAsFailure(t *testing.T) {
 	// failure and re-opens the circuit.
 	func() {
 		defer func() { _ = recover() }()
-		_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+		_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 			panic("boom")
 		})
 	}()
 
 	// If the permit had been left unsettled, the second trial permit would still
 	// admit this call; a re-opened circuit refuses it during the cool-down.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		return nil
 	})).Is(chain.ErrCircuitOpen)
 }
@@ -685,7 +670,7 @@ func TestErrorRateBreakerTripsOnRatio(t *testing.T) {
 	})
 	// Interleave fail/success: 4 fails out of 8 => 50% ratio.
 	for i := range 8 {
-		err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+		err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 			if i%2 == 0 {
 				return errutil.Explain(nil, "fail")
 			}
@@ -708,18 +693,19 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	// recording it would record 3 failures and open immediately.
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := NewManager(NewDefaultDriver(), factories)
-	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
+	m, err := NewManager(factories)
+	assert.That(t, err).Nil()
+	assert.Error(t, m.ApplyBreaker(svcBreakerSettings(BreakerPolicy{
 		ErrorThreshold: 3,
 		OpenDuration:   time.Minute,
-	}})).Nil()
-	assert.Error(t, m.ApplyLimits(LimitsSettings{Default: Limits{
-		Retry: chain.Retry{MaxRetries: 2},
-	}})).Nil()
-	e := m.ExecutorFor("svc")
+	}))).Nil()
+	assert.Error(t, m.ApplyTimeoutRetry(svcTimeoutSettings(TimeoutRetry{
+		Retry: Retry{MaxRetries: 2},
+	}))).Nil()
+	e := m.Wrap("svc", nil)
 	fail := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
-			return errutil.Explain(nil, "boom")
+		return e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
+			return transient{}
 		})
 	}
 
@@ -757,7 +743,7 @@ func TestSlowCallBreaker(t *testing.T) {
 		OpenDuration:              50 * time.Millisecond,
 	})
 	slow := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+		return e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 			time.Sleep(25 * time.Millisecond) // > threshold: a slow success
 			return nil
 		})
@@ -765,7 +751,7 @@ func TestSlowCallBreaker(t *testing.T) {
 	assert.Error(t, slow()).Nil()
 	assert.Error(t, slow()).Nil()
 	// 2/2 slow >= 0.5: the breaker must now be open.
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
@@ -778,7 +764,7 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 		HalfOpenRequests: 3,
 	})
 	fail := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+		return e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 			return errutil.Explain(nil, "boom")
 		})
 	}
@@ -788,7 +774,7 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 	time.Sleep(40 * time.Millisecond) // cool-down elapses
 	// First trial succeeds but is only 1 of 3: the breaker stays half-open
 	// (permit available), not closed.
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	assert.Error(t, err).Nil()
 	// Second trial fails: re-open immediately.
 	time.Sleep(40 * time.Millisecond)
@@ -796,10 +782,10 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	// After re-open and cool-down, three consecutive successes close it.
 	for range 3 {
-		err = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+		err = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	}
 	assert.Error(t, err).Nil()
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
 }
 
 // TestSlowCallStrategyBreaker pins the EXPLICIT slow-call strategy: only the
@@ -818,21 +804,21 @@ func TestSlowCallStrategyBreaker(t *testing.T) {
 	})
 	// Fast failures only: a slow-call breaker must not trip on them.
 	for range 5 {
-		_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+		_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 			return errutil.Explain(nil, "fast failure")
 		})
 	}
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	assert.Error(t, err).Nil() // still closed: failures are not slowness
 
 	// Slow calls only: 2/2 slow, ratio 1.0 > 0.5, trips it.
 	for range 2 {
-		_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+		_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 			time.Sleep(25 * time.Millisecond)
 			return nil
 		})
 	}
-	err = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	err = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
@@ -849,53 +835,13 @@ func TestErrorCountStrategyBreaker(t *testing.T) {
 		OpenDuration:    time.Minute,
 	})
 	// fail, ok, fail, ok: never 3 in a row, but 3 failures in the window.
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return errutil.Explain(nil, "boom") })
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return errutil.Explain(nil, "boom") })
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
-	_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return errutil.Explain(nil, "boom") }) // 3rd failure trips
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return errutil.Explain(nil, "boom") })
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return errutil.Explain(nil, "boom") })
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return errutil.Explain(nil, "boom") }) // 3rd failure trips
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
-}
-
-func TestFallbackDegradesOnRejection(t *testing.T) {
-	// A tripped breaker rejects the call; degrade turns the rejection into a
-	// graceful result and sees the triggering error.
-	e := newBuiltin(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
-	boom := errutil.Explain(nil, "boom")
-
-	// Trip the circuitbreaker.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return boom })).Is(boom)
-
-	var seen error
-	op := chain.Operation{}
-	rec := &chain.Recorder{}
-	err := Fallback(context.Background(), e, op, rec,
-		func(context.Context) error { return errutil.Explain(nil, "should not run") },
-		func(_ context.Context, cause error) error { seen = cause; return nil })
-	assert.Error(t, err).Nil()
-	assert.Error(t, seen).Is(chain.ErrCircuitOpen)
-	// The record carries the rejection that triggered the degrade: it is how a
-	// degraded result is told from a real one — the call's rounds say it failed,
-	// and this one says why.
-	last, ok := rec.LastRound()
-	assert.That(t, ok).True("the refusal was recorded as a round")
-	assert.String(t, last.ErrorType).Equal("circuit_open")
-	assert.Error(t, last.Error).Is(chain.ErrCircuitOpen)
-}
-
-func TestFallbackNilExecStillDegrades(t *testing.T) {
-	// With no executor the call runs directly, and a failure still reaches degrade.
-	boom := errutil.Explain(nil, "boom")
-	err := Fallback(context.Background(), nil, chain.Operation{}, new(chain.Recorder),
-		func(context.Context) error { return boom },
-		func(_ context.Context, cause error) error {
-			if errors.Is(cause, boom) {
-				return nil
-			}
-			return cause
-		})
-	assert.Error(t, err).Nil()
 }
 
 // breakerStats reads the executor's breaker for service through the same
@@ -903,11 +849,11 @@ func TestFallbackNilExecStillDegrades(t *testing.T) {
 // publishes, not on an event stream: the breaker emits nothing itself.
 func breakerStats(t *testing.T, exec chain.Executor, service string) circuitbreaker.Stats {
 	t.Helper()
-	e, ok := exec.(*defaultExecutor)
+	n, ok := exec.(*Executor)
 	if !ok {
 		t.Fatalf("unexpected executor type %T", exec)
 	}
-	st := e.breaker.Load()
+	st := n.breaker.Load()
 	if st == nil {
 		return circuitbreaker.Stats{State: circuitbreaker.StateClosed}
 	}
@@ -918,19 +864,19 @@ func breakerStats(t *testing.T, exec chain.Executor, service string) circuitbrea
 	return v.(*breakerCell).b.Stats()
 }
 
-// TestBreakerStats verifies the breaker's observable state passes through
+// TestBreakerStats verifies the breaker's state machine passes through
 // closed → open → half_open → closed, with the per-instance transition counts
-// a state observer reports.
+// the organ reports.
 func TestBreakerStats(t *testing.T) {
 	m := newBuiltinManager(t, BreakerPolicy{ErrorThreshold: 2, OpenDuration: 5 * time.Millisecond})
-	exec := m.ExecutorFor("svc")
+	exec := m.Wrap("svc", nil)
 	defer func() { _ = m.Close() }()
 
 	boom := errutil.Explain(nil, "boom")
 	ctx := context.Background()
 	// Two consecutive failures trip the breaker (closed → open).
-	_ = exec.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return boom })
-	_ = exec.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return boom })
+	_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return boom })
+	_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return boom })
 	s := breakerStats(t, exec, "svc")
 	assert.That(t, s.State).Equal(circuitbreaker.StateOpen)
 	assert.That(t, s.Trips).Equal(uint64(1))
@@ -938,7 +884,7 @@ func TestBreakerStats(t *testing.T) {
 	assert.That(t, s.Recovers).Equal(uint64(0))
 
 	// The breaker is open: this call is rejected before fn runs, no transition.
-	_ = exec.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	s = breakerStats(t, exec, "svc")
 	assert.That(t, s.State).Equal(circuitbreaker.StateOpen)
 	assert.That(t, s.Trips).Equal(uint64(1))
@@ -946,7 +892,7 @@ func TestBreakerStats(t *testing.T) {
 	// Wait out the cool-down so the next call is admitted as a half-open trial.
 	time.Sleep(20 * time.Millisecond)
 	// Trial succeeds: open → half-open (probe admitted), then half-open → closed.
-	_ = exec.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	s = breakerStats(t, exec, "svc")
 	assert.That(t, s.State).Equal(circuitbreaker.StateClosed)
 	assert.That(t, s.Trips).Equal(uint64(1))
@@ -955,35 +901,35 @@ func TestBreakerStats(t *testing.T) {
 }
 
 // TestExecutorRebuildStartsClean pins what replaced hot reload: a policy change
-// moves the generation the shell follows, so its materialized state is rebuilt —
+// reaches the executor shell, so its materialized state is rebuilt —
 // a breaker tripped under the old (tight) policy is gone, and the same executor
 // object runs the new one.
 func TestExecutorRebuildStartsClean(t *testing.T) {
 	m := newBuiltinManager(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour})
-	e := m.ExecutorFor("svc")
+	e := m.Wrap("svc", nil)
 	defer func() { _ = m.Close() }()
 
 	ctx := context.Background()
 	boom := errutil.Explain(nil, "boom")
-	_ = e.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return boom }) // trips (threshold 1)
-	assert.Error(t, e.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
+	_ = e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return boom }) // trips (threshold 1)
+	assert.Error(t, e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
 
-	// A looser policy moves the generation: the state is rebuilt, the shell is the
-	// same object, and its breaker starts closed.
-	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{ErrorThreshold: 100, OpenDuration: time.Hour}})).Nil()
-	assert.Error(t, e.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	// A looser policy moves the pushed content: the state is rebuilt, the shell is
+	// the same object, and its breaker starts closed.
+	assert.Error(t, m.ApplyBreaker(svcBreakerSettings(BreakerPolicy{ErrorThreshold: 100, OpenDuration: time.Hour}))).Nil()
+	assert.Error(t, e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
 }
 
 // TestGovernanceLoopRecordsAttempts proves the retry loop writes each attempt —
 // its outcome and its own cost — and the sleep between attempts into the
 // caller-supplied recorder, which is the only source the outer emitter has.
 func TestGovernanceLoopRecordsAttempts(t *testing.T) {
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 2, InitialInterval: 5 * time.Millisecond}})
-	boom := errutil.Explain(nil, "transient")
+	e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 2, InitialInterval: 5 * time.Millisecond}})
+	boom := transient{}
 
 	rec := &chain.Recorder{}
 	var calls int
-	err := e.Execute(context.Background(), chain.Operation{}, rec, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, rec, func(context.Context) error {
 		calls++
 		if calls < 3 {
 			return boom
@@ -1022,9 +968,9 @@ func TestRejectionRecordsOneGateRound(t *testing.T) {
 
 	// First call spends the burst; the second is rejected before running fn.
 	rec := &chain.Recorder{}
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, rec, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, rec, func(context.Context) error { return nil })).Nil()
 	rec2 := &chain.Recorder{}
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, rec2, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, rec2, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
 
 	// The recorder is per call: the rejection landed on its own.
 	assert.Number(t, len(rec.Rounds)).Equal(1)
@@ -1042,13 +988,13 @@ func TestRejectionRecordsOneGateRound(t *testing.T) {
 // its own record without stealing the outer call's. Were the record shared rather
 // than per-call, the inner call would take the outer's attempt.
 func TestNestedCallDoesNotHijackOuterRecorder(t *testing.T) {
-	outer := newBuiltin(t, Limits{})
-	inner := newBuiltin(t, Limits{})
+	outer := newBuiltin(t, TimeoutRetry{})
+	inner := newBuiltin(t, TimeoutRetry{})
 
 	outerRec := &chain.Recorder{}
-	err := outer.Execute(context.Background(), chain.Operation{}, outerRec, func(innerCtx context.Context) error {
+	err := outer.Execute(context.Background(), chain.Operation{Service: "svc"}, outerRec, func(innerCtx context.Context) error {
 		innerRec := &chain.Recorder{}
-		assert.Error(t, inner.Execute(innerCtx, chain.Operation{}, innerRec, func(context.Context) error { return nil })).Nil()
+		assert.Error(t, inner.Execute(innerCtx, chain.Operation{Service: "svc"}, innerRec, func(context.Context) error { return nil })).Nil()
 		assert.Number(t, len(innerRec.Rounds)).Equal(1)
 		assert.String(t, innerRec.Rounds[0].Status).Equal("ok")
 		return errutil.Explain(nil, "outer fails")
@@ -1063,11 +1009,11 @@ func TestNestedCallDoesNotHijackOuterRecorder(t *testing.T) {
 // a caller that declined to keep a record — runs unchanged: recording is
 // additive and never required.
 func TestExecuteWithoutRecorderIsSafe(t *testing.T) {
-	e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 1, InitialInterval: time.Millisecond}})
+	e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 1, InitialInterval: time.Millisecond}})
 	var calls int
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error {
 		calls++
-		return errutil.Explain(nil, "transient")
+		return transient{}
 	})
 	assert.Error(t, err).NotNil()
 	assert.Number(t, calls).Equal(2)
@@ -1079,32 +1025,84 @@ func TestExecuteWithoutRecorderIsSafe(t *testing.T) {
 
 // TestPartitionsStateByMatchedRule proves protection state is partitioned by the
 // RULE a call matches, not by the call: calls matching the same interface rule
-// share one rate budget, while another interface falls to the default and has
-// its own (absent) budget.
+// share one rate budget, while another interface has no rule and is unmetered.
 func TestPartitionsStateByMatchedRule(t *testing.T) {
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := NewManager(NewDefaultDriver(), factories)
+	m, err := NewManager(factories)
+	assert.That(t, err).Nil()
 	assert.Error(t, m.ApplyRateLimit(RateLimitSettings{
-		Rules: []RateLimitRule{{
+		Services: []RateLimitService{{
 			Service: "svc",
-			Action:  matcher.ActionMatch{Exact: "limited"},
-			Policy:  ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
+			Rules: []RateLimitRule{{
+				ActionMatch: matcher.ActionMatch{Exact: "limited"},
+				Policy:      ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
+			}},
 		}},
 	})).Nil()
-	e := m.ExecutorFor("svc")
+	e := m.Wrap("svc", nil)
 	defer func() { _ = m.Close() }()
 
-	limited := chain.Operation{Request: chain.Request{Action: "limited"}}
-	other := chain.Operation{Request: chain.Request{Action: "other"}}
+	limited := chain.Operation{Service: "svc", Request: chain.Request{Action: "limited"}}
+	other := chain.Operation{Service: "svc", Request: chain.Request{Action: "other"}}
 	noop := func(context.Context) error { return nil }
 
 	// The limited rule's key spends its one token; the next call is rejected.
 	assert.Error(t, e.Execute(context.Background(), limited, new(chain.Recorder), noop)).Nil()
 	assert.Error(t, e.Execute(context.Background(), limited, new(chain.Recorder), noop)).Is(chain.ErrRateLimited)
 
-	// A different rule (the default, another key) has its OWN budget.
+	// A different action has no matching rule, so it has no budget at all.
 	for range 3 {
 		assert.Error(t, e.Execute(context.Background(), other, new(chain.Recorder), noop)).Nil()
 	}
+}
+
+// TestEveryGovernedCallRecordsAtLeastOneRound pins the invariant the record's
+// readers rely on: a call that ran the chain and was handed a recorder always
+// leaves at least one round — a served attempt, or the gate that refused it.
+// "No rounds" therefore means "no record was taken" (nil recorder, or a call
+// that never entered the chain), never "the call was rejected"; a refusal is a
+// decision the chain made, so it is recorded like everything else.
+func TestEveryGovernedCallRecordsAtLeastOneRound(t *testing.T) {
+	t.Run("served", func(t *testing.T) {
+		rec := &chain.Recorder{}
+		err := newBuiltin(t, TimeoutRetry{}).Execute(context.Background(), chain.Operation{Service: "svc"}, rec,
+			func(context.Context) error { return nil })
+		assert.Error(t, err).Nil()
+		assert.Number(t, len(rec.Rounds)).Equal(1)
+		assert.String(t, rec.Rounds[0].Status).Equal("ok")
+	})
+
+	t.Run("refused-before-the-downstream", func(t *testing.T) {
+		e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1})
+		// Spend the burst so the next call is refused.
+		assert.Error(t, e.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder),
+			func(context.Context) error { return nil })).Nil()
+
+		rec := &chain.Recorder{}
+		err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, rec,
+			func(context.Context) error { return nil })
+		assert.Error(t, err).Is(chain.ErrRateLimited)
+		assert.Number(t, len(rec.Rounds)).Equal(1)
+		assert.String(t, rec.Rounds[0].ErrorType).Equal("rate_limited")
+	})
+
+	t.Run("every-retry-is-a-round", func(t *testing.T) {
+		e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 2, InitialInterval: time.Millisecond}})
+		rec := &chain.Recorder{}
+		err := e.Execute(context.Background(), chain.Operation{Service: "svc"}, rec,
+			func(context.Context) error { return transient{} })
+		assert.Error(t, err).NotNil()
+		assert.Number(t, len(rec.Rounds)).Equal(3)
+	})
+
+	t.Run("an-unused-record-is-still-filled", func(t *testing.T) {
+		// There is no nil "record nothing" mode: a caller that never reads the
+		// record passes a zero Recorder, and the call still fills it.
+		rec := &chain.Recorder{}
+		err := newBuiltin(t, TimeoutRetry{}).Execute(context.Background(), chain.Operation{Service: "svc"}, rec,
+			func(context.Context) error { return nil })
+		assert.Error(t, err).Nil()
+		assert.Number(t, len(rec.Rounds)).Equal(1)
+	})
 }

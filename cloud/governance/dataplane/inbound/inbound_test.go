@@ -42,7 +42,10 @@ func TestOver_InjectsFaultThroughGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm := admission.NewManager(factories)
+	gm, err := admission.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer gm.Close()
 
 	in, err := Over("gin", "gin:test", gm, inj)
@@ -76,7 +79,10 @@ func TestOver_NoInjectorIsGovernanceOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm := admission.NewManager(factories)
+	gm, err := admission.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer gm.Close()
 
 	in, err := Over("gin", "gin:test", gm)
@@ -119,7 +125,10 @@ func TestOver_TagsInjectedFaultOnSpan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gm := admission.NewManager(factories)
+	gm, err := admission.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer gm.Close()
 
 	in, err := Over("gin", "gin:test", gm, inj)

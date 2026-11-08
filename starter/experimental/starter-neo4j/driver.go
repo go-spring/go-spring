@@ -227,9 +227,17 @@ func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (str
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: build balancer")
 	}
-	pick, err := loadbalance.NewPool(func(context.Context) ([]discovery.Endpoint, error) {
+	tracker, err := loadbalance.NewTracker(loadbalance.TrackerConfig{})
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: build tracker")
+	}
+	pool, err := loadbalance.NewPool(func(context.Context) ([]discovery.Endpoint, error) {
 		return eps, nil
-	}, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{}).Pick(ctx, loadbalance.PickInfo{})
+	}, bal, tracker, loadbalance.Selection{})
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: build pool")
+	}
+	pick, err := pool.Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}

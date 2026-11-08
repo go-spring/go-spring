@@ -28,17 +28,24 @@ import (
 // never takes its lock on the call path.
 
 // faultExecutor is the [chain.Executor] [Manager.WrapClientExecutor]
-// returns: an outbound seam over the executor it delegates to.
+// returns: the innermost layer of the chain, injecting into each attempt of the
+// executor it delegates to.
 type faultExecutor struct {
-	mgr   *kfault.Manager
-	inner chain.Executor
+	mgr  *kfault.Manager
+	next chain.Executor
 }
 
-// Execute wraps fn so each attempt is faulted per the authority's current kernel
-// before the real executor sees it. An injected latency sleeps first (cancellable
-// via the attempt context); if the sleep is cancelled the context error is
-// returned so the executor's budget/timeout logic reacts rather than retrying
-// blindly.
+// Execute injects into the fn it hands to next, so every attempt of the rest of
+// the chain is faulted before the real call is reached. An injected latency
+// sleeps first (cancellable via the attempt context); if the sleep is cancelled
+// the context error is returned so the executor's budget/timeout logic reacts
+// rather than retrying blindly.
+//
+// Handing next a WRAPPED fn (rather than doing the fire before delegating) is
+// what puts injection inside next's attempt loop: when next is a governance
+// executor, its retry loop calls this fn once per attempt. When next is nil,
+// [chain.Next] calls the wrapped fn directly, so this layer is the terminal and
+// the fire happens immediately before the real call.
 //
 // The kernel is read at each attempt: a push landing mid-attempt does not affect
 // that attempt, and takes effect on the next one.
@@ -52,7 +59,7 @@ func (e *faultExecutor) Execute(ctx context.Context, call chain.Operation, rec *
 		Action:   call.Request.Action,
 		Metadata: call.Request.Metadata,
 	}
-	return e.inner.Execute(ctx, call, rec, func(attemptCtx context.Context) error {
+	return chain.Next(e.next, ctx, call, rec, func(attemptCtx context.Context) error {
 		d, err := e.mgr.Fire(attemptCtx, t)
 		if d.Fired() {
 			// The record is CALL-level (one Recorder per call, shared by every
@@ -77,8 +84,11 @@ func (e *faultExecutor) Execute(ctx context.Context, call chain.Operation, rec *
 	})
 }
 
-// Close forwards to the inner executor. There is no per-consumer state left to
+// Close forwards to the next layer. There is no per-consumer state left to
 // release: the outbound authority is process-lived.
 func (e *faultExecutor) Close() error {
-	return e.inner.Close()
+	if e.next == nil {
+		return nil
+	}
+	return e.next.Close()
 }

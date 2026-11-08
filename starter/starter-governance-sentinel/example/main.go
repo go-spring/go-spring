@@ -14,18 +14,13 @@
  * limitations under the License.
  */
 
-// Command example is a self-contained smoke test for the resilience client-side
-// seams that were not already covered by starter-oauth2-client's HTTP
-// round-tripper demo: the three composable policies acceptance calls for — rate
-// limit + circuit breaker + retry — all carried by the recommended sentinel
-// driver.
+// Command example is a self-contained smoke test for the FUSED path: sentinel
+// is selected as a rate-limit algorithm inside the resilience engine, so the
+// same pipeline (matching, timeout, retry, metrics) runs with sentinel's flow
+// control in the limiter slot.
 //
-// (The former dialer-seam demo lived here too; it has moved with the seam to
-// the mongodb starter, the one client with no per-command hook to protect.)
-//
-// It asserts every expectation and exits non-zero on failure, so no external
-// services (or docker) are required. The blank import of the parent module
-// registers "sentinel" as a resilience driver.
+// It asserts its expectations and exits non-zero on failure, so no external
+// services (or docker) are required.
 package main
 
 import (
@@ -33,11 +28,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"sync/atomic"
-	"time"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 
 	StarterGovernanceSentinel "go-spring.org/starter-governance-sentinel"
@@ -49,73 +42,74 @@ func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
-	driver := StarterGovernanceSentinel.NewSentinelDriver()
 
-	demoComposedRetry(driver)
+	demoRateLimitAlgorithm()
 
 	fmt.Println("resilience seams smoke: OK")
 }
 
-// demoComposedRetry composes rate limit + circuit breaker + retry in one policy
-// and proves they cooperate: a flaky upstream that 503s twice before succeeding
-// is recovered transparently within the retry budget while the (generous) limit
-// and breaker stay closed.
-func demoComposedRetry(driver resilience.Driver) {
-	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+// demoRateLimitAlgorithm proves the fusion: a resilience policy naming the
+// sentinel limiter algorithm gets its admission decision from sentinel, while
+// the call still runs through the framework's engine (so timeout, retry and the
+// neutral ErrRateLimited are the engine's).
+func demoRateLimitAlgorithm() {
+	// Both providers feed one factory; the rule picks the algorithm by name.
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{
+		ratelimit.NewLocalProvider(),
+		StarterGovernanceSentinel.Provider{},
+	})
 	if err != nil {
 		fail("ratelimit factory: %v", err)
 	}
-	m := resilience.NewManager(driver, fact)
-	if err := m.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{
-		Timeout: time.Second,
-		Retry:   chain.Retry{MaxRetries: 3},
-	}}); err != nil {
-		fail("composed limits: %v", err)
-	}
-	if err := m.ApplyBreaker(resilience.BreakerSettings{Default: resilience.BreakerPolicy{
-		ErrorThreshold: 10,
-	}}); err != nil {
-		fail("composed breaker: %v", err)
-	}
-	if err := m.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{
-		Limiter:   ratelimit.TokenBucketAlgorithm,
-		RateLimit: 100,
-	}}); err != nil {
-		fail("composed rate limit: %v", err)
-	}
-	exec := m.ExecutorFor("sentinel:composed")
 
-	var hits int32
+	mgr, err := resilience.NewManager(fact)
+	if err != nil {
+		fail("resilience manager: %v", err)
+	}
+	if err := mgr.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+		Service: "sentinel:example",
+		Rules: []resilience.RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			Policy: ratelimit.Policy{
+				Limiter:   StarterGovernanceSentinel.LimiterAlgorithm,
+				RateLimit: 2, // two units per second
+			},
+		}},
+	}}}); err != nil {
+		fail("rate limit policy: %v", err)
+	}
+	exec := mgr.Wrap("sentinel:example", nil)
+
 	srv := &http.Server{}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		fail("listen: %v", err)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/flaky", func(w http.ResponseWriter, _ *http.Request) {
-		if atomic.AddInt32(&hits, 1) <= 2 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		_, _ = w.Write([]byte("recovered"))
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
 	})
 	srv.Handler = mux
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, "sentinel", nil)}
-	resp, err := client.Get("http://" + ln.Addr().String() + "/flaky")
-	if err != nil {
-		fail("composed request: %v", err)
+	client := &http.Client{Transport: resilience.NewRoundTripper(
+		http.DefaultTransport, exec, "sentinel:example", nil)}
+
+	var admitted, limited int
+	for range 3 {
+		resp, err := client.Get("http://" + ln.Addr().String() + "/ping")
+		if err != nil {
+			limited++
+			continue
+		}
+		admitted++
+		_ = resp.Body.Close()
 	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fail("composed retry did not recover: status %d", resp.StatusCode)
+	if admitted != 2 || limited != 1 {
+		fail("sentinel flow: got %d admitted / %d limited, want 2 / 1", admitted, limited)
 	}
-	if got := atomic.LoadInt32(&hits); got != 3 {
-		fail("composed retry expected 3 attempts, got %d", got)
-	}
-	fmt.Printf("composed policy: recovered after %d attempts (rate limit + breaker + retry)\n", atomic.LoadInt32(&hits))
+	fmt.Printf("sentinel limiter: %d admitted, %d rate-limited (budget 2/s)\n", admitted, limited)
 }
 
 func fail(format string, args ...any) {

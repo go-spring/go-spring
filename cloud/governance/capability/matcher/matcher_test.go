@@ -57,6 +57,56 @@ func TestStringMatchValidate(t *testing.T) {
 	}
 }
 
+// TestActionMatchMatches pins the atomic predicate, including the service
+// marker: "-" means "the whole service", so it matches every action.
+func TestActionMatchMatches(t *testing.T) {
+	tests := []struct {
+		name string
+		m    ActionMatch
+		act  string
+		want bool
+	}{
+		{"zero matches all", ActionMatch{}, "GET /x", true},
+		{"service marker matches all", ActionMatch{Exact: ServiceScopeAction}, "GET /x", true},
+		{"exact matches itself", ActionMatch{Exact: "insert"}, "insert", true},
+		{"exact does not match another", ActionMatch{Exact: "insert"}, "update", false},
+		{"prefix matches subtree", ActionMatch{Prefix: "GET /users"}, "GET /users/1", true},
+		{"prefix does not match another verb", ActionMatch{Prefix: "GET /users"}, "POST /users", false},
+		{"exact wins over prefix", ActionMatch{Exact: "insert", Prefix: "in"}, "insert", true},
+	}
+	for _, tc := range tests {
+		if got := tc.m.Matches(tc.act); got != tc.want {
+			t.Fatalf("%s: %+v.Matches(%q) = %v, want %v", tc.name, tc.m, tc.act, got, tc.want)
+		}
+	}
+}
+
+// TestActionMatchBetterThan pins the ranking: exact > longer prefix >
+// shorter prefix > service scope, and equal selectors do not outrank each other.
+func TestActionMatchBetterThan(t *testing.T) {
+	exact := ActionMatch{Exact: "GET /users/1"}
+	longer := ActionMatch{Prefix: "GET /users"}
+	shorter := ActionMatch{Prefix: "GET /"}
+	service := ActionMatch{Exact: ServiceScopeAction}
+	zero := ActionMatch{}
+
+	if !exact.BetterThan(longer) {
+		t.Fatal("exact must beat a prefix")
+	}
+	if !longer.BetterThan(shorter) {
+		t.Fatal("a longer prefix must beat a shorter one")
+	}
+	if !shorter.BetterThan(service) {
+		t.Fatal("a real prefix must beat the service scope")
+	}
+	if !longer.BetterThan(zero) {
+		t.Fatal("a non-empty prefix must beat the zero selector")
+	}
+	if shorter.BetterThan(shorter) {
+		t.Fatal("equal selectors must not outrank each other")
+	}
+}
+
 func TestStringMatchMatches(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -89,8 +139,8 @@ func TestStringMatchMatches(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.m.matches(tc.v); got != tc.match {
-				t.Fatalf("%+v.matches(%q) = %v, want %v", tc.m, tc.v, got, tc.match)
+			if got := tc.m.Matches(tc.v); got != tc.match {
+				t.Fatalf("%+v.Matches(%q) = %v, want %v", tc.m, tc.v, got, tc.match)
 			}
 		})
 	}
@@ -99,7 +149,7 @@ func TestStringMatchMatches(t *testing.T) {
 // TestMatches pins the one evaluation path: subset-match, presence required,
 // extra metadata allowed, entries ANDed. Repeating a key is impossible by
 // construction — a map holds one condition per key.
-func TestMatches(t *testing.T) {
+func TestMetadataMatches(t *testing.T) {
 	match := map[string]StringMatch{
 		"version": {Prefix: "v2."},
 		"zone":    {Exact: "cn-north-1a"},
@@ -120,8 +170,8 @@ func TestMatches(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := Matches(match, tc.md); got != tc.want {
-				t.Fatalf("Matches(%v) = %v, want %v", tc.md, got, tc.want)
+			if got := MetadataMatches(match, tc.md); got != tc.want {
+				t.Fatalf("MetadataMatches(%v) = %v, want %v", tc.md, got, tc.want)
 			}
 		})
 	}
@@ -129,7 +179,7 @@ func TestMatches(t *testing.T) {
 	// The empty map matches everything. That is the in-process "no narrowing"
 	// default; a control-plane decoder must reject an explicitly empty map
 	// instead of installing it.
-	if !Matches(nil, nil) || !Matches(map[string]StringMatch{}, nil) {
+	if !MetadataMatches(nil, nil) || !MetadataMatches(map[string]StringMatch{}, nil) {
 		t.Fatal("empty map should match everything")
 	}
 }

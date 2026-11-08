@@ -83,10 +83,13 @@ func init() {
 		return source.NewPushSource(consumerDocument{})
 	}).Condition(gs.OnMissingBean[source.Source[consumerDocument]]()).Caller(1)
 
-	// The runtime is the family's sole injection point: the poller reads its
-	// resilience authority from here; the source injects by type.
+	// The poller reads two documents: dubbo's own consumer document and the
+	// governance limits document (both by type). The governance source is
+	// OPTIONAL — a process with no control plane linked simply has no limits
+	// document, and the poller runs on dubbo's own configuration alone.
 	gs.Provide(newDyncPoller,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")),
+		gs.IndexArg(2, gs.TagArg("?")),
 	).Init((*dyncPoller).Init).Export(gs.As[gs.Rooter]()).Caller(1)
 }
 

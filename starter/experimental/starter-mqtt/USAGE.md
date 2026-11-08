@@ -245,9 +245,10 @@ error, not a silent no-op
 4. resilience observe opens the call span named `publish` and, once the call returns, emits
    the call-level `messaging.client.operation.duration`, the attempt-level
    `messaging.client.attempt.duration`, the `resilience.client.calls` counter and the one
-   access log — all read from the declaration. Publish and consume are declared
-   `NonIdempotent`, so a retry policy on the label is **suppressed** (one warning per service):
-   re-publishing or re-running the handler is a second side effect, not a second attempt.
+   access log — all read from the declaration. Retry is governance-only: publish and consume
+   carry no call-site retry. Re-publishing or re-running the handler is a second side effect,
+   not a second attempt, so the document configures no schedule for the label — whoever writes
+   that document owns its effects.
 5. resilience policy: rate limiter / circuit breaker on service `mqtt:<broker>`;
    on rejection the sentinel error returns and **paho Publish is never invoked**.
 6. `cl.Publish(topic, qos, retained, payload)` hands off to paho's outbound queue;

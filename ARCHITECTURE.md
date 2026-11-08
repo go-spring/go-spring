@@ -571,7 +571,7 @@ Cross-module decisions already made, recorded here so they are not re-litigated;
 the mechanism detail lives in the owning module's doc.
 
 - **MQ binder paths go through the same admission/executor seam as the direct API**
-  (`Manager.ExecutorFor`); governance applies by target resource, not by
+  (`Manager.Wrap`); governance applies by target resource, not by
   call path; the per-instance switch is on by default and can be turned off
   (2026-08-28).
 - **Registration self-healing:** after an etcd lease keepalive death / zk session

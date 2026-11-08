@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -143,7 +144,7 @@ func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 	// The delivery's span, duration metrics and access log are emitted here, by
 	// this starter's own observer — a webhook has no seam for the resilience
 	// executor, so there is no governance on this path.
-	return n.obs.Observe(ctx, operation(ctx, n.prop, n.cfg.Channel, endpoint), nil, func(callCtx context.Context) error {
+	return n.obs.Observe(ctx, operation(ctx, n.prop, n.cfg.Channel, endpoint), new(chain.Recorder), func(callCtx context.Context) error {
 		return n.post(callCtx, endpoint, body)
 	})
 }

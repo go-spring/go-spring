@@ -265,7 +265,7 @@ func FilterByMetadata(eps []Endpoint, s map[string]matcher.StringMatch) []Endpoi
 	}
 	out := make([]Endpoint, 0, len(eps))
 	for _, e := range eps {
-		if matcher.Matches(s, e.Metadata) {
+		if matcher.MetadataMatches(s, e.Metadata) {
 			out = append(out, e)
 		}
 	}

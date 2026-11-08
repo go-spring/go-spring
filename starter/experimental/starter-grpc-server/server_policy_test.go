@@ -29,9 +29,9 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -55,20 +55,26 @@ var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 // authority), and the injector is a real inert one, mirroring the DI wiring
 // where every bean is always present (an absent bean fails startup).
 func testCenter() *governance.Runtime {
-	driver := resilience.NewDefaultDriver()
 	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		panic(err)
 	}
-	resClient := resilience.NewManager(driver, fact)
+	resClient, err := resilience.NewManager(fact)
+	if err != nil {
+		panic(err)
+	}
 	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
+	adm, err := admission.NewManager(fact2)
 	if err != nil {
 		panic(err)
 	}
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+	Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

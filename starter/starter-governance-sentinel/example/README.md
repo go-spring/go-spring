@@ -1,14 +1,17 @@
 # starter-governance-sentinel Example
 
-Demonstrates Sentinel circuit breaking and rate limiting.
+Demonstrates the fused path: sentinel-golang is selected as the **rate-limit
+algorithm** of the resilience engine.
 
-## Features
+## What it shows
 
-- **Circuit breaking on the dialer seam**: against a dead address, the breaker opens after 3 refused dials and the 4th is short-circuited with `ErrCircuitOpen` before touching the network
-- **Composed policy**: rate limit + circuit breaker + retry in one policy — a flaky upstream that 503s twice before succeeding is recovered within the retry budget
-- **Sentinel driven**: both run on the `sentinel` driver built by `NewSentinelDriver()` (the container-free entry point)
+- One `ratelimit.Factory` collects the built-in provider and the sentinel
+  provider; a policy names the algorithm with `limiter: sentinel`.
+- The call still runs through the resilience engine, so the rejection is the
+  engine's neutral `ErrRateLimited` — not a sentinel error leaking out.
+- A budget of 2/s: three immediate requests admit two and reject the third.
 
-## Manual Testing
+## Run
 
 ```bash
 cd starter-governance-sentinel/example
@@ -16,14 +19,16 @@ go run .
 ```
 
 Expected output:
+
 ```
+sentinel limiter: 2 admitted, 1 rate-limited (budget 2/s)
 resilience seams smoke: OK
 ```
 
-## Smoke Test
+## Smoke test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` runs the example and waits for self-test to complete, exit code 0 means pass.
+Exit code 0 means pass.

@@ -38,7 +38,7 @@
   信号量；入站 `admission.Policy` 的 bulkhead 不受影响。此前 executor 里残留了一套无人调用、
   `sem` 永为 nil 的死代码，已于 2026-10-17 删除。
   - *为什么暂缓*：收口面不是障碍——受治理出站调用都汇聚到 `chain.Executor.Execute`，且
-    `serviceState` 已按 `CallPolicy.Key` 分桶，天然支持“每下游不同上限”。真正的难点是语义：
+    `serviceState` 已按解析出的规则 key 分桶，天然支持“每下游不同上限”。真正的难点是语义：
     (a) **重入**：A→B→A 在等待模式下会死锁，Go 没有可重入信号量，默认必须 fail-fast；
     (b) **槽要跨全部重试持有**，否则重试会放大并发；
     (c) 与连接池（`MaxConnsPerHost` / `SetMaxOpenConns`）职责重叠，两层队列会让延迟不可解释；

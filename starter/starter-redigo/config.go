@@ -105,7 +105,7 @@ type Config struct {
 
 // Resilience and Observability policy are not fields of Config: the Pool
 // wrapper resolves its executor at Init through the neutral
-// [resilience.Manager.ExecutorFor] seam (see pool.go setupResilience), so policy comes
+// [resilience.Manager.Wrap] seam (see pool.go setupResilience), so policy comes
 // from the governance document rather than from a bound property here. Config
 // carries only the per-instance on/off switch Health; instrumentation
 // itself is unconditional (a no-op without starter-otel).

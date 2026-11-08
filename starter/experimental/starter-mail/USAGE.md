@@ -169,16 +169,15 @@ only resource the `Destroy` hook releases is the resilience executor.
 3. **Declaration** — `Send` declares the batch's semantic identity
    (`chain.Operation`: span name `mail.send`, metric prefix `email.client`, the
    bounded labels `email.system=smtp` / `email.operation=send`, the batch size as `Detail`)
-   on the context via `chain.WithOperation`, and its call identity
-   (`chain.Call{NonIdempotent: true}`) as the argument to `resilience.Run`. A send
-   **declares**; it emits nothing itself. The identity travels in the signature, the
-   naming on the context.
+   on the context via `chain.WithOperation`. Retry is not declared here at all — it is
+   governance-only. A send **declares**; it emits nothing itself. The identity travels in
+   the signature, the naming on the context.
    - The **detail is the recipient count, never the recipients or the subject**: both are
      personal data and a failed send writes its detail at Warn unconditionally, so the
      addresses would be recorded exactly when the send is going wrong. They stay in the
      caller's own records.
-   - The **non-idempotent marker** is what stops a configured retry: a resend is a second
-     email, not a second attempt. See §2.5.
+   - **A send must not be retried** because a resend is a second email, not a second
+     attempt — so the governance document configures no schedule for the label. See §2.3.
 4. **Emission (the resilience layer)** — the observe wrapper on the executor chain is the
    single **emitter**: it opens the call span `mail.send` (covering every attempt), records
    the call-level `email.client.operation.duration`, the per-attempt
@@ -195,18 +194,13 @@ The span, the metrics and the access log all live **inside** the executor that `
 through, so a send is measured whether or not the caller ever held a span — there is no
 caller-side bracket to remember.
 
-### 2.3 Retry semantics: a send is never retried
+### 2.3 Retry semantics: governance-only
 
-`Send` runs through the mailer's resilience executor, so a governance rule for its service
-label (`mail:<name or host>`) *can* carry a retry policy — and that policy is **ignored**: the
-operation is declared `NonIdempotent`, and the executor runs it once regardless of
-`max-retries`. A retry would deliver a second copy of the mail, which no downstream stage can
-take back.
-
-The suppression is not silent: the first time a call would have been retried, the executor
-logs one warning per service (`resilience: retries configured for service "mail:..." are
-suppressed — its operations are non-idempotent ...`). Timeouts, rate limiting, the circuit
-breaker and the bulkhead all still apply — only the retry stage is dropped.
+Retry is configured only by the governance document. A mail label (`mail:<name or host>`)
+must configure no retry schedule, because a resend delivers a second copy of the mail, which
+no downstream stage can take back. Call-site code cannot declare retry either way, so a send
+runs once unless a pushed schedule says otherwise — and that is the operator's configuration
+to make. Timeouts, rate limiting, the circuit breaker and the bulkhead all still apply.
 
 ---
 

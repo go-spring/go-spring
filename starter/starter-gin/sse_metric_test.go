@@ -31,9 +31,9 @@ import (
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -82,6 +82,11 @@ func (m *captureMeter) Int64Counter(name string, _ ...metric.Int64CounterOption)
 	if m.counters == nil {
 		m.counters = map[string]*captureCounter{}
 	}
+	// Like the real SDK, one name resolves to one instrument: a second
+	// constructor asking for the same name gets the same recorder.
+	if c, ok := m.counters[name]; ok {
+		return c, nil
+	}
 	c := &captureCounter{name: name}
 	m.counters[name] = c
 	return c, nil
@@ -98,6 +103,9 @@ func (m *captureMeter) Int64UpDownCounter(name string, _ ...metric.Int64UpDownCo
 	defer m.mu.Unlock()
 	if m.updowns == nil {
 		m.updowns = map[string]*captureUpDownCounter{}
+	}
+	if c, ok := m.updowns[name]; ok {
+		return c, nil
 	}
 	c := &captureUpDownCounter{name: name}
 	m.updowns[name] = c
@@ -117,17 +125,13 @@ func (m *captureMeter) updown(name string) *captureUpDownCounter {
 // (int sizes are converted at the call site, mirroring a real backend) so a test
 // reads them uniformly via values().
 func (m *captureMeter) Int64Histogram(name string, _ ...metric.Int64HistogramOption) (metric.Int64Histogram, error) {
-	h := &captureInt64Histogram{}
-	h.name = name
-	m.storeHist(name, h)
-	return h, nil
+	hv := m.storeHist(name)
+	return &captureInt64Histogram{histValue: hv}, nil
 }
 
 func (m *captureMeter) Float64Histogram(name string, _ ...metric.Float64HistogramOption) (metric.Float64Histogram, error) {
-	h := &captureFloat64Histogram{}
-	h.name = name
-	m.storeHist(name, h)
-	return h, nil
+	hv := m.storeHist(name)
+	return &captureFloat64Histogram{histValue: hv}, nil
 }
 
 // histValue holds the values recorded against either histogram kind under a name.
@@ -147,7 +151,7 @@ func (h *histValue) values() []float64 {
 
 type captureInt64Histogram struct {
 	metricnoop.Int64Histogram
-	histValue
+	*histValue
 }
 
 func (h *captureInt64Histogram) Record(_ context.Context, v int64, _ ...metric.RecordOption) {
@@ -158,7 +162,7 @@ func (h *captureInt64Histogram) Record(_ context.Context, v int64, _ ...metric.R
 
 type captureFloat64Histogram struct {
 	metricnoop.Float64Histogram
-	histValue
+	*histValue
 }
 
 func (h *captureFloat64Histogram) Record(_ context.Context, v float64, _ ...metric.RecordOption) {
@@ -167,20 +171,21 @@ func (h *captureFloat64Histogram) Record(_ context.Context, v float64, _ ...metr
 	h.vals = append(h.vals, v)
 }
 
-func (m *captureMeter) storeHist(name string, h interface{}) {
+// storeHist returns the recorder's value store, creating it on first use and
+// reusing it afterwards — the real SDK resolves one instrument per name, so two
+// constructors asking for the same histogram share one recorder.
+func (m *captureMeter) storeHist(name string) *histValue {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.histograms == nil {
 		m.histograms = map[string]*histValue{}
 	}
-	// Both recorder types embed histValue; pull the pointer out by type switch
-	// so the test can look it up regardless of which kind was created.
-	switch x := h.(type) {
-	case *captureInt64Histogram:
-		m.histograms[name] = &x.histValue
-	case *captureFloat64Histogram:
-		m.histograms[name] = &x.histValue
+	if hv, ok := m.histograms[name]; ok {
+		return hv
 	}
+	hv := &histValue{name: name}
+	m.histograms[name] = hv
+	return hv
 }
 
 func (m *captureMeter) histogram(name string) *histValue {
@@ -382,9 +387,6 @@ func runStream(t *testing.T, payloadEnabled, sseDistributions, activeRequests bo
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
-	// The instrument set is process-wide and resolved once, so re-resolve it
-	// against this test's recording provider.
-	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	ct := &captureTracer{}
@@ -394,11 +396,11 @@ func runStream(t *testing.T, payloadEnabled, sseDistributions, activeRequests bo
 
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.Use(Observe(AccessLogConfig{
+	installObserve(t, e, AccessLogConfig{
 		Payload: PayloadConfig{Enabled: payloadEnabled},
 		Metrics: MetricsConfig{SSEDistributions: sseDistributions, ActiveRequests: activeRequests},
-	}))
-	e.Use(ResponseCapture(payloadEnabled, payloadCaptureLimitForTest, sseDistributions))
+	})
+	installCapture(t, e, payloadEnabled, payloadCaptureLimitForTest, sseDistributions)
 	e.GET("/stream", handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/stream", nil)
@@ -439,10 +441,18 @@ func testCenter() *governance.Runtime {
 	if err != nil {
 		panic(err)
 	}
+	res, err := resilience.NewManager(fact)
+	if err != nil {
+		panic(err)
+	}
+	adm, err := admission.NewManager(fact2)
+	if err != nil {
+		panic(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
+		Resilience:  res,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(fact2),
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -741,9 +751,6 @@ func runSkip(t *testing.T, path string, handler gin.HandlerFunc) (*captureMeter,
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
-	// The instrument set is process-wide and resolved once, so re-resolve it
-	// against this test's recording provider.
-	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	ct := &captureTracer{}
@@ -753,11 +760,11 @@ func runSkip(t *testing.T, path string, handler gin.HandlerFunc) (*captureMeter,
 
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.Use(Observe(AccessLogConfig{
+	installObserve(t, e, AccessLogConfig{
 		SkipPaths: []string{"/healthz"},
 		Metrics:   MetricsConfig{ActiveRequests: true},
-	}))
-	e.Use(ResponseCapture(false, payloadCaptureLimitForTest, false))
+	})
+	installCapture(t, e, false, payloadCaptureLimitForTest, false)
 	e.GET("/healthz", handler)
 	e.GET("/api", handler)
 
@@ -809,9 +816,6 @@ func runSkipRoute(t *testing.T, skipPaths []string, reg func(e *gin.Engine), req
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
-	// The instrument set is process-wide and resolved once, so re-resolve it
-	// against this test's recording provider.
-	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	ct := &captureTracer{}
@@ -821,11 +825,11 @@ func runSkipRoute(t *testing.T, skipPaths []string, reg func(e *gin.Engine), req
 
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.Use(Observe(AccessLogConfig{
+	installObserve(t, e, AccessLogConfig{
 		SkipPaths: skipPaths,
 		Metrics:   MetricsConfig{ActiveRequests: true},
-	}))
-	e.Use(ResponseCapture(false, payloadCaptureLimitForTest, false))
+	})
+	installCapture(t, e, false, payloadCaptureLimitForTest, false)
 	reg(e)
 
 	req := httptest.NewRequest(http.MethodGet, requestPath, nil)
@@ -990,9 +994,6 @@ func TestEngineMiddleware_RunsBeforeBuiltins(t *testing.T) {
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
-	// The instrument set is process-wide and resolved once, so re-resolve it
-	// against this test's recording provider.
-	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	gin.SetMode(gin.TestMode)
@@ -1032,9 +1033,6 @@ func TestEngineMiddleware_NilIsNoOp(t *testing.T) {
 	prevMeter := otel.GetMeterProvider()
 	cm := &captureMeter{}
 	otel.SetMeterProvider(&captureProvider{m: cm})
-	// The instrument set is process-wide and resolved once, so re-resolve it
-	// against this test's recording provider.
-	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	gin.SetMode(gin.TestMode)
@@ -1106,4 +1104,26 @@ func TestApplyMiddlewares_ManualComposition(t *testing.T) {
 	if got := len(ct.spansByName("GET /m")); got != 1 {
 		t.Fatalf("server spans \"GET /m\"=%d, want 1 (ApplyMiddlewares must install Observe)", got)
 	}
+}
+
+// installObserve installs the observe middleware, failing the test if its
+// instruments cannot be registered.
+func installObserve(t *testing.T, e *gin.Engine, cfg AccessLogConfig) {
+	t.Helper()
+	h, err := Observe(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Use(h)
+}
+
+// installCapture installs the SSE capture middleware, failing the test if its
+// instruments cannot be registered.
+func installCapture(t *testing.T, e *gin.Engine, payload bool, limit int, dist bool) {
+	t.Helper()
+	h, err := ResponseCapture(payload, limit, dist)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Use(h)
 }

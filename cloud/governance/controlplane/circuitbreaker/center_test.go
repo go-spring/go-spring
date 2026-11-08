@@ -29,25 +29,25 @@ import (
 )
 
 const doc = `
-rules[0].service=redis:cache
-rules[0].action.exact=-
-rules[0].error-threshold=1
-rules[0].open-duration=1m
+services[0].service=redis:cache
+services[0].rules[0].action.exact=-
+services[0].rules[0].error-threshold=1
+services[0].rules[0].open-duration=1m
 
-rules[1].service=redis:cache
-rules[1].action.prefix=GET /
-rules[1].error-threshold=100
+services[0].rules[1].action.prefix=GET /
+services[0].rules[1].error-threshold=100
 `
 
 func TestDocumentBinds(t *testing.T) {
 	d, err := source.Parse[resilience.BreakerSettings]("breaker.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	assert.Number(t, len(d.Rules)).Equal(2)
-	assert.That(t, d.Rules[0].Action.Exact).Equal("-")
-	assert.Number(t, d.Rules[0].ErrorThreshold).Equal(1)
-	assert.That(t, d.Rules[1].Action.Prefix).Equal("GET /")
-	assert.Number(t, d.Rules[1].ErrorThreshold).Equal(100)
+	assert.Number(t, len(d.Services)).Equal(1)
+	assert.Number(t, len(d.Services[0].Rules)).Equal(2)
+	assert.That(t, d.Services[0].Rules[0].ActionMatch.Exact).Equal("-")
+	assert.Number(t, d.Services[0].Rules[0].ErrorThreshold).Equal(1)
+	assert.That(t, d.Services[0].Rules[1].ActionMatch.Prefix).Equal("GET /")
+	assert.Number(t, d.Services[0].Rules[1].ErrorThreshold).Equal(100)
 }
 
 // TestDocumentRejectsInvalidRules pins the binding boundary: conf.Bind runs the
@@ -55,9 +55,9 @@ func TestDocumentBinds(t *testing.T) {
 // document is read. The rule matrix itself lives in resilience's own tests.
 func TestDocumentRejectsInvalidRules(t *testing.T) {
 	_, err := source.Parse[resilience.BreakerSettings]("breaker.properties", []byte(`
-rules[0].service=svc
-rules[0].action.exact=-
-rules[0].breaker-strategy=slow-call
+services[0].service=svc
+services[0].rules[0].action.exact=-
+services[0].rules[0].breaker-strategy=slow-call
 `), "")
 	assert.Error(t, err).NotNil()
 }
@@ -70,16 +70,20 @@ func TestServiceRuleWinsOutright(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
 	}
 
-	e := mgr.ExecutorFor("redis:cache")
+	e := mgr.Wrap("redis:cache", nil)
 	boom := errors.New("boom")
 	fail := func() error {
 		return e.Execute(context.Background(), chain.Operation{
+			Service: "redis:cache",
 			Request: chain.Request{Action: "GET /x"},
 		}, new(chain.Recorder), func(context.Context) error { return boom })
 	}
@@ -88,6 +92,7 @@ func TestServiceRuleWinsOutright(t *testing.T) {
 	// threshold 100 also matches: one failure trips the service breaker.
 	assert.Error(t, fail()).Is(boom)
 	assert.Error(t, e.Execute(context.Background(), chain.Operation{
+		Service: "redis:cache",
 		Request: chain.Request{Action: "GET /x"},
 	}, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
 }

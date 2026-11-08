@@ -377,6 +377,6 @@ trace-id,记录的调用位置(file:line)也会指向桥接层而非真实打点
 * **治理变更与 consumer 文档变更都会推送到运行中的实例。** consumer 配置中 Refer 期
   消费的字段仍是启动配置（静态绑定，变更需重启）；可动态生效的子集走两条热更新线：
   独立 consumer 文档（`${spring.dubbo.consumer.file}`，fsnotify watch）与治理中心推送
-  （poller 经 `OnLimits` 感知）→ override 规则 → dubbo-go 的配置中心 listener → 线上
+  （poller 经 limits source subscription 感知）→ override 规则 → dubbo-go 的配置中心 listener → 线上
   invoker URL，下次调用即生效。consumer 级默认发布为 `<appName>.configurators`，各
   reference 发布为 `<interface>:<version>:<group>.configurators`。

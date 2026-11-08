@@ -160,7 +160,7 @@ func observe(obs *observability.OperationObserver, ctx context.Context, op chain
 	if obs == nil {
 		return call(ctx)
 	}
-	return obs.Observe(ctx, op, nil, call)
+	return obs.Observe(ctx, op, new(chain.Recorder), call)
 }
 
 // --- Consume: the hand-written per-delivery wrapper (see the file doc) ---

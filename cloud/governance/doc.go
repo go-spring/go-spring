@@ -75,7 +75,7 @@
 // Two couplings follow, and they are deliberate rather than defects:
 //
 //   - Each control-plane document embeds ITS data-plane types —
-//     [resilience.Limits], [resilience.BreakerPolicy],
+//     [resilience.TimeoutRetry], [resilience.BreakerPolicy],
 //     [ratelimit.Policy], [admission.Policy] and
 //     [loadbalance.Selection]; [fault.Config] for fault — and each root's
 //     center pushes them into the concrete managers. An in-process

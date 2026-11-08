@@ -33,22 +33,29 @@ import (
 var sentinelErr = errors.New("boom")
 
 // withReader installs a manual reader as the global meter provider for the
-// test; since the package's shared instrument set is resolved on first use,
-// call withReader before the first cache operation.
+// test; a cache constructed after this call resolves its instruments against
+// the reader.
 func withReader(t *testing.T) *sdkmetric.ManualReader {
 	t.Helper()
 	rdr := sdkmetric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(rdr)))
-	// The instrument set is process-wide and resolved once, so without this it
-	// would keep reporting into whichever provider an earlier use (or test)
-	// resolved it against.
-	resetInstruments()
 	t.Cleanup(func() {
 		_ = rdr.Shutdown(context.Background())
 		otel.SetMeterProvider(prev)
 	})
 	return rdr
+}
+
+// mustNew wraps bc in a cache, failing the test if its instruments cannot be
+// registered.
+func mustNew(t *testing.T, bc ByteCache) *Cache {
+	t.Helper()
+	c, err := New(bc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
 }
 
 // totals collects cache.operation.total into a "operation.status" -> count map.
@@ -164,7 +171,7 @@ func exerciseStatuses(t *testing.T, c *Cache) {
 
 func TestObservabilityStatuses(t *testing.T) {
 	rdr := withReader(t)
-	exerciseStatuses(t, New(scriptedCache()))
+	exerciseStatuses(t, mustNew(t, scriptedCache()))
 
 	// Statuses are exclusive: hit/miss/error on get, ok/error on set, ok on
 	// delete; summed over status they equal the operations executed.
@@ -179,7 +186,7 @@ func TestObservabilityStatuses(t *testing.T) {
 
 func TestObservabilityDuration(t *testing.T) {
 	rdr := withReader(t)
-	exerciseStatuses(t, New(scriptedCache()))
+	exerciseStatuses(t, mustNew(t, scriptedCache()))
 
 	// Every operation is timed, broken down by the same status the counter uses
 	// — the split the backend's own client metric cannot produce.
@@ -207,7 +214,7 @@ func carrierOf(ctx context.Context) map[string]string {
 // the span below, not for whoever called in.
 func TestContributesToTheCallSpan(t *testing.T) {
 	var carried map[string]string
-	c := New(stubCache{
+	c := mustNew(t, stubCache{
 		get: func(ctx context.Context, _ string) ([]byte, error) {
 			carried = carrierOf(ctx)
 			return nil, ErrMiss

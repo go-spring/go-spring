@@ -78,6 +78,10 @@ type server struct {
 	closed bool
 	st     *state
 
+	// ins is the state instrument set this guard publishes on. The manager owns
+	// one set for every guard it builds; a standalone [New] builds its own.
+	ins *stateInstrumentSet
+
 	// observeOnce and observeReg are this instance's own state plane (see
 	// observe.go): registered lazily on the first Admit, unregistered by Close.
 	observeOnce sync.Once
@@ -93,7 +97,7 @@ type server struct {
 // yields a Guard.
 func New(id Identity, p Policy, factory *ratelimit.Factory, opts ...Option) (Guard, error) {
 	if factory == nil {
-		panic("admission: New requires a non-nil ratelimit.Factory")
+		return nil, errutil.Explain(nil, "admission: guard requires a non-nil ratelimit.Factory")
 	}
 	o := options{factory: factory}
 	for _, f := range opts {
@@ -107,8 +111,12 @@ func New(id Identity, p Policy, factory *ratelimit.Factory, opts ...Option) (Gua
 	if err != nil {
 		return nil, err
 	}
+	ins, err := buildStateInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return &server{
-		id: id, opts: o, st: st,
+		id: id, opts: o, st: st, ins: ins,
 		rate:     rate,
 		rateKind: st.kind,
 	}, nil
@@ -130,7 +138,11 @@ func buildState(p Policy, rule string) (*state, error) {
 	}
 	var bulk *bulkhead.Bulkhead
 	if p.MaxConcurrent > 0 {
-		bulk = bulkhead.New(p.MaxConcurrent, bulkhead.WithQueueTimeout(p.BulkheadQueueDuration))
+		b, err := bulkhead.New(p.MaxConcurrent, bulkhead.WithQueueTimeout(p.BulkheadQueueDuration))
+		if err != nil {
+			return nil, err
+		}
+		bulk = b
 	}
 	var kind string
 	if p.RateLimit > 0 {

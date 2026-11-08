@@ -25,6 +25,7 @@ package StarterInfluxdb
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 
@@ -34,6 +35,7 @@ import (
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
+	influxhttp "github.com/influxdata/influxdb-client-go/v2/api/http"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -102,7 +104,7 @@ type Client struct {
 //
 //	dyn → resilience.NewRoundTripper → http.DefaultTransport
 //
-// The manager's ExecutorFor resolves its backing executor lazily, on each
+// Runtime.ExecutorFor resolves the executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, center *governance.Runtime) *Client {
@@ -146,9 +148,30 @@ func (o *Client) WritePoints(ctx context.Context, points ...*write.Point) error 
 	w := o.WriteAPIBlocking(o.cfg.Org, o.cfg.Bucket)
 	op := chain.NewOperation(ctx, o.prop)
 	op.Service = o.serviceLabel
-	return o.exec.Execute(ctx, op, nil, func(ctx context.Context) error {
-		return w.WritePoint(ctx, points...)
-	})
+	_, err := resilience.Run(ctx, o.exec, op,
+		func(ctx context.Context) (struct{}, error) { return struct{}{}, w.WritePoint(ctx, points...) },
+		resilience.TolerateFunc(isClientWriteError))
+	return err
+}
+
+// No RetryOn is declared for the blocking write: the influx client already
+// retries retryable batches internally within MaxRetryTime, so a governance
+// retry on top would multiply attempts rather than add a layer.
+//
+// isClientWriteError reports whether the server gave a DEFINITE verdict on the
+// write itself — a 4xx rejection (bad line protocol, missing bucket,
+// unauthorized) — rather than a condition of the server. A 4xx says the request
+// was the problem, so it must neither trip the breaker nor trigger a retry. A
+// 5xx, a 429 (overloaded), a 408 (the server timed out) and a transport error
+// stay downstream faults. The error is still returned to the caller verbatim.
+func isClientWriteError(err error) bool {
+	var he *influxhttp.Error
+	if !errors.As(err, &he) {
+		return false
+	}
+	return he.StatusCode >= 400 && he.StatusCode < 500 &&
+		he.StatusCode != http.StatusRequestTimeout &&
+		he.StatusCode != http.StatusTooManyRequests
 }
 
 // ManagedWriteAPI returns the managed asynchronous writer for the configured

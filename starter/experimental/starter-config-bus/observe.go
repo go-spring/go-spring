@@ -18,11 +18,11 @@ package StarterConfigBus
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -72,43 +72,43 @@ const (
 	outcomePublishError = "error"
 )
 
-// instrumentSet bundles the metrics the bus records. It is one per process,
-// resolved lazily on first use so it binds to whichever providers are current
-// then.
+// instrumentSet bundles the metrics the bus records. It is one per bus,
+// resolved by [ConfigBus.Init].
 type instrumentSet struct {
 	events     metric.Int64Counter
 	refreshDur metric.Float64Histogram
 	publishes  metric.Int64Counter
 }
 
-// instruments is the one instrument set this starter uses for the whole
-// process. Resolution is deferred to the first use, not run at package init, so
-// the instruments bind to whichever providers are current then - starter-otel
-// installs them before any bean is built, but a test may replace them later and
-// a value resolved at init would keep pointing at the old SDK.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this starter's instruments against the meter
+// provider the otel starter installs before any bean is built. The bus owns the
+// set, so a failed registration fails Init instead of silently dropping the
+// whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
 	in := &instrumentSet{}
-	in.events, _ = m.Int64Counter("config.bus.events",
+	var err error
+	in.events, err = m.Int64Counter("config.bus.events",
 		metric.WithDescription("Configuration refresh broadcasts received, by outcome"),
 		metric.WithUnit("{event}"))
-	in.refreshDur, _ = m.Float64Histogram("config.bus.refresh.duration",
+	if err != nil {
+		return nil, errutil.Explain(err, "config-bus: register config.bus.events")
+	}
+	in.refreshDur, err = m.Float64Histogram("config.bus.refresh.duration",
 		metric.WithDescription("Duration of the property refresh triggered by a broadcast"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	in.publishes, _ = m.Int64Counter("config.bus.publishes",
+	if err != nil {
+		return nil, errutil.Explain(err, "config-bus: register config.bus.refresh.duration")
+	}
+	in.publishes, err = m.Int64Counter("config.bus.publishes",
 		metric.WithDescription("Configuration refresh broadcasts published, by outcome"),
 		metric.WithUnit("{event}"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "config-bus: register config.bus.publishes")
+	}
+	return in, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // record is the single sink for one received event: it counts the outcome,
 // records the refresh duration when a refresh was actually attempted, and emits
@@ -125,20 +125,20 @@ func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent,
 		attribute.String("status", outcome),
 		attribute.String("prefix", ev.Prefix),
 	)
-	instruments().events.Add(ctx, 1, attrs)
+	b.ins.events.Add(ctx, 1, attrs)
 
 	// The log line carries the same outcome the counter just counted, under the
 	// same key, so the two can never be read as disagreeing — and a dashboard
 	// selecting config.bus.events{outcome=...} lands on the line explaining it.
 	switch outcome {
 	case outcomeRefreshed:
-		instruments().refreshDur.Record(ctx, dur.Seconds(), attrs)
+		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Info(ctx, starterTag, "config bus: refreshed properties on event", append(eventFields(outcome),
 			log.String("prefix", ev.Prefix),
 			log.String("origin", ev.Origin),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6))...)
 	case outcomeRefreshError:
-		instruments().refreshDur.Record(ctx, dur.Seconds(), attrs)
+		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Error(ctx, starterTag, err, "config bus: property refresh failed", append(eventFields(outcome),
 			log.String("prefix", ev.Prefix))...)
 	case outcomeIgnored:
@@ -165,7 +165,7 @@ func eventFields(outcome string) []log.Field {
 // recordPublish is the sending-direction sibling of record: one outcome per
 // broadcast, driving the counter and a log line at the same level.
 func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.Duration, err error) {
-	instruments().publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
+	b.ins.publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
 	if err != nil {
 		log.Error(ctx, starterTag, err, "config bus: publish refresh event failed", append(eventFields(outcome),
 			log.String("subject", b.Config.Subject),

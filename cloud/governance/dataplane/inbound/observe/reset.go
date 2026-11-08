@@ -16,18 +16,13 @@
 
 package observe
 
-import "sync"
-
-// ResetInstruments drops the memoized inbound instrument sets so the next use
+// ResetInstruments drops the memoized per-prefix operation sets so the next use
 // resolves fresh ones. It exists for tests that install their own
-// MeterProvider: the sets are process-wide and resolved once, so a test running
-// after one that already resolved them would otherwise keep reporting into the
-// earlier provider.
-//
-// It covers both the always-on server set and the per-prefix operation sets,
-// since a MeterProvider swap invalidates all of them together.
+// MeterProvider: the per-prefix sets are memoized, so a test running after one
+// that already resolved them would otherwise keep reporting into the earlier
+// provider. The always-on server set is resolved by [NewServerObserver] at
+// construction and needs no reset.
 func ResetInstruments() {
-	serverInstruments = sync.OnceValue(buildServerInstruments)
 	resetOperationInstruments()
 }
 

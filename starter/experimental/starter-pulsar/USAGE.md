@@ -278,9 +278,9 @@ always supplies it; there is no unmanaged/observe-only fallback.
 5. The resilience observer (the single emitter) records the outcome on
    `messaging.client.operation.duration` (call level), `messaging.client.attempt.duration`
    (per retry) and `messaging.client.active_requests`, and writes one access log. Publish and
-   consume are declared `NonIdempotent`, so a retry policy on the label is **suppressed** (one
-   warning per service): re-sending or re-running the handler is a second side effect, not a
-   second attempt.
+   consume carry no call-site retry: retry is governance-only. Re-sending or re-running the
+   handler is a second side effect, not a second attempt, so the document configures no
+   schedule for the label; whoever writes that document owns its effects.
 
 ### 2.4 One driver consume, layer by layer
 

@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Manager is the inbound configuration authority: it holds the pushed
@@ -42,6 +43,11 @@ type Manager struct {
 	// opts are the process-wide construction options (a cluster limiter, a
 	// fault stage); each Guard starts from them and a caller may add more.
 	opts options
+
+	// instruments is the state plane shared by every guard this manager builds.
+	// The manager is one per process (a container bean), so it is the natural
+	// owner: construction either yields a usable set or fails.
+	instruments *stateInstrumentSet
 }
 
 // NewManager returns an inbound manager with no document. Every Guard it
@@ -50,19 +56,24 @@ type Manager struct {
 //
 // opts apply to every Guard this manager creates; a caller can add per-instance
 // options through [Manager.GuardFor].
-func NewManager(factory *ratelimit.Factory, opts ...Option) *Manager {
+func NewManager(factory *ratelimit.Factory, opts ...Option) (*Manager, error) {
 	if factory == nil {
-		panic("admission: NewManager requires a non-nil ratelimit.Factory")
+		return nil, errutil.Explain(nil, "admission: manager requires a non-nil ratelimit.Factory")
 	}
 	o := options{factory: factory}
 	for _, f := range opts {
 		f(&o)
 	}
-	return &Manager{
-		guards:   make(map[*server]struct{}),
-		opts:     o,
-		settings: Settings{Default: DefaultPolicy()},
+	ins, err := buildStateInstruments()
+	if err != nil {
+		return nil, err
 	}
+	return &Manager{
+		guards:      make(map[*server]struct{}),
+		opts:        o,
+		instruments: ins,
+		settings:    Settings{Default: DefaultPolicy()},
+	}, nil
 }
 
 // DefaultPolicy is the policy an instance runs under when no document has been
@@ -155,7 +166,7 @@ func (m *Manager) GuardFor(id Identity, opts ...Option) (Guard, error) {
 		return nil, err
 	}
 	s := &server{
-		id: id, opts: o, mgr: m, st: st,
+		id: id, opts: o, mgr: m, st: st, ins: m.instruments,
 		rate:     rate,
 		rateKind: st.kind,
 	}

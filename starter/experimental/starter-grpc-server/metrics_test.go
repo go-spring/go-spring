@@ -31,7 +31,8 @@ import (
 // call count all pass through exactly once — the in-flight gauge decrement must
 // fire on the error path too, or the gauge would leak.
 func TestMetricsUnaryInterceptor_NoopMeter(t *testing.T) {
-	ic := MetricsUnaryInterceptor()
+	ic, err := MetricsUnaryInterceptor()
+	assert.That(t, err).Nil()
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 
 	hits := 0
@@ -53,10 +54,11 @@ func TestMetricsUnaryInterceptor_NoopMeter(t *testing.T) {
 // TestMetricsStreamInterceptor_NoopMeter is the streaming twin: count and
 // duration recording on a no-op meter must not panic, on success or error.
 func TestMetricsStreamInterceptor_NoopMeter(t *testing.T) {
-	ic := MetricsStreamInterceptor()
+	ic, err := MetricsStreamInterceptor()
+	assert.That(t, err).Nil()
 	info := &grpc.StreamServerInfo{FullMethod: "/demo.Service/Chat"}
 
-	err := ic(nil, &fakeStream{ctx: context.Background()}, info,
+	err = ic(nil, &fakeStream{ctx: context.Background()}, info,
 		func(any, grpc.ServerStream) error { return nil })
 	assert.That(t, err).Nil()
 

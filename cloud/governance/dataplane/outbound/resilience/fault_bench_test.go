@@ -10,11 +10,15 @@
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions.
- *
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
-package fault
+// fault_bench_test.go measures what the injector costs ON TOP of this layer, in
+// the production composition (resilience outside, fault inside). It lives here
+// so the fault package's tests never reach back into this one.
+
+package resilience
 
 import (
 	"context"
@@ -23,25 +27,33 @@ import (
 	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
-	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/fault"
 )
 
 // noopFn is the operation handed to the executor: returns nil immediately so
-// the benchmark isolates framework overhead (executor + injector path), not any
-// downstream work.
+// the benchmark isolates framework overhead, not downstream work.
 func noopFn(context.Context) error { return nil }
 
-// benchExec builds a default (policy-free) executor for "svc", released at the
-// benchmark's cleanup.
+// benchExec builds the policy-free executor for "svc".
 func benchExec(b *testing.B) chain.Executor {
 	b.Helper()
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		b.Fatal(err)
 	}
-	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	m, err := NewManager(factories)
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.Cleanup(func() { _ = m.Close() })
-	return m.ExecutorFor("svc")
+	return m.Wrap("svc", nil)
+}
+
+// faultWrapped puts the injector around raw, armed with conf.
+func faultWrapped(raw chain.Executor, conf kfault.Config) chain.Executor {
+	inj := fault.NewManager()
+	inj.Refresh(conf)
+	return inj.WrapClientExecutor(raw)
 }
 
 // BenchmarkExecutor_Baseline measures the raw default executor's per-op cost
@@ -59,8 +71,7 @@ func BenchmarkExecutor_Baseline(b *testing.B) {
 // is inert (no rate, no latency) — the steady-state cost a production config
 // pays.
 func BenchmarkFaultExecutor_Inert(b *testing.B) {
-	raw := benchExec(b)
-	exec := newFixture(configs{Client: kfault.Config{}}).client.WrapClientExecutor(raw) // inert
+	exec := faultWrapped(benchExec(b), kfault.Config{})
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
@@ -69,10 +80,12 @@ func BenchmarkFaultExecutor_Inert(b *testing.B) {
 }
 
 // BenchmarkFaultExecutor_Injecting measures cost when every call is injected
-// (Rate 1) — exercises the maybe() decision + error path per attempt.
+// (Rate 1) — exercises the decision + error path per attempt.
 func BenchmarkFaultExecutor_Injecting(b *testing.B) {
-	raw := benchExec(b)
-	exec := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Name: "bench", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic"}}}}).client.WrapClientExecutor(raw)
+	conf := kfault.Config{Rules: []kfault.Rule{{
+		Name: "bench", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic",
+	}}}
+	exec := faultWrapped(benchExec(b), conf)
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {

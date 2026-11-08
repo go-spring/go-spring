@@ -23,13 +23,14 @@ import (
 )
 
 // TestSettingsValidate pins the document-level checks: an empty document is
-// valid (the zero Policy protects nothing), while every rule must name its
-// entrance and entrances must be unique.
+// valid (the zero Policy protects nothing), every rule must name its entrance,
+// and duplicate entrances are order-shadowed by first-match-wins rather than
+// rejected (the platform is expected not to emit them).
 func TestSettingsValidate(t *testing.T) {
 	assert.Error(t, (Settings{}).Validate()).Nil()
 	assert.Error(t, (Settings{Rules: []Rule{{Service: ""}}}).Validate()).Matches("without a service")
 	assert.Error(t, (Settings{Rules: []Rule{
 		{Service: "gin::8080"},
 		{Service: "gin::8080"},
-	}}).Validate()).Matches("duplicate entry")
+	}}).Validate()).Nil()
 }

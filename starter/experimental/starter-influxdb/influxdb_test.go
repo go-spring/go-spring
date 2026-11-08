@@ -17,11 +17,13 @@
 package StarterInfluxdb
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	influxhttp "github.com/influxdata/influxdb-client-go/v2/api/http"
 	"github.com/influxdata/influxdb-client-go/v2/domain"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -37,6 +39,25 @@ func TestHealthError(t *testing.T) {
 	err := healthError(&domain.HealthCheck{Status: fail, Message: &msg})
 	assert.That(t, err != nil).True()
 	assert.That(t, strings.Contains(err.Error(), "corrupt tsdb")).True()
+}
+
+// TestClientWriteErrorClassification pins the split: a 4xx is the server's
+// verdict on the write; 5xx, throttling and timeouts are conditions of the
+// server; a transport error has no status at all.
+func TestClientWriteErrorClassification(t *testing.T) {
+	for _, code := range []int{
+		http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
+		http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity,
+	} {
+		assert.That(t, isClientWriteError(&influxhttp.Error{StatusCode: code})).True()
+	}
+	for _, code := range []int{
+		0, http.StatusRequestTimeout, http.StatusTooManyRequests,
+		http.StatusInternalServerError, http.StatusServiceUnavailable,
+	} {
+		assert.That(t, isClientWriteError(&influxhttp.Error{StatusCode: code})).False()
+	}
+	assert.That(t, isClientWriteError(errors.New("connection refused"))).False()
 }
 
 // TestDynamicTransportSwap proves the indirection passes through to the base

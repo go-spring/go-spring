@@ -104,7 +104,7 @@ var recoverOnStart = gs.OnProperty("spring.transaction.saga.recover-on-start").H
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
 // saga-log Store and, when tracing is enabled, the otel observer.
-func newCoordinator(c Config, store transaction.Store) transaction.Coordinator {
+func newCoordinator(c Config, store transaction.Store) (transaction.Coordinator, error) {
 	opts := []transaction.Option{transaction.WithStore(store)}
 	if c.Tracing {
 		opts = append(opts, transaction.WithObserver(transaction.SagaObserver{}))

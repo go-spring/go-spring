@@ -14,66 +14,39 @@
  * limitations under the License.
  */
 
-// Package StarterGovernanceSentinel contributes sentinel-golang as the recommended
-// resilience backend for the framework defined in
-// [go-spring.org/cloud/governance/dataplane/outbound/resilience].
+// Package StarterGovernanceSentinel contributes sentinel-golang to the outbound
+// resilience framework as a RATE-LIMIT ALGORITHM.
 //
-// Contribution is a blank import:
+// The contribution is a [ratelimit.Provider] bean: a policy selects it with
+// `limiter: sentinel`, and the resilience engine keeps ownership of timeout,
+// retry, breaker, rule matching, per-rule keys and metrics. Sentinel answers
+// the flow decision only — there is no second executor and no duplicated
+// pipeline.
 //
-//	import _ "go-spring.org/starter-governance-sentinel"
-//
-// which registers the backend as a bean named "sentinel". Selecting it is then a
-// one-line change to the static config — spring.resilience.driver=sentinel — with
-// no code change and no per-starter key: the resilience manager injects that
-// named bean once at startup and every client picks it up through the same seam.
-// This is the whole point of the abstraction/driver split. The bundled
-// zero-dependency "default" driver stays available for tests and lightweight use;
-// this module exists so production traffic can lean on sentinel-golang's adaptive
-// flow control and circuit breaking instead.
+// Importing this package initializes sentinel once, which makes the provider
+// usable.
 package StarterGovernanceSentinel
 
 import (
 	"context"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	sentinel "github.com/alibaba/sentinel-golang/api"
 
-	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
 
 func init() {
-	// Initialise sentinel once at import time. Contribution then always succeeds
-	// so a misconfigured environment fails loudly here rather than on first use.
+	// Initialise sentinel once at import time. A misconfigured environment fails
+	// loudly here rather than on first use.
 	if err := sentinel.InitDefault(); err != nil {
 		panic("starter-governance-sentinel: sentinel init failed: " + err.Error())
 	}
-	// Contribute the backend as a bean NAMED [SentinelName]: the resilience
-	// manager injects the [resilience.Driver] bean whose name
-	// ${spring.resilience.driver} selects, so this name is what makes the backend
-	// selectable. The Export is load-bearing — gs indexes beans by their exact
-	// type, so without it the concrete *sentinelDriver would be invisible to that
-	// lookup.
-	gs.Provide(func() *sentinelDriver { return &sentinelDriver{} }).
-		Name(SentinelName).
-		Export(gs.As[resilience.Driver]()).
-		Caller(1)
-	log.Info(context.Background(), log.TagAppDef, "registered sentinel resilience driver")
-}
-
-// SentinelName is the bean name this backend answers to, and the value
-// ${spring.resilience.driver} takes to select it.
-const SentinelName = "sentinel"
-
-type sentinelDriver struct{}
-
-// NewSentinelDriver returns the sentinel-backed [resilience.Driver] as a value,
-// for callers that build executors outside the container (examples, tests, a
-// program that manages its own wiring). A process using gs does not need it:
-// the same backend is contributed as the bean named [SentinelName].
-func NewSentinelDriver() resilience.Driver { return sentinelDriver{} }
-
-func (sentinelDriver) NewExecutor(label string, m *resilience.Manager) (chain.Executor, error) {
-	return newSentinelExecutor(label, m)
+	// Contribute the flow algorithm to the process limiter factory. A rule that
+	// writes `limiter: sentinel` now routes through sentinel; an unknown name
+	// still fails document validation.
+	gs.Provide(func() ratelimit.Provider { return Provider{} }).
+		Name(LimiterAlgorithm).Caller(1)
+	log.Info(context.Background(), log.TagAppDef, "sentinel rate-limit provider available")
 }

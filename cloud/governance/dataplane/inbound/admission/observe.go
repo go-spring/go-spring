@@ -30,58 +30,59 @@ package admission
 
 import (
 	"context"
-	"sync"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"go-spring.org/cloud/observability/instrument"
+	"go-spring.org/stdlib/errutil"
 )
 
 // stateInstrumentSet is the inbound state plane's instruments: one set per
-// process, resolved lazily so it binds to whichever meter provider is current
-// at first use. It holds no per-guard state.
+// manager (or per standalone guard), and the manager is one per process. It
+// holds no per-guard state.
 type stateInstrumentSet struct {
 	meter      metric.Meter
 	bulkUsage  metric.Float64ObservableGauge
 	bulkQueued metric.Int64ObservableGauge
 }
 
-// stateInstruments is the one state instrument set this package uses.
-var stateInstruments = sync.OnceValue(buildStateInstruments)
-
-func buildStateInstruments() *stateInstrumentSet {
+// buildStateInstruments resolves this package's state instruments against the
+// meter provider the otel starter installs before any bean is constructed. The
+// owner hands the set to every guard it builds, so a failed registration fails
+// construction: a declared metric family that is not a legal instrument name
+// would otherwise silently delete the whole state surface.
+func buildStateInstruments() (*stateInstrumentSet, error) {
 	m := otel.Meter(instrument.Scope)
 	in := &stateInstrumentSet{meter: m}
 	var err error
-	if in.bulkUsage, err = m.Float64ObservableGauge("resilience.server.bulkhead.usage_ratio",
+	in.bulkUsage, err = m.Float64ObservableGauge("resilience.server.bulkhead.usage_ratio",
 		metric.WithDescription("Bulkhead slots held / capacity"),
-		metric.WithUnit("1")); err != nil {
-		instrument.ReportInstrumentError("resilience.server.bulkhead.usage_ratio", err)
+		metric.WithUnit("1"))
+	if err != nil {
+		return nil, errutil.Explain(err, "admission: register resilience.server.bulkhead.usage_ratio")
 	}
-	if in.bulkQueued, err = m.Int64ObservableGauge("resilience.server.bulkhead.queued",
+
+	in.bulkQueued, err = m.Int64ObservableGauge("resilience.server.bulkhead.queued",
 		metric.WithDescription("Callers blocked waiting for a bulkhead slot"),
-		metric.WithUnit("{caller}")); err != nil {
-		instrument.ReportInstrumentError("resilience.server.bulkhead.queued", err)
+		metric.WithUnit("{caller}"))
+	if err != nil {
+		return nil, errutil.Explain(err, "admission: register resilience.server.bulkhead.queued")
 	}
-	return in
+	return in, nil
 }
 
-// resetInstruments makes the next use of stateInstruments resolve a fresh set.
-// It exists for tests that install their own MeterProvider.
-func resetInstruments() { stateInstruments = sync.OnceValue(buildStateInstruments) }
-
-// readyObserve resolves the shared instruments and registers this guard's state
-// callback. It runs on the first Admit, not at construction: the callback must
-// exist before the first collection, and the instruments must be resolved after
-// the global providers are installed.
+// readyObserve registers this guard's state callback on the instrument set its
+// owner resolved at construction. It runs on the first Admit, not at
+// construction: the callback must exist before the first collection, and a
+// guard that never admits never registers one.
 //
 // Registration and the closed check share s.mu so a Close racing the first
 // admit cannot leave a callback registered.
 func (s *server) readyObserve() {
 	s.observeOnce.Do(func() {
-		in := stateInstruments()
+		in := s.ins
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if s.closed {
@@ -117,7 +118,7 @@ func (s *server) closeObserve() {
 // replaces s.st wholesale, and the copied pointer stays valid for this
 // collection.
 func (s *server) observeState(_ context.Context, o metric.Observer) error {
-	in := stateInstruments()
+	in := s.ins
 
 	s.mu.Lock()
 	st := s.st

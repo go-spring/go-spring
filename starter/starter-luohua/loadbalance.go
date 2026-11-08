@@ -41,7 +41,7 @@ var _ loadbalance.Provider = luohuaLoadBalancerProvider{}
 
 func (luohuaLoadBalancerProvider) Strategies() []string { return []string{luohuaStrategy} }
 
-func (luohuaLoadBalancerProvider) New(sel loadbalance.Selection, _ loadbalance.Resolver) (loadbalance.Balancer, error) {
+func (luohuaLoadBalancerProvider) New(sel loadbalance.Selection) (loadbalance.Balancer, error) {
 	return newLuohuaBalancer(sel)
 }
 

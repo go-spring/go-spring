@@ -124,7 +124,11 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, pro
 	if cfg.Health.Enabled && cfg.Health.Path != "" {
 		accessCfg.SkipPaths = append(append([]string{}, accessCfg.SkipPaths...), cfg.Health.Path)
 	}
-	e.Use(Observe(accessCfg))
+	observe, err := Observe(accessCfg)
+	if err != nil {
+		return err
+	}
+	e.Use(observe)
 
 	// Resilience inbound (opt-in): runs the request through the configured
 	// rate-limit / bulkhead before the handler chain. Sits inside
@@ -168,11 +172,15 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, pro
 	// resp.body is gated inside by the payload flag, so turning payload capture
 	// off drops only the body-copy cost. Observe reads its capture via the gin
 	// context.
-	e.Use(ResponseCapture(
+	capture, err := ResponseCapture(
 		mw.AccessLog.Payload.Enabled,
 		mw.AccessLog.Payload.Limit,
 		mw.AccessLog.Metrics.SSEDistributions,
-	))
+	)
+	if err != nil {
+		return err
+	}
+	e.Use(capture)
 	return nil
 }
 

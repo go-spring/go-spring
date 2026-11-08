@@ -18,11 +18,11 @@ package StarterTrpc
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -106,57 +106,61 @@ func TracingServerFilter() filter.ServerFilter {
 }
 
 // instrumentSet holds this starter's RPC instruments. It is built once per
-// process (see instruments), so nothing is allocated per call.
+// filter (see [MetricsServerFilter]), so nothing is allocated per call.
 type instrumentSet struct {
 	requestCount     metric.Int64Counter
 	requestDuration  metric.Float64Histogram
 	requestsInFlight metric.Int64UpDownCounter
 }
 
-// instruments is the one instrument set this starter uses for the whole
-// process. Resolution is deferred to the first use, not run at package init, so
-// the instruments bind to whichever providers are current then - starter-otel
-// installs them before the server starts, but a test may replace them later and
-// a value resolved at init would keep pointing at the old SDK.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this starter's instruments against the meter
+// provider the otel starter installs before the server starts. The filter owns
+// the set, so a failed registration fails server startup instead of silently
+// dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
-	requestCount, _ := m.Int64Counter(
+	requestCount, err := m.Int64Counter(
 		"rpc.server.request_count",
 		metric.WithDescription("Number of RPC requests received"),
 		metric.WithUnit("{request}"),
 	)
-	requestDuration, _ := m.Float64Histogram(
+	if err != nil {
+		return nil, errutil.Explain(err, "trpc: register rpc.server.request_count")
+	}
+	requestDuration, err := m.Float64Histogram(
 		"rpc.server.request.duration",
 		metric.WithDescription("Duration of RPC requests"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
-	requestsInFlight, _ := m.Int64UpDownCounter(
+	if err != nil {
+		return nil, errutil.Explain(err, "trpc: register rpc.server.request.duration")
+	}
+	requestsInFlight, err := m.Int64UpDownCounter(
 		"rpc.server.active_requests",
 		metric.WithDescription("Number of RPC requests currently in-flight"),
 		metric.WithUnit("{request}"),
 	)
+	if err != nil {
+		return nil, errutil.Explain(err, "trpc: register rpc.server.active_requests")
+	}
 	return &instrumentSet{
 		requestCount:     requestCount,
 		requestDuration:  requestDuration,
 		requestsInFlight: requestsInFlight,
-	}
+	}, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // MetricsServerFilter is a tRPC ServerFilter that records request count,
 // duration, and in-flight gauge through the global MeterProvider. Metric names
 // follow the OTel stable RPC semantic conventions (rpc.server.request.duration);
 // the request_count counter and active_requests gauge are kept as complementary
 // dimensions (not redundant with the duration histogram).
-func MetricsServerFilter() filter.ServerFilter {
+func MetricsServerFilter() (filter.ServerFilter, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		name := rpcName(ctx)
 		// The in-flight gauge is recorded before the call, so it cannot carry a
@@ -165,7 +169,7 @@ func MetricsServerFilter() filter.ServerFilter {
 			attribute.String("rpc.system", rpcSystem),
 			attribute.String("rpc.method", name),
 		)
-		instruments().requestsInFlight.Add(ctx, 1, inflight)
+		ins.requestsInFlight.Add(ctx, 1, inflight)
 		start := time.Now()
 
 		rsp, err := next(ctx, req)
@@ -177,10 +181,10 @@ func MetricsServerFilter() filter.ServerFilter {
 			attribute.String("rpc.method", name),
 			attribute.String("status", status),
 		)
-		instruments().requestsInFlight.Add(ctx, -1, inflight)
-		instruments().requestCount.Add(ctx, 1, done)
-		instruments().requestDuration.Record(ctx, dur.Seconds(), done)
+		ins.requestsInFlight.Add(ctx, -1, inflight)
+		ins.requestCount.Add(ctx, 1, done)
+		ins.requestDuration.Record(ctx, dur.Seconds(), done)
 		logCall(ctx, name, status, dur, err)
 		return rsp, err
-	}
+	}, nil
 }

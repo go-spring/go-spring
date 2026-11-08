@@ -175,7 +175,7 @@ func observe(obs *observability.OperationObserver, ctx context.Context, op chain
 	if obs == nil {
 		return call(ctx)
 	}
-	return obs.Observe(ctx, op, nil, call)
+	return obs.Observe(ctx, op, new(chain.Recorder), call)
 }
 
 // clientObserver is the per-client emission attachment: the observer and the

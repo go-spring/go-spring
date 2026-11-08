@@ -28,23 +28,21 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
-// httpStatusError wraps an HTTP response status that the adapter treated as a
-// failure (5xx from an upstream, or a 5xx handler). It implements [Retryable]
-// so the executor's retry loop — via [shouldRetry] — retries server errors but
-// not client errors, without each adapter reimplementing the classification.
-// Callers may still inspect the status through [errors.As].
+// httpStatusError wraps an HTTP 5xx the adapter treated as a failure. It
+// implements [Retryable] so the executor's retry loop retries server errors
+// without each adapter reimplementing the classification. A 4xx is never this
+// type: it is a definite answer, returned as a normal response. Callers may
+// still inspect the status through [errors.As].
 type httpStatusError struct {
-	status    int
-	retryable bool // true for 5xx (retry), false for unexpected non-2xx
+	status int
 }
 
 func (e *httpStatusError) Error() string {
 	return fmt.Sprintf("resilience: upstream returned %d", e.status)
 }
 
-// Retryable reports whether the error is eligible for retry. Only server errors
-// (5xx) are; a 4xx is a definite "no" from the upstream.
-func (e *httpStatusError) Retryable() bool { return e.retryable }
+// Retryable reports that a server error is eligible for retry.
+func (e *httpStatusError) Retryable() bool { return true }
 
 // NewRoundTripper wraps base so every request flows through exec. It is the
 // HTTP seam of the framework and the widest-coverage adapter: any client built
@@ -108,8 +106,9 @@ func (rt *roundTripper) call(req *http.Request) chain.Operation {
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	var resp *http.Response
-	err := rt.exec.Execute(req.Context(), rt.call(req), new(chain.Recorder), func(ctx context.Context) error {
+	// Run is the shared "drive one operation through the executor" body; the
+	// closure supplies only what is HTTP-specific.
+	return Run(req.Context(), rt.exec, rt.call(req), func(ctx context.Context) (*http.Response, error) {
 		// A shallow copy carrying the attempt's context: the transport must run
 		// under the deadline exec derived for this attempt, and a retry derives a
 		// fresh one. Nothing here mutates the headers, so they need no copy of
@@ -121,13 +120,13 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if req.GetBody != nil {
 			body, err := req.GetBody()
 			if err != nil {
-				return err
+				return nil, err
 			}
 			attempt.Body = body
 		}
 		r, err := rt.base.RoundTrip(attempt)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if r.StatusCode >= 500 {
 			// Drain and close so the connection can be reused before we decide
@@ -135,15 +134,10 @@ func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			// Retryable() == true lets the executor's retry loop decide.
 			_, _ = io.Copy(io.Discard, r.Body)
 			_ = r.Body.Close()
-			return &httpStatusError{status: r.StatusCode, retryable: true}
+			return nil, &httpStatusError{status: r.StatusCode}
 		}
-		resp = r
-		return nil
+		return r, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
 }
 
 // Close lets an owner (e.g. a starter's destroy hook) release the underlying

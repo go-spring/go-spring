@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,24 +29,25 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// errFail is a plain failure used to drive the breaker in tests.
-var errFail = errors.New("test: fail")
-
 // testManager is a thin wrapper over the outbound authority for tests.
 type testManager struct {
 	mgr *Manager
 }
 
-func newTestManager(d Driver) *testManager {
+func newTestManager() *testManager {
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		panic(err)
 	}
-	return &testManager{mgr: NewManager(d, factories)}
+	mgr, err := NewManager(factories)
+	if err != nil {
+		panic(err)
+	}
+	return &testManager{mgr: mgr}
 }
 
-func (m *testManager) ApplyLimits(s LimitsSettings) error {
-	return m.mgr.ApplyLimits(s)
+func (m *testManager) ApplyTimeoutRetry(s TimeoutRetrySettings) error {
+	return m.mgr.ApplyTimeoutRetry(s)
 }
 
 func (m *testManager) ApplyBreaker(s BreakerSettings) error {
@@ -58,46 +58,26 @@ func (m *testManager) ApplyRateLimit(s RateLimitSettings) error {
 	return m.mgr.ApplyRateLimit(s)
 }
 
-func (m *testManager) ExecutorFor(service string) chain.Executor {
-	return m.mgr.ExecutorFor(service)
+func (m *testManager) resolve(op chain.Operation) TimeoutRetryRule {
+	rule, _ := m.mgr.timeoutRetrySettings().findRule(op)
+	return rule
 }
-
-func (m *testManager) LimitsFor(label string) Limits {
-	return m.mgr.LimitsFor(label)
-}
-
-func (m *testManager) OnLimits(label string, notify func()) {
-	m.mgr.OnLimits(label, notify)
-}
-
-func (m *testManager) Resolve(op chain.Operation) CallPolicy { return m.mgr.Resolve(op) }
 
 func (m *testManager) Close() error {
 	return m.mgr.Close()
 }
 
-// armedBreakers returns a manager whose breakers are fixed per label.
-func armedBreakers(t *testing.T, breakers map[string]BreakerPolicy) *testManager {
-	t.Helper()
-	m := newTestManager(NewDefaultDriver())
-	rules := make([]BreakerRule, 0, len(breakers))
-	for label, p := range breakers {
-		rules = append(rules, BreakerRule{Service: label, Action: matcher.ActionMatch{Exact: ServiceScopeAction}, BreakerPolicy: p})
-	}
-	if err := m.ApplyBreaker(BreakerSettings{Rules: rules}); err != nil {
-		t.Fatalf("ApplyBreaker: %v", err)
-	}
-	return m
-}
-
-// limitsRules renders a label -> limits map as the pushed limits rule list.
-func limitsRules(limits map[string]Limits) []LimitsRule {
+// limitsRules renders a label -> limits map as the pushed limits document.
+func limitsRules(limits map[string]TimeoutRetry) []TimeoutRetryService {
 	if len(limits) == 0 {
 		return nil
 	}
-	out := make([]LimitsRule, 0, len(limits))
+	out := make([]TimeoutRetryService, 0, len(limits))
 	for label, p := range limits {
-		out = append(out, LimitsRule{Service: label, Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: p})
+		out = append(out, TimeoutRetryService{
+			Service: label,
+			Rules:   []TimeoutRetryRule{{ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction}, TimeoutRetry: p}},
+		})
 	}
 	return out
 }
@@ -120,8 +100,8 @@ func runOnce(t *testing.T, e chain.Executor) bool {
 // can be built before any settings arrive, because construction reads no
 // configuration. Until a document is applied it is a transparent pass-through.
 func TestManagerBuildsBeforeAnySettings(t *testing.T) {
-	m := newTestManager(NewDefaultDriver())
-	e := m.ExecutorFor("redis:cache")
+	m := newTestManager()
+	e := m.mgr.Wrap("redis:cache", nil)
 	if e == nil {
 		t.Fatal("executor construction must not depend on configuration")
 	}
@@ -132,112 +112,26 @@ func TestManagerBuildsBeforeAnySettings(t *testing.T) {
 }
 
 func TestManagerEmptySettingsIsPassThrough(t *testing.T) {
-	m := newTestManager(NewDefaultDriver())
+	m := newTestManager()
 	// A manager that has never been armed configures nothing, so every label
 	// resolves zero limits and the executor is the pass-through.
-	if p := m.LimitsFor("redis:cache"); !p.IsZero() {
+	if p := m.resolve(chain.Operation{Service: "redis:cache"}); p.Timeout != 0 {
 		t.Fatalf("an empty manager must resolve zero limits, got %+v", p)
 	}
-	if !runOnce(t, m.ExecutorFor("redis:cache")) {
+	if !runOnce(t, m.mgr.Wrap("redis:cache", nil)) {
 		t.Fatal("an empty document must still run fn")
 	}
 }
 
-// TestManagerSharesOneExecutorPerLabel pins the semantic that makes the
-// per-label cache load-bearing: two handles for one label must share breaker
-// state, or two objects would each trip at their own threshold and effectively
-// double it.
-func TestManagerSharesOneExecutorPerLabel(t *testing.T) {
-	m := armedBreakers(t, map[string]BreakerPolicy{
-		"redis:cache": {ErrorThreshold: 2, OpenDuration: time.Minute},
-	})
-	a := m.ExecutorFor("redis:cache")
-	b := m.ExecutorFor("redis:cache")
-
-	fail := func(e chain.Executor) {
-		_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return errFail })
-	}
-	fail(a)
-	fail(b) // second failure across BOTH handles trips the shared breaker
-
-	err := a.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
-	if err != chain.ErrCircuitOpen {
-		t.Fatalf("breaker state must be shared across handles for one label, got %v", err)
-	}
-}
-
-// TestManagerOnLimitsNotifiesOnChange covers the dirty-signal contract: no
-// invocation at registration, silence on an unchanged policy, one fire on a
-// change.
-func TestManagerOnLimitsNotifiesOnChange(t *testing.T) {
-	var mu sync.Mutex
-	policies := map[string]Limits{"redis:cache": {Timeout: time.Second}}
-	m := newTestManager(NewDefaultDriver())
-	// apply pushes the current "document" (the policies map) down, the way the
-	// center does on every source push.
-	apply := func() {
-		t.Helper()
-		mu.Lock()
-		rules := limitsRules(policies)
-		mu.Unlock()
-		if err := m.ApplyLimits(LimitsSettings{Rules: rules}); err != nil {
-			t.Fatalf("Apply: %v", err)
-		}
-	}
-	apply()
-
-	fired := 0
-	m.OnLimits("redis:cache", func() { fired++ })
-	if fired != 0 {
-		t.Fatalf("OnLimits must not invoke at registration, got %d calls", fired)
-	}
-
-	// An apply that leaves this label's policy unchanged must not notify.
-	apply()
-	if fired != 0 {
-		t.Fatalf("an unchanged policy must not fire, got %d calls", fired)
-	}
-
-	// A change must fire exactly once.
-	mu.Lock()
-	policies["redis:cache"] = Limits{Timeout: 2 * time.Second}
-	mu.Unlock()
-	apply()
-	if fired != 1 {
-		t.Fatalf("a changed policy must fire once, got %d calls", fired)
-	}
-
-	// A change to ANOTHER label must not fire this one.
-	mu.Lock()
-	policies["redis:other"] = Limits{Timeout: time.Second}
-	mu.Unlock()
-	apply()
-	if fired != 1 {
-		t.Fatalf("another label's change must not fire, got %d calls", fired)
-	}
-}
-
-// countingDriver records how many executors it built.
-type countingDriver struct {
-	executors atomic.Int32
-}
-
-func (d *countingDriver) NewExecutor(label string, m *Manager) (chain.Executor, error) {
-	d.executors.Add(1)
-	return NewDefaultDriver().NewExecutor(label, m)
-}
-
-// TestManagerApplyPublishesForPulling pins both halves of a push under the pull
-// design. Apply builds nothing and touches no executor: it publishes a new
-// generation. Each executor then follows it on its own next call — the object the
-// caller holds is the same one throughout, and what moves is the policy it
-// resolves.
+// TestManagerApplyPublishesForPulling pins the limits half of a push. TimeoutRetry
+// carry no materialized state, so Apply only publishes the new document; each
+// executor resolves it on its own next call — the object the caller holds keeps
+// serving, and what moves is the policy it resolves.
 func TestManagerApplyPublishesForPulling(t *testing.T) {
-	d := &countingDriver{}
-	m := newTestManager(d)
+	m := newTestManager()
 
 	var mu sync.Mutex
-	policies := map[string]Limits{
+	policies := map[string]TimeoutRetry{
 		"redis:cache": {Timeout: time.Second},
 		"redis:queue": {Timeout: time.Second},
 	}
@@ -247,40 +141,31 @@ func TestManagerApplyPublishesForPulling(t *testing.T) {
 		mu.Lock()
 		rules := limitsRules(policies)
 		mu.Unlock()
-		if err := m.ApplyLimits(LimitsSettings{Rules: rules}); err != nil {
+		if err := m.ApplyTimeoutRetry(TimeoutRetrySettings{Services: rules}); err != nil {
 			t.Fatalf("Apply: %v", err)
 		}
 	}
 
 	apply()
-	cache := m.ExecutorFor("redis:cache")
-	queue := m.ExecutorFor("redis:queue")
-	if got := d.executors.Load(); got != 2 {
-		t.Fatalf("want both labels built, got %d", got)
-	}
-	if got := timeoutOf(t, cache); got != time.Second {
+	cache := m.mgr.Wrap("redis:cache", nil)
+	queue := m.mgr.Wrap("redis:queue", nil)
+	if got := timeoutOf(t, cache, "redis:cache"); got != time.Second {
 		t.Fatalf("cache must run the policy its label resolves, got %v", got)
 	}
 
 	// Move ONE label's policy.
 	mu.Lock()
-	policies["redis:cache"] = Limits{Timeout: 2 * time.Second}
+	policies["redis:cache"] = TimeoutRetry{Timeout: 2 * time.Second}
 	mu.Unlock()
 	apply()
-	if got := d.executors.Load(); got != 2 {
-		t.Fatalf("a push must not build eagerly, got %d", got)
-	}
 
-	// Both labels still resolve through the SAME executor objects — the shell the
-	// caller holds is never replaced — and the moved label now runs its new
-	// policy, resolved per call.
-	if again := m.ExecutorFor("redis:cache"); again != cache {
-		t.Fatal("the shell must keep its identity across a push")
-	}
-	if got := timeoutOf(t, cache); got != 2*time.Second {
+	// The handle the caller already holds follows the push: the policy is
+	// resolved through the label's shared engine on the next call, not carried by
+	// the node.
+	if got := timeoutOf(t, cache, "redis:cache"); got != 2*time.Second {
 		t.Fatalf("the moved label must follow the push on its next call, got %v", got)
 	}
-	if got := timeoutOf(t, queue); got != time.Second {
+	if got := timeoutOf(t, queue, "redis:queue"); got != time.Second {
 		t.Fatalf("the untouched label must keep its policy, got %v", got)
 	}
 }
@@ -288,106 +173,114 @@ func TestManagerApplyPublishesForPulling(t *testing.T) {
 // timeoutOf runs one call through e and reports the policy the executor recorded
 // for it, which is how a test observes what a label resolves to without reaching
 // into the executor.
-func timeoutOf(t *testing.T, e chain.Executor) time.Duration {
+func timeoutOf(t *testing.T, e chain.Executor, service string) time.Duration {
 	t.Helper()
 	rec := &chain.Recorder{}
-	err := e.Execute(context.Background(), chain.Operation{}, rec, func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{Service: service}, rec, func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	return rec.Timeout
 }
 
-// TestManagerGenerationIsContentDerived pins the generation contract at the
+// TestManagerPushIsContentDerivedAndPerLabel pins the push contract at the
 // manager, which is what keeps a config push from resetting protection state it
 // did not change.
 //
-// Two halves. RE-APPLYING AN IDENTICAL DOCUMENT MOVES NOTHING: the generation is
-// derived from content, so a file watcher firing twice, or a poll that changed
-// nothing, leaves every label exactly where it was. And a change to a rule that is
-// NOT the first one naming a service still moves that label — the old
-// per-label comparison looked only at the first matching rule and would have
-// missed it entirely, leaving the second rule's calls running the old policy
-// for ever.
+// Two halves. RE-APPLYING AN IDENTICAL DOCUMENT MOVES NOTHING: the comparison is
+// by content, so a file watcher firing twice, or a poll that changed nothing,
+// leaves every label's breaker table exactly where it was. And a change to a
+// rule that is NOT the first one naming a service still moves that label — the
+// fingerprint covers every rule naming it, not just the first match.
 //
-// A label's generation is one number, so every call of that label moves together;
-// the granularity the design offers is per LABEL, and a change to one service
-// leaves every other service alone.
-func TestManagerGenerationIsContentDerived(t *testing.T) {
-	m := newTestManager(NewDefaultDriver())
+// The granularity is per LABEL: a change to one service leaves every other
+// service alone.
+func TestManagerPushIsContentDerivedAndPerLabel(t *testing.T) {
+	m := newTestManager()
 
-	doc := func(get, set time.Duration) LimitsSettings {
-		return LimitsSettings{Rules: []LimitsRule{
-			{Service: "svc", Action: matcher.ActionMatch{Exact: "get"}, Limits: Limits{Timeout: get}},
-			{Service: "svc", Action: matcher.ActionMatch{Exact: "set"}, Limits: Limits{Timeout: set}},
-			{Service: "other", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
+	doc := func(get, set int) BreakerSettings {
+		return BreakerSettings{Services: []BreakerService{
+			{Service: "svc", Rules: []BreakerRule{
+				{ActionMatch: matcher.ActionMatch{Exact: "get"}, BreakerPolicy: BreakerPolicy{ErrorThreshold: get}},
+				{ActionMatch: matcher.ActionMatch{Exact: "set"}, BreakerPolicy: BreakerPolicy{ErrorThreshold: set}},
+			}},
+			{Service: "other", Rules: []BreakerRule{
+				{ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction}, BreakerPolicy: BreakerPolicy{ErrorThreshold: 5}},
+			}},
 		}}
 	}
-	genOf := func(label string) uint64 {
-		return m.Resolve(chain.Operation{Service: label}).Gen
+	apply := func(get, set int) {
+		t.Helper()
+		if err := m.ApplyBreaker(doc(get, set)); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
 	}
+	slotOf := func(e *Executor) *breakerSlot { return e.breaker.Load() }
 
-	if err := m.ApplyLimits(doc(time.Second, 2*time.Second)); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	svc, other := genOf("svc"), genOf("other")
+	apply(2, 3)
+	svc := m.mgr.Wrap("svc", nil)
+	other := m.mgr.Wrap("other", nil)
+	svcSlot, otherSlot := slotOf(svc), slotOf(other)
 
 	// The same document again is not a change.
-	if err := m.ApplyLimits(doc(time.Second, 2*time.Second)); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	assert.Number(t, genOf("svc")).Equal(svc)
-	assert.Number(t, genOf("other")).Equal(other)
+	apply(2, 3)
+	assert.That(t, slotOf(svc) == svcSlot).True()
+	assert.That(t, slotOf(other) == otherSlot).True()
 
-	// Moving the SECOND rule naming svc moves svc — its calls now run under a
-	// document the materialized state was not built from — and leaves "other"
-	// alone.
-	if err := m.ApplyLimits(doc(time.Second, 3*time.Second)); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	assert.That(t, genOf("svc") != svc).True()
-	assert.Number(t, genOf("other")).Equal(other)
+	// Moving the SECOND rule naming svc replaces svc's table — its calls now run
+	// under a document the materialized state was not built from — and leaves
+	// "other" alone.
+	apply(2, 4)
+	assert.That(t, slotOf(svc) != svcSlot).True()
+	assert.That(t, slotOf(other) == otherSlot).True()
 }
 
 // TestManagerPolicyMatch pins the matching this package now owns — it used to
-// live in the center's document walk: an exact label match wins, an unmatched
-// label falls to Default, a rule with an empty Service never captures a real
-// label (it is not a catch-all), and the first matching Rule wins.
+// live in the center's document walk: an exact label match wins, a rule with an
+// empty Service never captures a real label (it is not a catch-all), and an
+// unmatched label resolves to no policy at all.
 func TestManagerPolicyMatch(t *testing.T) {
-	m := newTestManager(NewDefaultDriver())
-	if err := m.ApplyLimits(LimitsSettings{
-		Default: Limits{Timeout: time.Second},
-		Rules: []LimitsRule{
-			{Service: "redis:cache", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: 2 * time.Second}},
-		},
+	m := newTestManager()
+	if err := m.ApplyTimeoutRetry(TimeoutRetrySettings{
+		Services: []TimeoutRetryService{{
+			Service: "redis:cache",
+			Rules: []TimeoutRetryRule{{
+				ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+				TimeoutRetry: TimeoutRetry{Timeout: 2 * time.Second},
+			}},
+		}},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	if got := m.LimitsFor("redis:cache").Timeout; got != 2*time.Second {
+	if got := m.resolve(chain.Operation{Service: "redis:cache"}).Timeout; got != 2*time.Second {
 		t.Fatalf("an exact match must win: got %v", got)
 	}
-	if got := m.LimitsFor("redis:queue").Timeout; got != time.Second {
-		t.Fatalf("an unmatched label must fall to Default: got %v", got)
+	if got := m.resolve(chain.Operation{Service: "redis:queue"}).Timeout; got != 0 {
+		t.Fatalf("an unmatched label must have no policy: got %v", got)
 	}
 }
 
-// TestValidateRejectsDuplicateRules pins the rule-list contract: two entries
-// that select the SAME calls make the winner depend on list order, so the
-// document is rejected. Validation belongs to the source boundary (conf.Bind
-// runs it); Apply trusts the document it is handed.
-func TestValidateRejectsDuplicateRules(t *testing.T) {
-	err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{
-		{Service: "redis:cache", Limits: Limits{Timeout: time.Second}},
-		{Service: "redis:cache", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: 2 * time.Second}},
-	}})
-	if err == nil {
-		t.Fatal("a duplicate rule must be rejected")
+// TestDuplicateRulesFirstWins pins that a repeated selector is legal: rules are
+// ordered, so the later copy is simply unreachable. Validation belongs to the
+// source boundary (conf.Bind runs it); Apply trusts the document it is handed.
+func TestDuplicateRulesFirstWins(t *testing.T) {
+	cfg := TimeoutRetrySettings{Services: []TimeoutRetryService{{
+		Service: "redis:cache",
+		Rules: []TimeoutRetryRule{
+			{ActionMatch: matcher.ActionMatch{Exact: "GET"}, TimeoutRetry: TimeoutRetry{Timeout: time.Second}},
+			{ActionMatch: matcher.ActionMatch{Exact: "GET"}, TimeoutRetry: TimeoutRetry{Timeout: 2 * time.Second}},
+		},
+	}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("a duplicate rule is order-shadowed, not invalid: %v", err)
 	}
-
-	// A rule without a service names nothing and is rejected, not silent.
-	if err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{{Limits: Limits{Timeout: time.Second}}}}); err == nil {
-		t.Fatal("a rule without a service must be rejected")
+	m := newTestManager()
+	if err := m.ApplyTimeoutRetry(cfg); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := m.resolve(chain.Operation{Service: "redis:cache", Request: chain.Request{Action: "GET"}}).Timeout; got != time.Second {
+		t.Fatalf("the first copy must win: got %v", got)
 	}
 }
 
@@ -396,21 +289,24 @@ func TestValidateRejectsDuplicateRules(t *testing.T) {
 // first) > selector size — so a broad rule listed before a narrow one never
 // shadows it.
 func TestMostSpecificRuleWins(t *testing.T) {
-	m := newTestManager(NewDefaultDriver())
-	if err := m.ApplyLimits(LimitsSettings{Rules: []LimitsRule{
-		{Service: "svc", Action: matcher.ActionMatch{Exact: "GET /users/1"}, Limits: Limits{Timeout: 3 * time.Second}},
-		{Service: "svc", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
-		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /users"}, Limits: Limits{Timeout: 2 * time.Second}},
-		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /users"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: 4 * time.Second}},
-	}}); err != nil {
+	m := newTestManager()
+	if err := m.ApplyTimeoutRetry(TimeoutRetrySettings{Services: []TimeoutRetryService{{
+		Service: "svc",
+		Rules: []TimeoutRetryRule{
+			{ActionMatch: matcher.ActionMatch{Exact: "GET /users/1"}, TimeoutRetry: TimeoutRetry{Timeout: 3 * time.Second}},
+			{ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction}, TimeoutRetry: TimeoutRetry{Timeout: time.Second}},
+			{ActionMatch: matcher.ActionMatch{Prefix: "GET /users"}, TimeoutRetry: TimeoutRetry{Timeout: 2 * time.Second}},
+			{ActionMatch: matcher.ActionMatch{Prefix: "GET /users"}, MetadataMatch: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, TimeoutRetry: TimeoutRetry{Timeout: 4 * time.Second}},
+		},
+	}}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
 	resolve := func(action string, metadata map[string]string) time.Duration {
-		return m.Resolve(chain.Operation{
+		return m.resolve(chain.Operation{
 			Service: "svc",
 			Request: chain.Request{Action: action, Metadata: metadata},
-		}).Limits.Timeout
+		}).Timeout
 	}
 	assert.That(t, resolve("GET /users/1", nil)).Equal(3 * time.Second)                              // exact beats prefix
 	assert.That(t, resolve("GET /users/2", nil)).Equal(2 * time.Second)                              // prefix beats the service default
@@ -418,16 +314,34 @@ func TestMostSpecificRuleWins(t *testing.T) {
 	assert.That(t, resolve("POST /x", nil)).Equal(time.Second)                                       // service default
 }
 
-// TestAmbiguousRulesRejected pins the other half: two rules of equal specificity
-// that can match the same call are a document error, not a list-order hint.
-func TestAmbiguousRulesRejected(t *testing.T) {
-	err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{
-		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: time.Second}},
-		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"region": {Exact: "b"}}, Limits: Limits{Timeout: 2 * time.Second}},
-	}})
-	if err == nil {
-		t.Fatal("equal-specificity selectors that can co-match must be rejected")
+// TestOverlappingRulesOrderDecides pins that equal-specificity selectors which
+// can co-match are legal: list order breaks the tie, and Validate accepts them —
+// avoiding such a document is the configuration platform's job.
+func TestOverlappingRulesOrderDecides(t *testing.T) {
+	cfg := TimeoutRetrySettings{Services: []TimeoutRetryService{{
+		Service: "svc",
+		Rules: []TimeoutRetryRule{
+			{ActionMatch: matcher.ActionMatch{Prefix: "GET /"}, MetadataMatch: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, TimeoutRetry: TimeoutRetry{Timeout: time.Second}},
+			{ActionMatch: matcher.ActionMatch{Prefix: "GET /"}, MetadataMatch: map[string]matcher.StringMatch{"region": {Exact: "b"}}, TimeoutRetry: TimeoutRetry{Timeout: 2 * time.Second}},
+		},
+	}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("overlapping rules are order-decided, not invalid: %v", err)
 	}
+	m := newTestManager()
+	if err := m.ApplyTimeoutRetry(cfg); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	both := m.resolve(chain.Operation{Service: "svc", Request: chain.Request{
+		Action:   "GET /x",
+		Metadata: map[string]string{"tenant": "a", "region": "b"},
+	}})
+	assert.That(t, both.Timeout).Equal(time.Second)
+	second := m.resolve(chain.Operation{Service: "svc", Request: chain.Request{
+		Action:   "GET /x",
+		Metadata: map[string]string{"region": "b"},
+	}})
+	assert.That(t, second.Timeout).Equal(2 * time.Second)
 }
 
 // TestManagerMatchesRuleByAction proves a rule can be selected by the call's
@@ -435,17 +349,21 @@ func TestAmbiguousRulesRejected(t *testing.T) {
 // of the same service — the interface-level governance the service label alone
 // cannot express.
 func TestManagerMatchesRuleByAction(t *testing.T) {
-	m := newTestManager(NewDefaultDriver())
-	if err := m.ApplyRateLimit(RateLimitSettings{Rules: []RateLimitRule{
-		{Service: "svc", Action: matcher.ActionMatch{Exact: "limited"}, Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}},
-	}}); err != nil {
+	m := newTestManager()
+	if err := m.ApplyRateLimit(RateLimitSettings{Services: []RateLimitService{{
+		Service: "svc",
+		Rules: []RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: "limited"},
+			Policy:      ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
+		}},
+	}}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	e := m.ExecutorFor("svc")
+	e := m.mgr.Wrap("svc", nil)
 	noop := func(context.Context) error { return nil }
 
-	limited := chain.Operation{Request: chain.Request{Action: "limited"}}
-	other := chain.Operation{Request: chain.Request{Action: "other"}}
+	limited := chain.Operation{Service: "svc", Request: chain.Request{Action: "limited"}}
+	other := chain.Operation{Service: "svc", Request: chain.Request{Action: "other"}}
 
 	if err := e.Execute(context.Background(), limited, new(chain.Recorder), noop); err != nil {
 		t.Fatalf("first limited call: %v", err)
@@ -453,8 +371,8 @@ func TestManagerMatchesRuleByAction(t *testing.T) {
 	if err := e.Execute(context.Background(), limited, new(chain.Recorder), noop); !errors.Is(err, chain.ErrRateLimited) {
 		t.Fatalf("second limited call = %v, want ErrRateLimited", err)
 	}
-	// A different action of the SAME service has its own (default, unmetered)
-	// policy — the armed rule must not touch it.
+	// A different action of the SAME service has no matching rule, so it is
+	// unmetered — the armed rule must not touch it.
 	for range 3 {
 		if err := e.Execute(context.Background(), other, new(chain.Recorder), noop); err != nil {
 			t.Fatalf("other action must be untouched: %v", err)
@@ -465,7 +383,13 @@ func TestManagerMatchesRuleByAction(t *testing.T) {
 // TestValidateRejectsInvalidPolicy verifies a document that cannot materialize a
 // stage is rejected at the boundary, instead of reaching the manager.
 func TestValidateRejectsInvalidPolicy(t *testing.T) {
-	if err := ValidateBreaker(BreakerSettings{Default: BreakerPolicy{BreakerStrategy: "bogus"}}); err == nil {
+	if err := (BreakerSettings{Services: []BreakerService{{
+		Service: "svc",
+		Rules: []BreakerRule{{
+			ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			BreakerPolicy: BreakerPolicy{BreakerStrategy: "bogus"},
+		}},
+	}}}).Validate(); err == nil {
 		t.Fatal("ValidateBreaker accepted an unknown strategy")
 	}
 }

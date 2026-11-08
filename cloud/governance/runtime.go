@@ -106,16 +106,24 @@ func (r *Runtime) UsesDiscovery(serviceName string) bool {
 }
 
 // ExecutorFor returns the executor a client of the given system, labelled
-// service, runs its calls on. It is the ONE place the observe layer and the
-// resilience layer are composed — the runtime names observability, the
-// resilience authority names neither it nor the control plane, so the two
-// packages stay independent and this composition is all that ties them. It is
-// the composition a client's constructor needs in one call, so no driver repeats
-// it, on the one object a client already injects.
+// service, runs its calls on. It is the ONE place the three outbound layers are
+// composed — the runtime names observability and fault, the resilience authority
+// names neither of the others, so the packages stay independent and this
+// composition is all that ties them. It is the composition a client's
+// constructor needs in one call, so no driver repeats it, on the one object a
+// client already injects.
 //
-// The layers are stacked fault(observe(resilience-executor)): the observer wraps
-// the resilience manager's handle (so a rejected or failed call is still traced,
-// measured and logged), and fault injection wraps that. The two planes stay
+// Each layer holds its own next and delegates through [chain.Next], so the
+// stack is written in the order it runs:
+//
+//	fault        innermost — next is nil, so it fires just before fn
+//	resilience   middle    — its retry loop calls the next layer per attempt
+//	observe      outermost — the span covers every attempt, gate and fire
+//
+// Fault's next is nil because it is the last layer: it wraps the fn it hands
+// down, and [chain.Next] calls that fn directly. Placing it BEFORE resilience
+// would put the fire outside the retry loop and the breaker, which is exactly
+// what a fire must flow through to validate the stack. The two planes stay
 // separate: the observer records the request, while the resilience executor
 // publishes its own breaker and budget state from its own package.
 //
@@ -123,8 +131,9 @@ func (r *Runtime) UsesDiscovery(serviceName string) bool {
 // clients also declare in their operations; it is a parameter rather than state
 // because one runtime serves every kind of client.
 func (r *Runtime) ExecutorFor(system, label string) chain.Executor {
-	exec := observe.WrapClientExecutor(r.Resilience.ExecutorFor(label), system, label)
-	return r.ClientFault.WrapClientExecutor(exec)
+	var exec chain.Executor = r.ClientFault.WrapClientExecutor(nil)
+	exec = r.Resilience.Wrap(label, exec)
+	return observe.WrapClientExecutor(exec, system, label)
 }
 
 // InboundFor returns the pair of inbound objects one route's middleware drives,

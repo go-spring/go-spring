@@ -25,12 +25,12 @@ import (
 // This example wires one file source per control-plane root: the roots are
 // isolated, so each reads its own file and its keys carry no capability prefix.
 func init() {
-	gs.Provide(func() (*source.FileSource[resilience.LimitsSettings], error) {
-		return source.NewFileSource[resilience.LimitsSettings]("conf/timeoutretry.properties")
+	gs.Provide(func() (*source.FileSource[resilience.TimeoutRetrySettings], error) {
+		return source.NewFileSource[resilience.TimeoutRetrySettings]("conf/timeoutretry.properties")
 	}).
 		Name("example.timeoutretry.source").
-		Destroy((*source.FileSource[resilience.LimitsSettings]).Close).
-		Export(gs.As[source.Source[resilience.LimitsSettings]](), gs.As[gs.Runner]()).
+		Destroy((*source.FileSource[resilience.TimeoutRetrySettings]).Close).
+		Export(gs.As[source.Source[resilience.TimeoutRetrySettings]](), gs.As[gs.Runner]()).
 		Caller(1)
 
 	gs.Provide(func() (*source.FileSource[resilience.BreakerSettings], error) {

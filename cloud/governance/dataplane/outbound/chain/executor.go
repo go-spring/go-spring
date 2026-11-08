@@ -90,9 +90,10 @@ type Executor interface {
 	// its retry declaration — passed BY VALUE, so a link that mutates its own
 	// copy changes nothing anyone else sees. rec is the separate WRITE-BACK
 	// record, a per-call pointer the chain fills as the call runs and the caller
-	// reads once Execute returns; nil means "record nothing" and every
-	// [Recorder] method tolerates it. Both travel explicitly so every link reads
-	// them from the signature rather than from the context.
+	// reads once Execute returns. It is REQUIRED and must be non-nil: the chain
+	// writes it unconditionally, and a caller that records nothing passes a
+	// zero [Recorder] rather than nil. Both travel explicitly so every link
+	// reads them from the signature rather than from the context.
 	//
 	// It returns the chain's rejection (rate limited, circuit open, bulkhead full
 	// — see the engine's sentinels) when the call is rejected before fn runs, or
@@ -103,4 +104,19 @@ type Executor interface {
 	// Close releases any background resources held by the executor (e.g. metric
 	// pumps in a production engine). It is safe to call more than once.
 	Close() error
+}
+
+// Next runs the rest of the chain: it delegates to next, or calls fn directly
+// when there is no next. It is the ONE owner of the "nil means terminal" rule.
+//
+// A layer holds its own next and passes the fn it was given through here —
+// wrapping it first when the layer injects (see the fault executor). Because
+// the nil case calls fn, the innermost layer is simply the one whose next is
+// nil, and the order layers are composed in is the order they run in: no layer
+// has to wrap the whole stack from outside to get inside another layer's loop.
+func Next(next Executor, ctx context.Context, op Operation, rec *Recorder, fn func(context.Context) error) error {
+	if next == nil {
+		return fn(ctx)
+	}
+	return next.Execute(ctx, op, rec, fn)
 }

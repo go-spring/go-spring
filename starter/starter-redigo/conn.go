@@ -18,6 +18,8 @@ package StarterRedigo
 
 import (
 	"context"
+	"errors"
+	"net"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -162,6 +164,14 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 	return h(ctx, cmd, args)
 }
 
+// isTransientError reports whether the failure is a transport-level condition
+// another attempt may survive — a dial/read/write error. Server replies
+// (redis.Error: WRONGTYPE, ...) are definitive answers and are not retried.
+func isTransientError(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne)
+}
+
 // resilienceInterceptor is the single command-chain layer: it builds the
 // command's identity (see opFor in observe.go) and runs next under the executor
 // (circuit breaker / rate limiter / bulkhead / retry), passing the op explicitly
@@ -189,7 +199,7 @@ func resilienceInterceptor(exec chain.Executor, service string, prop traffic.Pro
 			return resilience.Run(ctx, exec, op,
 				func(attemptCtx context.Context) (interface{}, error) {
 					return next(attemptCtx, cmd, args)
-				}, resilience.Tolerate(redis.ErrNil))
+				}, resilience.Tolerate(redis.ErrNil), resilience.RetryOn(isTransientError))
 		}
 	}
 }

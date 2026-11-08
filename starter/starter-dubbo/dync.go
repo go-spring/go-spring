@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
@@ -40,19 +40,23 @@ type consumerDocument struct {
 }
 
 // dyncPoller is dubbo's local manager for dynamic configuration — the mapping
-// of the cloud unified model (source pushes, manager receives the snapshot,
-// the call path queries) onto a framework that owns its own invocation chain.
-// It receives pushes from two sources — the consumer document source
-// (constructor subscription) and governance [resilience.Manager.OnLimits]
-// (per-label dirty signals) — and on each push re-derives the override-rule
-// snapshot from the current [source.Source.Snapshot] plus [Manager.LimitsFor],
-// publishing it into the in-memory config center as flat dubbo URL params.
-// Dubbo's invoker chain "queries" per call by reading those URL params —
-// dubbo-go's native mechanism, unchanged.
+// of the cloud unified model (source pushes, the call path queries) onto a
+// framework that owns its own invocation chain. It receives pushes from two
+// sources — the consumer document and the governance limits document — and on
+// each push re-derives the override-rule snapshot, publishing it into the
+// in-memory config center as flat dubbo URL params. Dubbo's invoker chain
+// "queries" per call by reading those URL params — dubbo-go's native mechanism,
+// unchanged.
 //
-// The two push entry points run on different goroutines (the file-source loop
-// and the governance limits loop), so poll may run concurrently with itself;
-// mu plus the changed() diff make that a harmless double poll.
+// Governance is consumed as its SOURCE, not through the resilience manager: the
+// poller resolves the dubbo labels' limits from the pushed document itself, so
+// the resilience package keeps its manager internals private. The cost is the
+// few lines of label resolution in [labelLimits], coupled to the document
+// schema (public) rather than to manager state.
+//
+// The two push entry points run on different goroutines, so poll may run
+// concurrently with itself; mu plus the changed() diff make that a harmless
+// double poll.
 //
 // Dynamic fields are those dubbo-go reads from URL params at call time:
 // timeout, retries, loadbalance, cluster, group, version, serialization,
@@ -69,49 +73,34 @@ type dyncPoller struct {
 	// copy before this poller exists, so Snapshot is always available.
 	src source.Source[consumerDocument]
 
-	// ctr is the runtime bean, always present — the constructor arg
-	// is injected by type, so a process without the center fails wiring. It is
-	// the poller's sole governance entry: [dyncPoller.mgr] reads the resilience
-	// authority off it, whose OnLimits callbacks re-run the poll on every
-	// governance push.
-	ctr *governance.Runtime
+	// limSrc is the governance limits document source, or nil when no control
+	// plane is linked — the poller then runs on dubbo's own document alone.
+	limSrc source.Source[resilience.TimeoutRetrySettings]
 
-	mu     sync.Mutex                   // guards last and regged
-	last   map[string]map[string]string // last pushed override snapshot, for change detection
-	regged map[string]bool              // dubbo service labels already subscribed on the center
+	mu   sync.Mutex                   // guards last
+	last map[string]map[string]string // last pushed override snapshot, for change detection
 }
 
-// newDyncPoller creates the poller bean and subscribes to the consumer
-// document source on the spot — every later push re-runs the poll, the same
-// contract each control-plane center arms under.
-func newDyncPoller(app DubboApplication, src source.Source[consumerDocument], ctr *governance.Runtime) *dyncPoller {
+// newDyncPoller creates the poller bean and subscribes to both sources on the
+// spot — every later push re-runs the poll, the same contract each
+// control-plane center arms under.
+func newDyncPoller(app DubboApplication, src source.Source[consumerDocument], limSrc source.Source[resilience.TimeoutRetrySettings]) *dyncPoller {
 	p := &dyncPoller{
 		dynCfg:  mapconfig.Singleton(),
 		appName: app.Name,
 		src:     src,
-		ctr:     ctr,
+		limSrc:  limSrc,
 		last:    make(map[string]map[string]string),
-		regged:  make(map[string]bool),
 	}
 	src.Subscribe(func(context.Context, consumerDocument) { p.poll() })
+	if limSrc != nil {
+		limSrc.Subscribe(func(context.Context, resilience.TimeoutRetrySettings) { p.poll() })
+	}
 	return p
 }
 
-// mgr returns the resilience authority the center hands out. It is never nil:
-// the center bean is a constructor dependency, and it arms the authority in its
-// own constructor — so by the time this poller exists, governance is live.
-func (p *dyncPoller) mgr() *resilience.Manager {
-	return p.ctr.Resilience
-}
-
-// Init pushes the current override rules once. Later re-pushes come from the
-// two push lines: the consumer source subscription (constructor) and each
-// OnLimits callback registered in poll; poll's internal diff skips no-op
-// refreshes, so the overlap is harmless.
-//
-// The center is a Rooter whose Init hook is its GoLive, and this poller takes it
-// as a constructor dependency — so by the time this Init runs the center has
-// always gone live, and the first poll below already sees the armed authority.
+// Init pushes the current override rules once. Later re-pushes come from the two
+// source subscriptions; poll's internal diff skips no-op refreshes.
 func (p *dyncPoller) Init() error {
 	p.poll() // initial push
 	return nil
@@ -119,29 +108,9 @@ func (p *dyncPoller) Init() error {
 
 func (p *dyncPoller) poll() {
 	consumer := p.src.Snapshot().Consumer
+	limits := p.limits()
 
-	rules := p.consumerToOverrideRules(&consumer)
-
-	// Register the governance dirty signal for each dubbo service label we
-	// publish, so a governance hot-reload re-runs poll and re-pushes the merged
-	// rules. Collected under p.mu (dedup via regged) and registered outside the
-	// lock; OnLimits is pure bookkeeping, so a poll already in flight on the
-	// governance loop's goroutine is a harmless double poll (changed() finds
-	// the same snapshot).
-	labels := dubboServiceLabels(p.appName, &consumer)
-	var toReg []string
-	p.mu.Lock()
-	for l := range labels {
-		if !p.regged[l] {
-			p.regged[l] = true
-			toReg = append(toReg, l)
-		}
-	}
-	p.mu.Unlock()
-	for _, l := range toReg {
-		p.mgr().OnLimits(l, p.poll)
-	}
-
+	rules := p.consumerToOverrideRules(&consumer, limits)
 	if len(rules) == 0 {
 		return
 	}
@@ -156,6 +125,35 @@ func (p *dyncPoller) poll() {
 	p.dynCfg.RefreshOverrideRules(rules)
 }
 
+// limits is the current governance document, or the zero value when no control
+// plane is linked.
+func (p *dyncPoller) limits() resilience.TimeoutRetrySettings {
+	if p.limSrc == nil {
+		return resilience.TimeoutRetrySettings{}
+	}
+	return p.limSrc.Snapshot()
+}
+
+// labelLimits is the label-level limits the document resolves to: the
+// service-scope rule naming label, else the zero policy (no timeout, no
+// retry). It is the one place dubbo duplicates a slice of the resilience
+// matching rule — against the public document schema, not the manager.
+func labelLimits(doc resilience.TimeoutRetrySettings, label string) resilience.TimeoutRetry {
+	for i := range doc.Services {
+		g := &doc.Services[i]
+		if g.Service != label {
+			continue
+		}
+		for j := range g.Rules {
+			if g.Rules[j].ActionMatch.Exact == matcher.ServiceScopeAction {
+				return g.Rules[j].TimeoutRetry
+			}
+		}
+		break // first group naming the label wins
+	}
+	return resilience.TimeoutRetry{}
+}
+
 // consumerToOverrideRules converts a DubboConsumer into the flat
 // map[string]map[string]string format expected by RefreshOverrideRules.
 //
@@ -165,7 +163,7 @@ func (p *dyncPoller) poll() {
 // override (<interface>:<version>:<group>.configurators), picked up by
 // referenceConfigurationListener, so each reference gets independent overrides
 // instead of being merged into a single last-wins rule.
-func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[string]string {
+func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer, limits resilience.TimeoutRetrySettings) map[string]map[string]string {
 	appName := p.appName
 	rules := make(map[string]map[string]string)
 
@@ -186,7 +184,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 	}
 	// applyGovernOverride writes only set (>0) values, so a document that
 	// configures nothing leaves dubbo's native values untouched.
-	applyGovernOverride(appParams, p.mgr().LimitsFor(dubboAppLabel(appName)))
+	applyGovernOverride(appParams, labelLimits(limits, dubboAppLabel(appName)))
 	if len(appParams) > 0 {
 		rules[appName] = appParams
 	}
@@ -231,7 +229,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 			addIfSet(refParams, prefix+"execute.limit", strconv.Itoa(m.ExecuteLimit))
 			addIfSet(refParams, prefix+"execute.limit.rejected.handler", m.ExecuteLimitRejectedHandler)
 		}
-		applyGovernOverride(refParams, p.mgr().LimitsFor(dubboRefLabel(key)))
+		applyGovernOverride(refParams, labelLimits(limits, dubboRefLabel(key)))
 		if len(refParams) > 0 {
 			rules[key] = refParams
 		}
@@ -277,19 +275,6 @@ func colonSeparatedKey(intf, version, group string) string {
 func dubboAppLabel(appName string) string  { return "dubbo:" + appName }
 func dubboRefLabel(colonKey string) string { return "dubbo:" + colonKey }
 
-// dubboServiceLabels returns every dubbo service label the poller should
-// subscribe to for the given consumer: the app label (always) plus one per
-// reference with a non-empty Interface.
-func dubboServiceLabels(appName string, c *DubboConsumer) map[string]bool {
-	out := map[string]bool{dubboAppLabel(appName): true}
-	for _, ref := range c.References {
-		if ref.Interface != "" {
-			out[dubboRefLabel(colonSeparatedKey(ref.Interface, ref.Version, ref.Group))] = true
-		}
-	}
-	return out
-}
-
 // applyGovernOverride overrides timeout and retries in params from the
 // governance policy. Policy.Timeout (a Duration) is written as milliseconds
 // (dubbo's canonical timeout unit); Policy.Retry.MaxRetries as an integer. Both are
@@ -299,7 +284,7 @@ func dubboServiceLabels(appName string, c *DubboConsumer) map[string]bool {
 // Note: dubbo retries is cluster-failover-level (retries across providers), so
 // Policy.Retry.MaxRetries here maps to dubbo cluster retries, not resilience-layer
 // retry - the center documents dubbo's timeout/retry in dubbo's own semantics.
-func applyGovernOverride(params map[string]string, p resilience.Limits) {
+func applyGovernOverride(params map[string]string, p resilience.TimeoutRetry) {
 	if p.Timeout > 0 {
 		params["timeout"] = strconv.FormatInt(int64(p.Timeout/time.Millisecond), 10)
 	}

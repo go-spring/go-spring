@@ -46,6 +46,9 @@ type options struct {
 	// nilErr classifies a returned error as "not a fault for resilience
 	// purposes"; defaults to "every error is a fault".
 	nilErr func(error) bool
+	// retryOn classifies a returned error as eligible for retry; nil means
+	// none are (the whitelist default).
+	retryOn func(error) bool
 }
 
 // newOptions applies opts over the defaults.
@@ -66,9 +69,8 @@ func newOptions(opts []Option) options {
 //
 // Which errors count as normal is client-specific, so each caller declares its
 // own sentinels: redis.Nil, gorm.ErrRecordNotFound, memcache.ErrCacheMiss.
-// Multiple Tolerate options stack (OR). Only sentinel matching (errors.Is) is
-// offered — no caller needs a custom predicate; add a TolerateFunc-style
-// option if one ever does.
+// Multiple Tolerate options stack (OR). Use [TolerateFunc] when the normal set
+// is a PROPERTY of the error rather than a fixed value.
 func Tolerate(sentinel error) Option {
 	return func(o *options) {
 		prev := o.nilErr
@@ -77,6 +79,53 @@ func Tolerate(sentinel error) Option {
 		}
 	}
 }
+
+// TolerateFunc is [Tolerate] for a class of errors: pred answers whether err is
+// a normal outcome. It exists because some clients express "the server answered
+// definitively" as a family of values (an SMTP permanent failure, a Cypher
+// client error) that no single sentinel matches.
+//
+// The contract is the same as [Tolerate]: a matched error is returned verbatim
+// but counts as neither a breaker failure nor a retry trigger. pred is only
+// called for a non-nil error.
+func TolerateFunc(pred func(error) bool) Option {
+	return func(o *options) {
+		prev := o.nilErr
+		o.nilErr = func(e error) bool {
+			return prev(e) || pred(e)
+		}
+	}
+}
+
+// RetryOn marks errors for which pred returns true as eligible for retry.
+//
+// Retry is a WHITELIST: without a matching option nothing is retried, because an
+// unclassified failure is not known to be transient and a retry may repeat a
+// side effect. This option is how a client declares its own transient class —
+// the errors of a third-party library cannot implement [Retryable] themselves.
+// Multiple RetryOn options stack (OR), and a [Tolerate]/[TolerateFunc] match
+// wins: a tolerated error is a normal outcome and is never retried.
+//
+// The caller-visible error is unchanged: the retry decision is carried by an
+// internal wrapper handed to the executor only, and [Run] still returns the
+// original error.
+func RetryOn(pred func(error) bool) Option {
+	return func(o *options) {
+		prev := o.retryOn
+		o.retryOn = func(e error) bool {
+			return (prev != nil && prev(e)) || pred(e)
+		}
+	}
+}
+
+// retryableError carries "this failure is transient" to the executor's retry
+// loop without altering what the caller receives: [Run] returns the original
+// error, never this wrapper.
+type retryableError struct{ err error }
+
+func (e retryableError) Error() string   { return e.err.Error() }
+func (e retryableError) Unwrap() error   { return e.err }
+func (e retryableError) Retryable() bool { return true }
 
 // Run executes fn under exec for the call described by call. Protection is
 // scoped to the service exec was built for, but call must still STATE that
@@ -94,6 +143,11 @@ func Tolerate(sentinel error) Option {
 // verbatim, so the caller's errors.Is checks keep working. Clients with no
 // such sentinel pass no option.
 //
+// A returned error matched by a [RetryOn] option is presented to the executor
+// as retry-eligible: the label's configured schedule decides whether another
+// attempt runs. The caller still receives the original error, never the
+// internal marker. A [Tolerate] match wins (a normal outcome is never retried).
+//
 // The return is the operation's own value (a command reply, a fetched item, ...)
 // plus the error to propagate. Callers whose operation yields nothing pass
 // struct{}{} for T and discard the result. Semantics:
@@ -108,7 +162,7 @@ func Run[T any](ctx context.Context, exec chain.Executor, call chain.Operation,
 	fn func(context.Context) (T, error), opts ...Option) (T, error) {
 
 	o := newOptions(opts)
-	nilErr := o.nilErr
+	nilErr, retryOn := o.nilErr, o.retryOn
 
 	var result T
 	if exec == nil {
@@ -117,10 +171,15 @@ func Run[T any](ctx context.Context, exec chain.Executor, call chain.Operation,
 	var callErr error
 	execErr := exec.Execute(ctx, call, new(chain.Recorder), func(attemptCtx context.Context) error {
 		result, callErr = fn(attemptCtx)
-		if callErr != nil && !nilErr(callErr) {
-			return callErr // a real failure feeds the breaker/retry
+		if callErr == nil || nilErr(callErr) {
+			return nil // success or a tolerated sentinel (cache miss / "no rows")
 		}
-		return nil // success or a tolerated sentinel (cache miss / "no rows")
+		if retryOn != nil && retryOn(callErr) {
+			// The executor sees a retry-eligible error; the caller still gets
+			// callErr verbatim (see Run's return below).
+			return retryableError{callErr}
+		}
+		return callErr // a real failure feeds the breaker
 	})
 	if execErr != nil {
 		if IsRejection(execErr) {

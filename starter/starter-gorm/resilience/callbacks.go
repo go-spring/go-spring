@@ -32,6 +32,8 @@ package gormresilience
 
 import (
 	"context"
+	"errors"
+
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -59,6 +61,12 @@ type callbackProcessor interface {
 // the zero Operation, so the resilience layer falls back to its generic
 // signals.
 func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func(*gorm.DB, string) chain.Operation) error {
+	// The dialect's own error translator answers "is this a constraint verdict"
+	// without gorm's global TranslateError: we call Translate for CLASSIFICATION
+	// only, so the error returned to the caller stays the driver's own. A custom
+	// dialect that does not implement it classifies nothing and every error
+	// remains a downstream fault.
+	translator, _ := db.Dialector.(gorm.ErrorTranslator)
 	steps := []struct {
 		p    callbackProcessor
 		name string
@@ -88,7 +96,7 @@ func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func
 			// The service is this executor's label; the operation states it so a
 			// layer outside the executor (the fault layer) can match on it too.
 			op.Service = service
-			err := runGuard(tx.Statement.Context, exec, service, op, func() error {
+			err := runGuard(tx.Statement.Context, exec, op, translator, func() error {
 				fn(tx)
 				return tx.Error
 			})
@@ -109,16 +117,49 @@ func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func
 }
 
 // runGuard executes call under exec via [resilience.Run] for the operation op,
-// treating gorm.ErrRecordNotFound ("no rows") as success so it never trips the
-// breaker. A real op error propagates through the executor (feeding
-// retry/breaker); the rejection sentinels are returned as-is so ApplyCallbacks'
-// wrapper can put them on tx.Error.
-func runGuard(ctx context.Context, exec chain.Executor, service string, op chain.Operation, call func() error) error {
+// treating two kinds of error as normal outcomes: gorm.ErrRecordNotFound ("no
+// rows") and a constraint verdict — the database definitively rejected the
+// statement, so the dependency is healthy. Neither trips the breaker nor
+// triggers a retry, while both are returned to the caller verbatim. A real op
+// error propagates through the executor (feeding retry/breaker); the rejection
+// sentinels are returned as-is so ApplyCallbacks' wrapper can put them on
+// tx.Error.
+//
+// translator is the dialect's ErrorTranslator (nil when the dialect has none).
+// It is used ONLY to classify: unlike gorm's global TranslateError, it does not
+// rewrite the error the caller receives.
+//
+// No retry class is declared here: gorm drivers expose no common transient
+// vocabulary (a constraint verdict is permanent, while a connection failure is
+// driver-specific), and database/sql already retries driver.ErrBadConn
+// internally. A retry schedule configured for a gorm label therefore still runs
+// once, which the document owner controls.
+func runGuard(ctx context.Context, exec chain.Executor, op chain.Operation,
+	translator gorm.ErrorTranslator, call func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	opts := []resilience.Option{resilience.Tolerate(gorm.ErrRecordNotFound)}
+	if translator != nil {
+		opts = append(opts, resilience.TolerateFunc(func(err error) bool {
+			return isConstraintVerdict(translator, err)
+		}))
+	}
 	_, err := resilience.Run(ctx, exec, op,
 		func(context.Context) (struct{}, error) { return struct{}{}, call() },
-		resilience.Tolerate(gorm.ErrRecordNotFound))
+		opts...)
 	return err
+}
+
+// isConstraintVerdict reports whether the dialect translates err to one of
+// gorm's constraint sentinels. The translation is done on the SIDE — the
+// original error is what the caller keeps — which is why this asks the dialect
+// rather than enabling gorm's TranslateError globally: flipping that option
+// would replace every matching error with the sentinel, breaking callers that
+// inspect the driver's own type.
+func isConstraintVerdict(translator gorm.ErrorTranslator, err error) bool {
+	translated := translator.Translate(err)
+	return errors.Is(translated, gorm.ErrDuplicatedKey) ||
+		errors.Is(translated, gorm.ErrForeignKeyViolated) ||
+		errors.Is(translated, gorm.ErrCheckConstraintViolated)
 }

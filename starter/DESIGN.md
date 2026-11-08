@@ -806,16 +806,11 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     below the resilience round tripper (see `starter-s3`) declares outside it.
   - **Log levelling is the emitter's**: failure at Warn, a success carrying
     `Detail` at Debug (lazy), a success carrying none at Info.
-  - **A non-idempotent operation is never retried**: a client whose repeat is a
-    second side effect rather than a second attempt — sending mail, publishing a
-    message, handling a consumed record — declares `NonIdempotent: true` on its
-    retry node (`chain.RetryPolicy`), and the executor runs the call **once**
-    whatever retry the node asks for (it warns once per service when a configured
-    schedule is dropped that way). The declaration is preserved even when a
-    governance push overrides the whole retry node: the two `NonIdempotent` flags
-    are OR-ed, so an operator's hot-fix can never re-enable retry on a
-    side-effecting call. Only the client knows this; that is why the declaration
-    is the client's to make.
+  - **Retry is governance-only**: a client cannot ask for retry in its own code,
+    so an operation whose repeat is a second side effect rather than a second
+    attempt — sending mail, publishing a message, handling a consumed record — is
+    protected by the governance document simply not declaring a schedule for its
+    label. Whoever configures the document owns the safety of what it declares.
   Three principles bound the rule, and dropping any one bends it:
   - *Completeness is the emitter's obligation, discharged once.* The signals —
     a span, a duration metric, an in-flight gauge, and one access-log line per
@@ -843,11 +838,13 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     under one key — worse than two names. The same split applies to HTTP: the
     shared axis is `status`, the detail is `http.response.status_code`.
     The client emitter follows the same rule: `status` is `ok`/`error` like
-    everywhere else, and **`resilience.error_type`** carries what the protection
-    stages did to the call (`rate_limited`, `circuit_open`, `bulkhead_full`,
-    `retry_budget_exceeded`, `timeout`) — absent when they did nothing. Putting
-    those words in `status` would have made the one key two vocabularies, which
-    is exactly the failure this tier exists to prevent.
+    everywhere else, and **`resilience.error_type`** carries the call's one
+    outcome word — a gate the protection stages applied (`rate_limited`,
+    `circuit_open`, `bulkhead_full`, `retry_exceeded`, `timeout`), or
+    `downstream` / `canceled`. It is absent only on success, so a failed call is
+    always attributable. Putting those words in `status` would have made the one
+    key two vocabularies, which is exactly the failure this tier exists to
+    prevent.
   - *Logs must join metrics.* An identity key in a log line must exist under the
     same name as an attribute (span attribute or metric label), or a failing
     metric cannot be traced to the line that explains it. Duration keys (ending

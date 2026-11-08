@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"sync"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -57,10 +57,9 @@ func WithTraffic(prop traffic.Propagator) Option {
 	return func(c *coordinator) { c.prop = prop }
 }
 
-// instrumentSet bundles the metrics a TCC transaction records: one per process,
-// resolved lazily on first use so the set binds to whichever OTel global
-// provider is current then, and immutable afterwards. It holds no per-transaction
-// state.
+// instrumentSet bundles the metrics a TCC transaction records: one per
+// coordinator, resolved when the coordinator is constructed. It holds no
+// per-transaction state.
 type instrumentSet struct {
 	// outcomes counts TCC terminal states — the event counter of the metrics
 	// rules, named after the event itself. The transaction ID is unbounded
@@ -68,40 +67,45 @@ type instrumentSet struct {
 	outcomes metric.Int64Counter
 }
 
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
-	in := &instrumentSet{}
-	in.outcomes, _ = otel.Meter(componentName).
+// buildInstruments resolves this package's instruments against the meter
+// provider the otel starter installs before any bean is constructed. The
+// coordinator owns the set, so a failed registration fails construction instead
+// of silently dropping the metric family.
+func buildInstruments() (*instrumentSet, error) {
+	outcomes, err := otel.Meter(componentName).
 		Int64Counter("transaction.tcc.outcome.total",
 			metric.WithDescription("TCC terminal states, by status"),
 			metric.WithUnit("{transaction}"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "tcc: register transaction.tcc.outcome.total")
+	}
+	return &instrumentSet{outcomes: outcomes}, nil
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // NewCoordinator returns the bundled in-process [Coordinator]: it tries every
 // participant in order and then confirms all (on success) or cancels the tried
 // ones in reverse (on any try failure). With no options it uses no store and no
 // observer, which is a valid transparent setup for tests and development.
-func NewCoordinator(opts ...Option) Coordinator {
+func NewCoordinator(opts ...Option) (Coordinator, error) {
 	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding())}
 	for _, opt := range opts {
 		opt(c)
 	}
-	return c
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
+	c.ins = ins
+	return c, nil
 }
 
 type coordinator struct {
 	store    Store
 	observer Observer
 	prop     traffic.Propagator
+
+	// ins is this coordinator's instrument set, resolved at construction.
+	ins *instrumentSet
 }
 
 // triedParticipant records a participant whose Try ran, with the value it
@@ -293,7 +297,7 @@ func (c *coordinator) persist(ctx context.Context, t Transaction, status Status,
 // deleted (the work is done and needs no recovery); a cancelled or failed
 // transaction's log is kept so operators and recovery can inspect it.
 func (c *coordinator) finish(ctx context.Context, t Transaction, res *Result, tried []triedParticipant) {
-	instruments().outcomes.Add(ctx, 1, metric.WithAttributes(
+	c.ins.outcomes.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("status", res.Status.String()),
 	))
 	if res.Status == StatusCommitted {
@@ -367,7 +371,7 @@ func isTerminal(s Status) bool {
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
-// reuses [resilience.Limits] so TCC phase retries and outbound resilience share
+// reuses [resilience.TimeoutRetry] so TCC phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
 func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
@@ -377,12 +381,21 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resour
 	if err != nil {
 		return err
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
-	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
+	mgr, err := resilience.NewManager(factories)
+	if err != nil {
+		return err
+	}
+	if err := mgr.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+		Service: resource,
+		Rules: []resilience.TimeoutRetryRule{{
+			ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			TimeoutRetry: resilience.TimeoutRetry{Retry: p},
+		}},
+	}}}); err != nil {
 		return err
 	}
 	defer func() { _ = mgr.Close() }()
-	exec := mgr.ExecutorFor(resource)
+	exec := mgr.Wrap(resource, nil)
 	op := chain.NewOperation(ctx, prop)
 	op.Service = resource
 	return exec.Execute(ctx, op, new(chain.Recorder), fn)

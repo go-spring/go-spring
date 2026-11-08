@@ -201,7 +201,10 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	// NewClient resolves the executor off the governance bundle and stores the
 	// service label; the client's identity, observe and governance all come from
 	// this one call.
-	w := NewClient(raw, c)
+	w, err := NewClient(raw, c)
+	if err != nil {
+		return nil, err
+	}
 	obsRef.Store(w.obs)
 	// Endpoint selection needs no binding step here: newPickChain registered the
 	// chain under the service's governance label as it built it, so one

@@ -34,6 +34,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/chain"
 	"go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/inbound/observe"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Over builds the inbound pair over an explicit admission authority — the seam
@@ -47,13 +48,16 @@ import (
 // fault.
 func Over(system, label string, mgr *admission.Manager, inj ...*fault.Manager) (*Inbound, error) {
 	if mgr == nil {
-		panic("runtime: Over requires a non-nil admission.Manager")
+		return nil, errutil.Explain(nil, "runtime: inbound construction requires a non-nil admission.Manager")
 	}
 	var opts []admission.Option
 	if len(inj) > 0 && inj[0] != nil {
 		opts = append(opts, admission.WithFault(fault.Stage(system, inj[0].NewServer())))
 	}
-	obs := observe.NewServerObserver(system, label)
+	obs, err := observe.NewServerObserver(system, label)
+	if err != nil {
+		return nil, err
+	}
 	g, err := mgr.GuardFor(admission.Identity{System: system, Service: label}, opts...)
 	if err != nil {
 		return nil, err

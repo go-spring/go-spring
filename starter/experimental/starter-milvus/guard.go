@@ -31,13 +31,16 @@ package StarterMilvus
 
 import (
 	"context"
+	"errors"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 	"sync"
 
 	"google.golang.org/grpc"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/merr"
 )
 
 // guardSlot carries the executor [NewClient] applies. The interceptors consult
@@ -101,12 +104,86 @@ func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 		if exec, service, prop := slot.load(); exec != nil {
 			op := operation(ctx, prop, method)
 			op.Service = service
-			return exec.Execute(ctx, op, nil, func(ctx context.Context) error {
-				return invoker(ctx, method, req, reply, cc, opts...)
-			})
+			_, err := resilience.Run(ctx, exec, op, func(ctx context.Context) (struct{}, error) {
+				return struct{}{}, invoker(ctx, method, req, reply, cc, opts...)
+			}, milvusOptions...)
+			return err
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
+}
+
+// milvusOptions is the call-outcome declaration every RPC shares: a request
+// Milvus definitively rejected is normal, and a condition the SDK marks
+// transient is retry-eligible. Both are returned verbatim.
+var milvusOptions = []resilience.Option{
+	resilience.TolerateFunc(isClientError),
+	resilience.RetryOn(isRetryableError),
+}
+
+// retryableSentinels are the SDK's errors carrying retriable=true: a dependency
+// that is not ready / unavailable / throttled, or a collection still loading.
+// They are listed as sentinels rather than read through merr.IsRetryableErr,
+// which only recognises an unwrapped milvusError.
+var retryableSentinels = []error{
+	merr.ErrServiceNotReady,
+	merr.ErrServiceUnavailable,
+	merr.ErrServiceRequestLimitExceeded,
+	merr.ErrServiceRateLimit,
+	merr.ErrCollectionNotFullyLoaded,
+	merr.ErrPartitionNotFullyLoaded,
+}
+
+// isRetryableError reports whether the SDK classifies the failure as transient.
+func isRetryableError(err error) bool {
+	for _, sentinel := range retryableSentinels {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
+}
+
+// isClientError reports whether Milvus gave a DEFINITE verdict on the request —
+// an unknown collection/partition/database/field, an invalid parameter, a
+// privilege decision — rather than a condition of the cluster. The SDK exposes
+// these as sentinel values (unwrapped from its cockroachdb/errors wrapper by
+// errors.Is), not as one class, so the set is listed explicitly.
+//
+// The list is deliberately conservative: a sentinel absent from it falls back to
+// the default and counts as a downstream fault. That direction is the safe one —
+// an unlisted client error is over-counted, never an unhealthy dependency
+// silently tolerated. Service/cluster conditions (unavailable, not ready, rate
+// limited, node/segment/IO failures, segcore) are intentionally NOT listed.
+func isClientError(err error) bool {
+	for _, sentinel := range clientErrorSentinels {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
+}
+
+var clientErrorSentinels = []error{
+	merr.ErrCollectionNotFound,
+	merr.ErrPartitionNotFound,
+	merr.ErrDatabaseNotFound,
+	merr.ErrDatabaseInvalidName,
+	merr.ErrIndexNotFound,
+	merr.ErrIndexNotSupported,
+	merr.ErrFieldNotFound,
+	merr.ErrFieldInvalidName,
+	merr.ErrAliasNotFound,
+	merr.ErrAliasCollectionNameConfilct,
+	merr.ErrAliasAlreadyExist,
+	merr.ErrParameterInvalid,
+	merr.ErrIncorrectParameterFormat,
+	merr.ErrMissingRequiredParameters,
+	merr.ErrInvalidInsertData,
+	merr.ErrCheckPrimaryKey,
+	merr.ErrNeedAuthenticate,
+	merr.ErrPrivilegeNotAuthenticated,
+	merr.ErrPrivilegeNotPermitted,
 }
 
 // streamGuard returns the stream interceptor: the stream's open (which sends
@@ -126,12 +203,9 @@ func streamGuard(slot *guardSlot) grpc.StreamClientInterceptor {
 		if exec, service, prop := slot.load(); exec != nil {
 			op := operation(ctx, prop, method)
 			op.Service = service
-			var cs grpc.ClientStream
-			err := exec.Execute(ctx, op, nil, func(ctx context.Context) error {
-				var e error
-				cs, e = streamer(ctx, desc, cc, method, opts...)
-				return e
-			})
+			cs, err := resilience.Run(ctx, exec, op, func(ctx context.Context) (grpc.ClientStream, error) {
+				return streamer(ctx, desc, cc, method, opts...)
+			}, milvusOptions...)
 			return cs, err
 		}
 		return streamer(ctx, desc, cc, method, opts...)

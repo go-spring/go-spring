@@ -229,8 +229,8 @@ SendMessage / SendMessages
 2. resilience 层开启发布 span，并在调用级记录 `messaging.client.operation.duration`
    （含重试与退避）与 `messaging.client.active_requests`；在尝试级记录
    `messaging.client.attempt.duration`。它写出 `kafka` 访问 tag 下的一条访问日志。
-   publish 与 consume 声明为 `NonIdempotent`，故针对该 label 的重试策略会被**抑制**
-   （每个 service 告警一次）：重发或再跑一遍 handler 是第二个副作用，不是第二次尝试。
+   重试只由治理配置：publish 与 consume 不带调用侧重试。重发或再跑一遍 handler 是第二个
+   副作用，不是第二次尝试，所以文档不应给该 label 配置调度——写文档的人自己负责它的效果。
 3. 尝试内部，W3C propagator 把 `traceparent`/`tracestate` 注入 `msg.Headers`。
    ⚠ 注入会**丢弃同 key 的既有 header** 以保证重复注入幂等 ——
    别把业务数据放在 `traceparent` 下。

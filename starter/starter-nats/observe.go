@@ -30,11 +30,11 @@ package StarterNats
 
 import (
 	"context"
-	"sync"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -93,35 +93,27 @@ func operation(ctx context.Context, prop traffic.Propagator, word opWord, subjec
 	return op
 }
 
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever providers are current then, and
-// shared by every connection in the process. It holds only the connection-state
-// counter; the per-call signals are the resilience layer's, built from the
-// operation this starter declares (see [operation]).
+// instrumentSet is this starter's instrument set: one per connection-state
+// counter, resolved when the driver builds it. It holds only the
+// connection-state counter; the per-call signals are the resilience layer's,
+// built from the operation this starter declares (see [operation]).
 type instrumentSet struct {
 	connChanges metric.Int64Counter
 }
 
-// instruments is the one instrument set this starter uses for the whole
-// process. Resolution is deferred to the first use, not run at package init, so
-// the instruments bind to whichever providers are current then - starter-otel
-// installs them before any bean is built, but a test may replace them later and
-// a value resolved at init would keep pointing at the old SDK.
-var instruments = sync.OnceValue(buildInstruments)
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-func buildInstruments() *instrumentSet {
-	m := otel.Meter(componentName)
-	in := &instrumentSet{}
-	in.connChanges, _ = m.Int64Counter("messaging.client.connection.state_changes",
+// buildInstruments resolves this starter's instruments against the meter
+// provider the otel starter installs before any bean is built. The driver owns
+// the set, so a failed registration fails client construction instead of
+// silently dropping the metric family.
+func buildInstruments() (*instrumentSet, error) {
+	connChanges, err := otel.Meter(componentName).Int64Counter(
+		"messaging.client.connection.state_changes",
 		metric.WithDescription("Connection-state transitions reported by the messaging client"),
 		metric.WithUnit("{event}"))
-	return in
+	if err != nil {
+		return nil, errutil.Explain(err, "nats: register messaging.client.connection.state_changes")
+	}
+	return &instrumentSet{connChanges: connChanges}, nil
 }
 
 // connStateCounter counts the connection-state transitions the NATS client's own
@@ -137,11 +129,14 @@ type connStateCounter struct {
 	ins *instrumentSet
 }
 
-// newConnStateCounter takes the shared instrument set — invoked at wiring time
-// (inside the driver), not at package init, so an SDK installed later still
-// receives the records.
-func newConnStateCounter() *connStateCounter {
-	return &connStateCounter{ins: instruments()}
+// newConnStateCounter resolves its instrument set — invoked at wiring time
+// (inside the driver), so a registration failure fails client construction.
+func newConnStateCounter() (*connStateCounter, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
+	return &connStateCounter{ins: ins}, nil
 }
 
 // record counts one transition and returns the fields its log line carries.

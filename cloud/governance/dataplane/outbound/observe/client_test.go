@@ -154,35 +154,56 @@ func (f fakeExecutor) Execute(ctx context.Context, op chain.Operation, rec *chai
 }
 func (fakeExecutor) Close() error { return nil }
 
-func TestWrapClientExecutor_NilInnerReturnsNil(t *testing.T) {
-	assert.That(t, WrapClientExecutor(nil, "sys", "svc")).Nil()
+// TestWrapClientExecutor_NilNextIsTerminal proves a nil next makes the
+// observer the last layer: the call is fn itself, and with no governance loop
+// below the observer records the call's single try as its own round.
+func TestWrapClientExecutor_NilNextIsTerminal(t *testing.T) {
+	exec := WrapClientExecutor(nil, "sys", "svc")
+	assert.That(t, exec).NotNil()
+	called := false
+	rec := &chain.Recorder{}
+	err := exec.Execute(context.Background(), chain.Operation{}, rec, func(context.Context) error {
+		called = true
+		return nil
+	})
+	assert.That(t, err).Nil()
+	assert.That(t, called).True()
+	assert.That(t, len(rec.Rounds)).Equal(1)
 }
 
 // TestClassifyStatusAndOutcome proves the two keys answer two different
 // questions, which is why they are separate: `status` is the ecosystem-wide axis
 // (`ok`/`error`, the same words an inbound request uses), and
-// `resilience.error_type` is what protection decided about the call — empty unless
-// it refused one or the call ran out of budget.
+// `resilience.error_type` is what protection decided about the call.
+//
+// The round and call vocabularies differ on purpose: a round that simply ran
+// says nothing about a gate (ClassifyErrorType is empty), while a finished call
+// that failed always has a reason — ClassifyOutcome names the downstream.
 func TestClassifyStatusAndOutcome(t *testing.T) {
-	cases := []struct {
+	type want struct {
 		err     error
 		status  string
-		outcome string
-	}{
-		{nil, "ok", ""},
-		{chain.ErrRateLimited, "error", "rate_limited"},
-		{chain.ErrCircuitOpen, "error", "circuit_open"},
-		{chain.ErrBulkheadFull, "error", "bulkhead_full"},
-		{chain.ErrRetryExceeded, "error", "retry_exceeded"},
-		{context.DeadlineExceeded, "error", "timeout"},
-		// A plain downstream failure is an error, but nothing protection did.
-		{errutil.Explain(nil, "boom"), "error", ""},
+		gate    string // ClassifyErrorType: per round
+		outcome string // ClassifyOutcome: per call
+	}
+	downstream := errutil.Explain(nil, "boom")
+	cases := []want{
+		{nil, "ok", "", ""},
+		{chain.ErrRateLimited, "error", "rate_limited", "rate_limited"},
+		{chain.ErrCircuitOpen, "error", "circuit_open", "circuit_open"},
+		{chain.ErrBulkheadFull, "error", "bulkhead_full", "bulkhead_full"},
+		{chain.ErrRetryExceeded, "error", "retry_exceeded", "retry_exceeded"},
+		{context.DeadlineExceeded, "error", "timeout", "timeout"},
+		// A plain downstream failure is an error; no gate word applies, but the
+		// CALL still has a reason.
+		{downstream, "error", "", chain.ErrorTypeDownstream},
 		// wrapped sentinels must still classify by errors.Is.
-		{errors.Join(chain.ErrCircuitOpen, errutil.Explain(nil, "detail")), "error", "circuit_open"},
+		{errors.Join(chain.ErrCircuitOpen, errutil.Explain(nil, "detail")), "error", "circuit_open", "circuit_open"},
 	}
 	for _, c := range cases {
 		assert.That(t, chain.ClassifyStatus(c.err)).Equal(c.status)
-		assert.That(t, chain.ClassifyErrorType(c.err)).Equal(c.outcome)
+		assert.That(t, chain.ClassifyErrorType(c.err)).Equal(c.gate)
+		assert.That(t, chain.ClassifyOutcome(context.Background(), c.err)).Equal(c.outcome)
 	}
 }
 

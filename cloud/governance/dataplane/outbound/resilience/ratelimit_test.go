@@ -20,23 +20,38 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
+// svcRule arms a whole-service rate rule for label.
+func svcRule(label string, p ratelimit.Policy) resilience.RateLimitSettings {
+	return resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+		Service: label,
+		Rules: []resilience.RateLimitRule{{
+			ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+			Policy:      p,
+		}},
+	}}}
+}
+
 // newExternalExecutor builds one executor over a private manager armed with p.
 // It is the stand-in for the constructor call sites outside the package use.
-func newExternalExecutor(t *testing.T, d resilience.Driver, label string, p ratelimit.Policy) chain.Executor {
+func newExternalExecutor(t *testing.T, label string, p ratelimit.Policy) chain.Executor {
 	t.Helper()
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	assert.That(t, err).Nil()
-	m := resilience.NewManager(d, factories)
-	assert.That(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
-	return m.ExecutorFor(label)
+	m, err := resilience.NewManager(factories)
+	assert.That(t, err).Nil()
+	assert.That(t, m.ApplyRateLimit(svcRule(label, p))).Nil()
+	return m.Wrap(label, nil)
 }
 
 // testStore is a minimal shared-store factory for seam-level tests: it counts
@@ -79,28 +94,26 @@ func TestApplyRateLimitRejectsUnknownLimiterKind(t *testing.T) {
 		ratelimit.NewLocalProvider(),
 	})
 	assert.That(t, err).Nil()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	m, err := resilience.NewManager(factories)
+	assert.That(t, err).Nil()
 
 	sliding := ratelimit.Policy{RateLimit: 1, Limiter: "redis:sliding-window"}
-	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: sliding})).NotNil()
+	assert.Error(t, m.ApplyRateLimit(svcRule("svc", sliding))).NotNil()
 
 	bucket := ratelimit.Policy{RateLimit: 1, Limiter: "token-bucket"}
-	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: bucket})).Nil()
+	assert.Error(t, m.ApplyRateLimit(svcRule("svc", bucket))).Nil()
 }
 
-// TestDefaultDriverCountsPerExecutor pins the default the rate-limit stage
-// follows every other stage's: its state belongs to the executor. Two executors
-// built by one driver do NOT share a budget, because each counts in a private
-// store — and that is still one budget per service through the manager, which
-// builds one executor per label and hands it to every caller of that label.
-func TestDefaultDriverCountsPerExecutor(t *testing.T) {
-	d := resilience.NewDefaultDriver()
+// TestRateCounterCountsPerManager pins that a rate budget belongs to the engine
+// that counts it. Two private managers each own their counter, so they do not
+// share a budget — while one manager still keeps a single budget per label.
+func TestRateCounterCountsPerManager(t *testing.T) {
 	p := ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}
 	ctx := context.Background()
-	e1 := newExternalExecutor(t, d, "svc", p)
-	e2 := newExternalExecutor(t, d, "svc", p)
+	e1 := newExternalExecutor(t, "svc", p)
+	e2 := newExternalExecutor(t, "svc", p)
 	run := func(e chain.Executor) error {
-		return e.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+		return e.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	}
 	assert.That(t, run(e1)).Nil() // e1 spends its own budget...
 	assert.That(t, run(e2)).Nil() // ...so e2 still has one of its own
@@ -116,14 +129,39 @@ func TestDefaultDriverSharesSuppliedStore(t *testing.T) {
 	store := &testStore{}
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{store})
 	assert.That(t, err).Nil()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	m, err := resilience.NewManager(factories)
+	assert.That(t, err).Nil()
 	p := ratelimit.Policy{RateLimit: 1, Burst: 1, Limiter: "token-bucket"}
-	assert.That(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
-	e1 := m.ExecutorFor("svc")
-	e2 := m.ExecutorFor("svc")
+	assert.That(t, m.ApplyRateLimit(svcRule("svc", p))).Nil()
+	e1 := m.Wrap("svc", nil)
+	e2 := m.Wrap("svc", nil)
 	ctx := context.Background()
-	assert.That(t, e1.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
-	assert.That(t, errors.Is(e2.Execute(ctx, chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil }), chain.ErrRateLimited)).True()
+	assert.That(t, e1.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.That(t, errors.Is(e2.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil }), chain.ErrRateLimited)).True()
 	// The charge landed under the service name, not some private key.
 	assert.That(t, store.spent["svc"]).Equal(1)
+}
+
+// TestRateLimitServiceRequiredAtBind pins the single-field rule that lives in
+// the expr tag rather than in Validate.
+func TestRateLimitServiceRequiredAtBind(t *testing.T) {
+	_, err := source.Parse[resilience.RateLimitSettings]("ratelimit.properties", []byte(`
+services[0].rules[0].action.exact=GET /x
+services[0].rules[0].rate-limit=1
+`), "")
+	assert.Error(t, err).NotNil()
+
+	_, err = source.Parse[resilience.RateLimitSettings]("ratelimit.properties", []byte(`
+services[0].service=svc
+services[0].rules[0].action.exact=GET /x
+services[0].rules[0].rate-limit=1
+`), "")
+	assert.Error(t, err).Nil()
+}
+
+// TestRateLimitIsZeroCoversNewKnobs pins that IsZero sees the newer knobs: a
+// policy setting ONLY one of them is no longer "no protection".
+func TestRateLimitIsZeroCoversNewKnobs(t *testing.T) {
+	assert.That(t, (ratelimit.Policy{WarmUp: time.Second}).IsZero()).False()
+	assert.That(t, (ratelimit.Policy{ColdFactor: 3}).IsZero()).False()
 }

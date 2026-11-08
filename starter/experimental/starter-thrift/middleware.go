@@ -18,11 +18,11 @@ package StarterThrift
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/cloud/observability/attrs"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -40,56 +40,56 @@ const componentName = "go-spring.org/starter-thrift"
 const rpcSystem = "thrift"
 
 // instrumentSet holds this starter's RPC instruments. It is built once per
-// process (see instruments), so nothing is allocated or initialized on the hot
-// path — an earlier package-level init flag was a data race on first concurrent
-// use.
+// middleware (see [Observe]), so nothing is allocated or initialized on the hot
+// path.
 type instrumentSet struct {
 	requestCount    metric.Int64Counter
 	requestDuration metric.Float64Histogram
 	requestInflight metric.Int64UpDownCounter
 }
 
-// instruments is the one instrument set this starter uses for the whole
-// process. Resolution is deferred to the first use, not run at package init, so
-// the instruments bind to whichever providers are current then - starter-otel
-// installs them before the server starts, but a test may replace them later and
-// a value resolved at init would keep pointing at the old SDK.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
+// buildInstruments resolves this starter's instruments against the meter
+// provider the otel starter installs before the server is built. The observer
+// owns the set, so a failed registration fails construction instead of silently
+// dropping the whole metric family.
+func buildInstruments() (*instrumentSet, error) {
 	m := otel.Meter(componentName)
-	requestCount, _ := m.Int64Counter(
+	requestCount, err := m.Int64Counter(
 		"rpc.server.request_count",
 		metric.WithDescription("Number of Thrift RPC requests received"),
 		metric.WithUnit("{request}"),
 	)
-	requestDuration, _ := m.Float64Histogram(
+	if err != nil {
+		return nil, errutil.Explain(err, "thrift: register rpc.server.request_count")
+	}
+	requestDuration, err := m.Float64Histogram(
 		"rpc.server.request.duration",
 		metric.WithDescription("Duration of Thrift RPC requests"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
-	requestInflight, _ := m.Int64UpDownCounter(
+	if err != nil {
+		return nil, errutil.Explain(err, "thrift: register rpc.server.request.duration")
+	}
+	requestInflight, err := m.Int64UpDownCounter(
 		"rpc.server.active_requests",
 		metric.WithDescription("Number of Thrift RPC requests currently in-flight"),
 		metric.WithUnit("{request}"),
 	)
+	if err != nil {
+		return nil, errutil.Explain(err, "thrift: register rpc.server.active_requests")
+	}
 	return &instrumentSet{
 		requestCount:    requestCount,
 		requestDuration: requestDuration,
 		requestInflight: requestInflight,
-	}
+	}, nil
 }
 
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-// observer carries no instruments of its own: every reading goes to the
-// process-wide instrument set (see instruments), resolved at the use site.
-type observer struct{}
+// observer carries the instrument set its middleware publishes through.
+type observer struct {
+	ins *instrumentSet
+}
 
 // Observe returns the middleware that wraps every method call with an OTel
 // span and request metrics. The per-call access log is a separate middleware
@@ -110,9 +110,15 @@ type observer struct{}
 //
 //	admit, err := Admit(label, system, mgr)
 //	if err != nil { return err }
-//	proc = thrift.WrapProcessor(proc, Observe(), AccessLog(), admit)
-func Observe() thrift.ProcessorMiddleware {
-	return (&observer{}).observe
+//	mw, err := Observe()
+//	if err != nil { return err }
+//	proc = thrift.WrapProcessor(proc, mw, AccessLog(), admit)
+func Observe() (thrift.ProcessorMiddleware, error) {
+	ins, err := buildInstruments()
+	if err != nil {
+		return nil, err
+	}
+	return (&observer{ins: ins}).observe, nil
 }
 
 // observe wraps one method's TProcessorFunction.
@@ -134,7 +140,7 @@ func (o *observer) observe(name string, next thrift.TProcessorFunction) thrift.T
 				attribute.String("rpc.system", rpcSystem),
 				attribute.String("rpc.method", name),
 			)
-			instruments().requestInflight.Add(ctx, 1, inflight)
+			o.ins.requestInflight.Add(ctx, 1, inflight)
 			start := time.Now()
 
 			ctx, span := otel.Tracer(componentName).Start(ctx, name,
@@ -149,7 +155,7 @@ func (o *observer) observe(name string, next thrift.TProcessorFunction) thrift.T
 
 			dur := time.Since(start)
 			status := statusOf(ex)
-			instruments().requestInflight.Add(ctx, -1, inflight)
+			o.ins.requestInflight.Add(ctx, -1, inflight)
 			// status is the family's shared result axis (ok|error). The
 			// transport-specific detail is thrift.error_code, on the span —
 			// not a second metric label carrying the same two words under a
@@ -159,8 +165,8 @@ func (o *observer) observe(name string, next thrift.TProcessorFunction) thrift.T
 				attribute.String("rpc.method", name),
 				attribute.String("status", status),
 			)
-			instruments().requestCount.Add(ctx, 1, done)
-			instruments().requestDuration.Record(ctx, dur.Seconds(), done)
+			o.ins.requestCount.Add(ctx, 1, done)
+			o.ins.requestDuration.Record(ctx, dur.Seconds(), done)
 
 			if ex != nil {
 				span.SetAttributes(

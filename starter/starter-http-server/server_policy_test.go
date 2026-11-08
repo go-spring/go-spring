@@ -41,7 +41,10 @@ func serveServerPolicy(t *testing.T, handler http.HandlerFunc) (*httptest.Respon
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := admission.NewManager(fact)
+	mgr, err := admission.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	in, err := inbound.Over("http-server", "http-server::9090", mgr)
 	if err != nil {
 		t.Fatal(err)

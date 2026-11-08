@@ -87,7 +87,7 @@ type Client struct {
 // center is a construction error — [governance.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
-// The manager's ExecutorFor resolves its backing executor lazily, on each
+// Runtime.ExecutorFor resolves the executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(session *gocql.Session, cfg Config, center *governance.Runtime) *Client {

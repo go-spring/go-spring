@@ -85,17 +85,13 @@ func TestRunLeavesIdentityToItsSpan(t *testing.T) {
 }
 
 // withMeter installs a manual reader as the global meter provider for a test;
-// the built-in instrumentation binds to the provider current at record time, so
-// every fire the test triggers reports into the reader.
+// a job constructed after this call resolves its instruments against the
+// reader, so every fire it runs reports there.
 func withMeter(t *testing.T) *sdkmetric.ManualReader {
 	t.Helper()
 	rdr := sdkmetric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(rdr)))
-	// The instrument set is process-wide and resolved once, so a test running
-	// after one that already resolved it would keep reporting into the earlier
-	// provider.
-	scheduling.ResetInstruments()
 	t.Cleanup(func() {
 		_ = rdr.Shutdown(context.Background())
 		otel.SetMeterProvider(prev)

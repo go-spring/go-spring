@@ -19,8 +19,10 @@ package StarterGoRedis
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
@@ -34,17 +36,38 @@ func newHook(t *testing.T, p any) *resilienceHook {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
+	m, err := resilience.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
 	switch v := p.(type) {
 	case nil:
-	case resilience.Limits:
-		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
+	case resilience.TimeoutRetry:
+		assert.Error(t, m.ApplyTimeoutRetry(resilience.TimeoutRetrySettings{Services: []resilience.TimeoutRetryService{{
+			Service: "redis:test",
+			Rules: []resilience.TimeoutRetryRule{{
+				ActionMatch:  matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+				TimeoutRetry: v,
+			}},
+		}}})).Nil()
 	case resilience.BreakerPolicy:
-		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
+		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Services: []resilience.BreakerService{{
+			Service: "redis:test",
+			Rules: []resilience.BreakerRule{{
+				ActionMatch:   matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+				BreakerPolicy: v,
+			}},
+		}}})).Nil()
 	case ratelimit.Policy:
-		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
+		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Services: []resilience.RateLimitService{{
+			Service: "redis:test",
+			Rules: []resilience.RateLimitRule{{
+				ActionMatch: matcher.ActionMatch{Exact: matcher.ServiceScopeAction},
+				Policy:      v,
+			}},
+		}}})).Nil()
 	}
-	return &resilienceHook{exec: m.ExecutorFor("svc"), serviceLabel: "redis:test", prop: testProp}
+	return &resilienceHook{exec: m.Wrap("svc", nil), serviceLabel: "redis:test", prop: testProp}
 }
 
 // call drives one command through the hook with a stubbed next that returns
@@ -103,10 +126,36 @@ func TestRateLimitRejects(t *testing.T) {
 	})
 	cmd := func() redis.Cmder { return redis.NewStringCmd(context.Background(), "ping") }
 
-	assert.Error(t, stub(context.Background(), cmd())).Nil()
+	// The bucket starts empty (Guava pay-for-previous): the first command is
+	// granted and owes one pace of wait, so the next one is refused.
 	assert.Error(t, stub(context.Background(), cmd())).Nil()
 	rejected := cmd()
 	assert.Error(t, stub(context.Background(), rejected)).Is(chain.ErrRateLimited)
 	assert.Error(t, rejected.Err()).Is(chain.ErrRateLimited)
-	assert.That(t, ran).Equal(2) // the rejected command never reached next
+	assert.That(t, ran).Equal(1) // the rejected command never reached next
+}
+
+// TestTransientErrorClassification pins the transport class: network errors are
+// retry-eligible; server replies and ordinary errors are not.
+func TestTransientErrorClassification(t *testing.T) {
+	assert.That(t, isTransientError(&net.OpError{Op: "read", Net: "tcp", Err: errors.New("reset")})).True()
+	assert.That(t, isTransientError(errors.New("WRONGTYPE"))).False()
+	assert.That(t, isTransientError(nil)).False()
+}
+
+// TestTransientErrorIsRetried proves the transport class reaches the retry loop
+// while the caller still receives the original error.
+func TestTransientErrorIsRetried(t *testing.T) {
+	h := newHook(t, resilience.TimeoutRetry{Retry: resilience.Retry{MaxRetries: 2}})
+	boom := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}
+	var calls int
+	cmd := redis.NewStringCmd(context.Background(), "get", "k")
+	ph := h.ProcessHook(func(_ context.Context, c redis.Cmder) error {
+		calls++
+		c.SetErr(boom)
+		return boom
+	})
+	seen := ph(context.Background(), cmd)
+	assert.Error(t, seen).Is(boom)
+	assert.Number(t, calls).Equal(3)
 }

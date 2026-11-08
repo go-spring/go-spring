@@ -262,9 +262,9 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
    ctx 注入 `pm.Properties`，因此 traceparent 携带 executor 的 span。
 5. resilience observer（唯一发射点）把结果记到 `messaging.client.operation.duration`
    （调用级）、`messaging.client.attempt.duration`（每次重试）与
-   `messaging.client.active_requests`，并写一条访问日志。publish 与 consume 声明为
-   `NonIdempotent`，故针对该 label 的重试策略会被**抑制**（每个 service 告警一次）：
-   重发或再跑一遍 handler 是第二个副作用，不是第二次尝试。
+   `messaging.client.active_requests`，并写一条访问日志。重试只由治理配置：publish 与
+   consume 不带调用侧重试。重发或再跑一遍 handler 是第二个副作用，不是第二次尝试，所以
+   文档不应给该 label 配置调度——写文档的人自己负责它的效果。
 
 ### 2.4 一次 driver 消费，逐层走读
 

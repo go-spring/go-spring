@@ -21,20 +21,21 @@ import (
 	"strings"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/errutil"
 )
 
 // NewZoneAware wraps delegate so picks prefer endpoints in the caller's zone.
 // An empty zoneKey falls back to [discovery.MetaKeyZone]. It is a filter, not a
 // strategy: [Factory.Create] applies it after building the strategy the
 // selection names, which is what lets a rule state its balancer only once.
-func NewZoneAware(delegate Balancer, zoneKey string) *ZoneAwareBalancer {
+func NewZoneAware(delegate Balancer, zoneKey string) (*ZoneAwareBalancer, error) {
 	if delegate == nil {
-		panic("loadbalance: NewZoneAware requires a non-nil delegate")
+		return nil, errutil.Explain(nil, "loadbalance: zone-aware balancer requires a non-nil delegate")
 	}
 	if zoneKey == "" {
 		zoneKey = discovery.MetaKeyZone
 	}
-	return &ZoneAwareBalancer{zoneKey: zoneKey, delegate: delegate}
+	return &ZoneAwareBalancer{zoneKey: zoneKey, delegate: delegate}, nil
 }
 
 // ZoneAwareBalancer is a locality-aware [Balancer] — a filter rather than a

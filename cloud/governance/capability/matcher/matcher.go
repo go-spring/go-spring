@@ -34,7 +34,7 @@
 // Istio-headers design, `match.tenant.exact=acme`: one key carries one
 // condition and the op is always spelled out, because documents are
 // platform-generated rather than hand-written, so there is no scalar
-// shorthand. There is no second runtime vocabulary to translate to; [Matches]
+// shorthand. There is no second runtime vocabulary to translate to; [MetadataMatches]
 // evaluates the map as bound.
 package matcher
 
@@ -89,10 +89,10 @@ func (m StringMatch) Validate() error {
 	return nil
 }
 
-// matches reports whether v satisfies m. An unset op (a value that bypassed
+// Matches reports whether v satisfies m. An unset op (a value that bypassed
 // [StringMatch.Validate]) matches nothing: failing closed is the only safe
 // answer for a condition that slipped past the boundary.
-func (m StringMatch) matches(v string) bool {
+func (m StringMatch) Matches(v string) bool {
 	switch {
 	case m.Exact != "":
 		return v == m.Exact
@@ -107,17 +107,17 @@ func (m StringMatch) matches(v string) bool {
 	}
 }
 
-// Matches reports whether metadata satisfies every entry of match — a
+// MetadataMatches reports whether metadata satisfies every entry of match — a
 // conjunction over one metadata map, subset-match: the metadata may carry
 // entries match does not name, but a named key must be present and satisfy its
 // [StringMatch]. The empty map matches everything; because that is
 // indistinguishable from a dropped rule, a control-plane decoder should reject
 // an explicitly empty map as a configuration error instead of installing it as
 // "match all". Evaluation allocates nothing, so there is nothing to precompute.
-func Matches(match map[string]StringMatch, metadata map[string]string) bool {
+func MetadataMatches(match map[string]StringMatch, metadata map[string]string) bool {
 	for k, m := range match {
 		v, ok := metadata[k]
-		if !ok || !m.matches(v) {
+		if !ok || !m.Matches(v) {
 			return false
 		}
 	}
@@ -153,15 +153,57 @@ type ActionMatch struct {
 	Prefix string `value:"${prefix:=}"`
 }
 
-// Matches reports whether action satisfies m. The first non-empty operator
-// wins; the zero value matches every action.
+// Matches reports whether action satisfies m. The service marker matches every
+// action; otherwise the first non-empty operator wins, and the zero value
+// matches every action.
 func (m ActionMatch) Matches(action string) bool {
 	switch {
+	case m.Exact == ServiceScopeAction:
+		return true
 	case m.Exact != "":
 		return action == m.Exact
 	case m.Prefix != "":
 		return strings.HasPrefix(action, m.Prefix)
 	default:
 		return true
+	}
+}
+
+// ServiceScopeAction is the reserved Exact selector that means "the whole
+// service". It is the one selector a real action can never spell, so the marker
+// cannot be confused with an interface.
+const ServiceScopeAction = "-"
+
+// IsServiceScope reports whether m selects the whole service (the reserved
+// [ServiceScopeAction] marker).
+func (m ActionMatch) IsServiceScope() bool {
+	return m.Exact == ServiceScopeAction
+}
+
+// BetterThan reports whether m is the more specific ACTION selector of
+// the two: exact beats any prefix, a longer prefix beats a shorter one, and a
+// real action beats the service scope. Equal selectors do not outrank each
+// other. Metadata is a separate dimension, composed by the caller (see
+// [MetadataMatches]).
+func (m ActionMatch) BetterThan(o ActionMatch) bool {
+	switch {
+	case m.Exact == ServiceScopeAction:
+		// The whole-service fallback beats nothing.
+		return false
+	case o.Exact == ServiceScopeAction:
+		// Any real selector beats the whole-service fallback.
+		return true
+	case m.Exact != "" && o.Exact != "":
+		// Two exact selectors: neither outranks the other.
+		return false
+	case m.Exact != "":
+		// Exact beats prefix.
+		return true
+	case o.Exact != "":
+		// Prefix loses to exact.
+		return false
+	default:
+		// Two prefixes (the zero selector is an empty prefix): longer wins.
+		return len(m.Prefix) > len(o.Prefix)
 	}
 }

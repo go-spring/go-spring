@@ -418,7 +418,7 @@ asserted end-to-end by `runTest`:
   statically; a change needs a restart); the dynamically-applicable subset has
   two hot-reload lines: a standalone consumer document
   (`${spring.dubbo.consumer.file}`, watched via fsnotify) and governance pushes
-  (the poller's `OnLimits` callback) → override rules → dubbo-go's config-center
+  (limits source subscription) → override rules → dubbo-go's config-center
   listeners → the live invoker URLs, so it takes effect on the next call.
   Consumer-level defaults publish as `<appName>.configurators`, each reference
   as `<interface>:<version>:<group>.configurators`.

@@ -90,7 +90,7 @@ type Client struct {
 // nothing the wiring has to remember to call. A hand-built client must supply a
 // center holding a [resilience.Manager]: [governance.Runtime.ExecutorFor] is
 // required, so a nil center is a construction error —
-// [governance.Runtime.ExecutorFor] panics — never a graceful downgrade. The manager's ExecutorFor resolves its backing
+// [governance.Runtime.ExecutorFor] panics — never a graceful downgrade. Runtime.ExecutorFor resolves the executor
 // executor lazily, on each Execute, so the call order relative to
 // the center's wiring is irrelevant.
 func NewClient(client neo4j.DriverWithContext, cfg Config, center *governance.Runtime) *Client {

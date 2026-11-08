@@ -315,11 +315,14 @@ func (m *Manager) buildPool(src discovery.Resolver, sel Selection) (*Pool, error
 	if err != nil {
 		return nil, err
 	}
-	p := NewPool(src, bal, NewTracker(TrackerConfig{
+	tracker, err := NewTracker(TrackerConfig{
 		Threshold:  sel.OutlierThreshold,
 		SuspendFor: sel.OutlierSuspendFor,
-	}), sel)
-	return p, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return NewPool(src, bal, tracker, sel)
 }
 
 // Chain builds a governed [Chain] for service and arms it in one step, so a
