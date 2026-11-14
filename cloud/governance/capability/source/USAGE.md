@@ -255,7 +255,7 @@ link cloud/governance                                  (any client/server starte
   │      cloud/governance/controlplane/fault      → *fault.Center       (faultCenter)
   ├─ the authority packages (always linked by any client starter):
   │      cloud/governance/dataplane/outbound/resilience → *resilience.Manager + the bundled driver
-  │      cloud/governance/capability/loadbalance → *loadbalance.Manager
+  │      cloud/governance/dataplane/outbound/loadbalance → *loadbalance.Manager
   │      cloud/governance/dataplane/{outbound,inbound}/fault → two independent fault managers
   ├─ the deployment's source starter registers one Source[T] per root it drives
   │      (the example provides the Source beans directly; no key involved)
@@ -361,6 +361,7 @@ themselves never live in `app.properties`.
 | `spring.governance.client.resilience.services[n].*` | []ResilienceService | empty | The per-call policy for `service`, optionally narrowed by `match`/`action`; a duplicate of the same (service, action, match) is rejected. ⚠ A matched services entry **fully replaces** the block default — no field-wise merge: a zero policy field means "disabled", so a partial merge could not distinguish "explicitly 0" from "unset". | A services entry setting only `timeout` silently turns OFF the block default's retries for that service. |
 | `spring.governance.client.loadbalance.*` | loadbalance.Selection | round_robin | Baseline endpoint selection for every service no services entry matches. Resolved per CONNECTION at wiring time. | — |
 | `spring.governance.client.loadbalance.services[n].*` | []LoadBalanceService | empty | Complete endpoint selection for `service` (unique; `balancer` required). No `match`/`action`: a service is balanced one way however its calls are governed. | A services entry without `balancer` is rejected rather than defaulted. |
+| `spring.governance.loadbalance.enable-suspend-metrics` | bool | false | Turns ON the endpoint-suspension counter and gauge for EVERY service in this process (opt-in). It is a STATIC app-config key, **not** a document key: an operational switch must not be pushed per service. | — |
 | `spring.fault.client.*` | fault.Config | all off | OUTBOUND fault injection — the fire that tests this process's own retry/breaker/timeout, see §3.4. | — |
 | `spring.governance.server.admission.*` | admission.Policy | all off | Baseline INBOUND admission for every route no AdmissionService matches: rate limit, concurrency cap, handling budget. No circuit breaker. | — |
 | `spring.governance.server.services[n].*` | []AdmissionService | empty | Per-route admission services entry, matched by the same exact label the inbound middleware passes (e.g. `gin::8080`, `grpc:/pkg.Svc/Method`). Same full-replace semantics as the client rules. | — |

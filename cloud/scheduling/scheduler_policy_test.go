@@ -33,7 +33,7 @@ import (
 // fire arriving while one is already queued is skipped.
 func TestConcurrencyPolicyQueue(t *testing.T) {
 	rdr := withMeter(t)
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 
 	var inFlight, maxSeen, runs atomic.Int64
 	_, err := s.Schedule(mustJob(t, "q", scheduling.FixedRate(10*time.Millisecond),
@@ -74,7 +74,7 @@ func TestConcurrencyPolicyQueue(t *testing.T) {
 // and the failure is reported as an error-status fire.
 func TestWithTimeoutCancelsRun(t *testing.T) {
 	rdr := withMeter(t)
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 
 	var gotErr atomic.Value
 	_, err := s.Schedule(mustJob(t, "slow", scheduling.FixedRate(20*time.Millisecond),
@@ -106,7 +106,7 @@ func TestWithLockSkipRecordsStatus(t *testing.T) {
 	assert.That(t, ok).True()
 	defer func() { _ = l.Unlock(context.Background()) }()
 
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	_, err = s.Schedule(mustJob(t, "locked", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error { return nil }, scheduling.WithLock(locker, "held", 0)))
 	assert.Error(t, err).Nil()
@@ -139,7 +139,7 @@ func (errLocker) Close() error { return nil }
 // contention) also skips the run and reports skipped_lock.
 func TestWithLockAcquireErrorSkips(t *testing.T) {
 	rdr := withMeter(t)
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	_, err := s.Schedule(mustJob(t, "err", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error { return nil }, scheduling.WithLock(errLocker{}, "k", 0)))
 	assert.Error(t, err).Nil()
@@ -159,7 +159,7 @@ func TestWithLockAcquireErrorSkips(t *testing.T) {
 // and asserts they all progress together; run under -race this also exercises
 // the shared scheduler state across task loops.
 func TestMultipleJobsRunConcurrently(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	const jobs = 5
 	counts := make([]atomic.Int64, jobs)
 	for i := range jobs {
@@ -182,7 +182,7 @@ func TestMultipleJobsRunConcurrently(t *testing.T) {
 // TestScheduleAfterStartLaunchesLoop verifies a task registered after Start also
 // runs (dynamic registration).
 func TestScheduleAfterStartLaunchesLoop(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	assert.Error(t, s.Start(context.Background())).Nil()
 
 	var count atomic.Int64
@@ -202,7 +202,7 @@ func TestScheduleAfterStartLaunchesLoop(t *testing.T) {
 // the schedule keeps firing afterwards.
 func TestJobPanicDoesNotKillLoop(t *testing.T) {
 	rdr := withMeter(t)
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 
 	var panics atomic.Int64
 	_, err := s.Schedule(mustJob(t, "bad", scheduling.FixedRate(10*time.Millisecond),
@@ -231,7 +231,7 @@ func TestJobPanicDoesNotKillLoop(t *testing.T) {
 // lock failure polluting the skip metrics).
 func TestQueueDropsParkedFireOnStop(t *testing.T) {
 	rdr := withMeter(t)
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 
 	firstRun := make(chan struct{})
 	_, err := s.Schedule(mustJob(t, "q-stop", scheduling.FixedRate(10*time.Millisecond),

@@ -80,10 +80,11 @@ func histAttrs(t *testing.T, m metricdata.Metrics) []map[string]string {
 // thing only a server has — a response half the handler records after answering.
 func TestDeclaredServerOperationEmitsFamilySignals(t *testing.T) {
 	rdr := withMeter(t)
-	exec, err := NewServerObserver("http-server", "http-server::9090")
+	m, err := NewOTelMetrics()
 	if err != nil {
 		t.Fatal(err)
 	}
+	exec := NewServerObserver("http-server", "http-server::9090", m)
 
 	declared := ServerOperation{
 		Action: "GET /users",
@@ -118,23 +119,4 @@ func TestDeclaredServerOperationEmitsFamilySignals(t *testing.T) {
 
 	_, ok = got["http.server.active_requests"]
 	assert.That(t, ok).True("the in-flight gauge must be emitted for a declared route")
-}
-
-// TestUndeclaredServerRouteKeepsItsSignals proves a route that declares nothing
-// still reports exactly what this layer always reported: the inbound metrics
-// under resilience.server.*, and no family metric invented on its behalf.
-func TestUndeclaredServerRouteKeepsItsSignals(t *testing.T) {
-	rdr := withMeter(t)
-	exec, err := NewServerObserver("http-server", "http-server::9090")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert.Error(t, exec.Run(context.Background(), ServerOperation{}, func(context.Context, *Observation) error { return nil })).Nil()
-
-	got := collect(t, rdr)
-	_, ok := got["resilience.server.duration"]
-	assert.That(t, ok).True()
-	_, ok = got["http.server.request.duration"]
-	assert.That(t, ok).False("an undeclared route must not invent a family metric")
 }

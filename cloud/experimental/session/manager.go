@@ -21,16 +21,8 @@ import (
 	"net/http"
 	"time"
 
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/randutil"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
-
-// componentName is the instrumentation componentName name every meter and tracer in this
-// package reports under.
-const componentName = "go-spring.org/cloud/experimental/session"
 
 // Options configures how a [Manager] carries the session id in the HTTP cookie
 // and how long an idle session survives. The zero value is not usable; pass it
@@ -84,20 +76,15 @@ type Manager struct {
 	store SessionStore
 	opt   Options
 
-	// ins is this manager's instrument set, resolved at construction.
-	ins *instrumentSet
+	// obs receives this manager's store-operation events; nil disables them.
+	obs Observer
 }
 
 // NewManager builds a Manager over store with opt (defaults filled for zero
-// fields). The instruments are resolved here, so a failed registration fails
-// construction instead of silently dropping the metric family.
-func NewManager(store SessionStore, opt Options) (*Manager, error) {
+// fields). obs is the observability adapter; nil disables observation.
+func NewManager(store SessionStore, opt Options, obs Observer) (*Manager, error) {
 	opt.normalize()
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return &Manager{store: store, opt: opt, ins: ins}, nil
+	return &Manager{store: store, opt: opt, obs: obs}, nil
 }
 
 // Middleware returns an http.Handler that loads the session referenced by the
@@ -129,42 +116,21 @@ func (m *Manager) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// instrumentSet bundles the metrics a manager records: one per manager,
-// resolved when the manager is constructed.
-type instrumentSet struct {
-	total metric.Int64Counter
-}
-
-// buildInstruments resolves this package's instruments against the meter
-// provider the otel starter installs before any bean is constructed. The
-// manager owns the set, so a failed registration fails construction instead of
-// silently dropping the metric family.
-func buildInstruments() (*instrumentSet, error) {
-	total, err := otel.Meter(componentName).
-		Int64Counter("session.operation.total",
-			metric.WithDescription("Session store operations, by operation and status"),
-			metric.WithUnit("{operation}"))
-	if err != nil {
-		return nil, errutil.Explain(err, "session: register session.operation.total")
-	}
-	return &instrumentSet{total: total}, nil
-}
-
-// countStoreOp reports one session-store operation on session.operation.total
-// with an exclusive status axis (ok | missed | error): load distinguishes a
-// miss, save/delete are ok or error. Total only, no duration — the latency is
-// the store backend's, not the session layer's (the cache family's rule).
+// countStoreOp reports one session-store operation with an exclusive status
+// axis (ok | missed | error): load distinguishes a miss, save/delete are ok or
+// error. Total only, no duration — the latency is the store backend's, not the
+// session layer's (the cache family's rule).
 func (m *Manager) countStoreOp(op string, err error, ok bool) {
+	if m.obs == nil {
+		return
+	}
 	status := "ok"
 	if err != nil {
 		status = "error"
 	} else if !ok {
 		status = "missed"
 	}
-	m.ins.total.Add(context.Background(), 1, metric.WithAttributes(
-		attribute.String("operation", op),
-		attribute.String("status", status),
-	))
+	m.obs.Operation(context.Background(), op, status)
 }
 
 // readCookie returns the session id carried by the request, or "".

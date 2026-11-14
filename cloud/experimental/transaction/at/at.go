@@ -57,9 +57,8 @@
 // the image capture, undo-log persistence and row restoration are inherently
 // SQL/ORM specific, so they live behind the [Branch] seam implemented by a
 // starter (see starter-transaction-at-gorm). The bundled [MemoryGlobalLock]
-// keeps the framework standalone. Observability is contributed through the
-// [Observer] seam so a starter can attach otel spans without pulling otel into
-// stdlib.
+// keeps the framework standalone. Spans are standard OTel, opened through the
+// family's span helpers in the parent package, so no starter injects them.
 package at
 
 import (
@@ -200,8 +199,8 @@ func (s Status) String() string {
 	}
 }
 
-// Phase distinguishes a branch's two second-phase operations, used by [Observer]
-// to label what was running.
+// Phase distinguishes a branch's two second-phase operations, used by the
+// phase span to label what was running.
 type Phase int
 
 const (
@@ -224,7 +223,7 @@ func (p Phase) String() string {
 }
 
 // TxPhase converts this phase to the shared [transaction.Phase] so the
-// coordinator can report it through the family-wide [transaction.Observer].
+// coordinator can name the family-wide phase span.
 func (p Phase) TxPhase() transaction.Phase {
 	if p == PhaseRollback {
 		return transaction.PhaseRollback
@@ -316,11 +315,3 @@ type Coordinator interface {
 	// not stop the others.
 	Rollback(ctx context.Context, xid string) error
 }
-
-// Observer is the observability seam, shared with the whole transaction family
-// via [transaction.Observer]: the coordinator calls Begin around every branch's
-// second-phase operation, passing the XID, the branch's ID and the phase
-// converted with [Phase.TxPhase]. The parent package ships a ready
-// implementation, transaction.AtObserver (see observe.go there), that opens
-// one otel span per branch phase. A nil Observer disables observation entirely.
-type Observer = transaction.Observer

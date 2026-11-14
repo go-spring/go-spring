@@ -40,10 +40,10 @@ import (
 // property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("redigo", "access")
 
-// skipOps are commands that declare no identity, so nothing family-specific is
-// emitted for them: PING fires on every health probe and pool test-on-borrow,
-// so instrumenting it is pure noise. They still run under the resilience layer,
-// which reports them as it reports any other call whose identity is undeclared.
+// skipOps are commands whose SUCCESS line is levelled out of the everyday log:
+// PING fires on every health probe and pool test-on-borrow, so an Info line for
+// it is pure noise. They still declare their full identity and emit their
+// span/metrics — only the success line drops to Debug.
 var skipOps = map[string]struct{}{"PING": {}}
 
 // redisSystem is the value the family's db.system label carries for this
@@ -74,16 +74,18 @@ func operation(ctx context.Context, prop traffic.Propagator, cmd string, args []
 	return op
 }
 
-// opFor builds the operation for one command, or the zero Operation when the
-// command declares no identity (see skipOps) — an "undeclared" call the
-// resilience layer still runs and reports as such. It is the single place the
-// skip decision is made; the resilience interceptor (see conn.go) calls it to
-// build the op it passes explicitly to the executor.
+// opFor builds the operation for one command. A command on the skip list still
+// declares its identity — it is a real call with its own action word — but its
+// success line is levelled out of the everyday log, which is the whole reason
+// the list exists. It is the single place that decision is made; the resilience
+// interceptor (see conn.go) calls it to build the op it passes explicitly to
+// the executor.
 func opFor(ctx context.Context, prop traffic.Propagator, cmd string, args []interface{}) chain.Operation {
+	op := operation(ctx, prop, cmd, args)
 	if _, skip := skipOps[strings.ToUpper(cmd)]; skip {
-		return chain.Operation{}
+		op.Observe.Log.QuietSuccess = true
 	}
-	return operation(ctx, prop, cmd, args)
+	return op
 }
 
 // summarizeCommand renders a short, loggable summary of the command — the

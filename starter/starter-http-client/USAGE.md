@@ -124,7 +124,7 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) Service discovery + load balancing: routes by logical service name.
 # The LB strategy and endpoint suspension for this entry are governance rules
-# (spring.governance.client.loadbalance.services[N].balancer / .outlier-threshold), not keys here — see below.
+# (spring.governance.client.loadbalance.services[N].balancer / .request-failures), not keys here — see below.
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
@@ -388,8 +388,8 @@ whole stack, not just the injector.
   `resilience.client.calls` counter with attributes `resilience.system="http"`,
   `resilience.service="http:greet-svc"`, `status` ∈ {ok, error}, plus a total
   `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, retry_exceeded,
-  timeout, downstream, canceled}. Downstream failure rate is
-  `rate(resilience.client.calls{status="error", resilience.error_type="downstream"})`.
+  call_timeout, no_endpoints, connect_failed, resource_exhausted, context_canceled, unknown}. The unclassified (non-gate) failure rate is
+  `rate(resilience.client.calls{status="error", resilience.error_type="unknown"})`.
 - Access log: gated by `observability.level` (default brief = on), tag `_app_http_resilience`
   (`log.RegisterAppTag("http", "resilience")`).
 - Traces: client span per request from httpx's built-in otelhttp layer (`GET /greet`-style naming per

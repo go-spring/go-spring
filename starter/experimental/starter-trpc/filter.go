@@ -22,6 +22,7 @@ import (
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -80,6 +81,19 @@ func logCall(ctx context.Context, method, status string, dur time.Duration, err 
 	log.Info(ctx, accessTag, "rpc call completed", fields...)
 }
 
+// Observer supplies this starter's METRIC filter. It is the seam: the default
+// is OTel, and an application may contribute its own adapter. Tracing is the
+// STANDARD OTel capability — see [TracingServerFilter] — and is not part of
+// this contract.
+type Observer interface {
+	// Metrics returns the server filter that records count, duration and the
+	// in-flight gauge.
+	Metrics() (filter.ServerFilter, error)
+}
+
+// NewOTelObserver returns the default OTel-backed [Observer].
+func NewOTelObserver() (Observer, error) { return otelObserver{}, nil }
+
 // TracingServerFilter is a tRPC ServerFilter that starts and ends an OTel
 // server span for each RPC request. It uses the global TracerProvider that
 // starter-otel installs; without starter-otel this is a no-op pass-through.
@@ -104,6 +118,13 @@ func TracingServerFilter() filter.ServerFilter {
 		return rsp, err
 	}
 }
+
+// MetricsServerFilter is a tRPC ServerFilter that records request count,
+// duration, and in-flight gauge through the global MeterProvider.
+func MetricsServerFilter() (filter.ServerFilter, error) { return otelObserver{}.Metrics() }
+
+// otelObserver is the default [Observer].
+type otelObserver struct{}
 
 // instrumentSet holds this starter's RPC instruments. It is built once per
 // filter (see [MetricsServerFilter]), so nothing is allocated per call.
@@ -156,7 +177,7 @@ func buildInstruments() (*instrumentSet, error) {
 // follow the OTel stable RPC semantic conventions (rpc.server.request.duration);
 // the request_count counter and active_requests gauge are kept as complementary
 // dimensions (not redundant with the duration histogram).
-func MetricsServerFilter() (filter.ServerFilter, error) {
+func (otelObserver) Metrics() (filter.ServerFilter, error) {
 	ins, err := buildInstruments()
 	if err != nil {
 		return nil, err
@@ -187,4 +208,10 @@ func MetricsServerFilter() (filter.ServerFilter, error) {
 		logCall(ctx, name, status, dur, err)
 		return rsp, err
 	}, nil
+}
+
+// The package's default [Observer] bean: an application that contributes its
+// own observer takes precedence.
+func init() {
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 }

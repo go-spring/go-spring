@@ -180,41 +180,43 @@ func isRetryableQueryError(err error) bool {
 
 func (g *GuardQuery) Exec(ctx context.Context) error {
 	_, err := resilience.Run(ctx, g.exec, g.op(ctx, "exec"),
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, g.next.Exec(ctx) },
+		func(ctx context.Context, _ chain.Peer) (struct{}, error) { return struct{}{}, g.next.Exec(ctx) },
 		queryOptions...)
 	return err
 }
 
 func (g *GuardQuery) Iter(ctx context.Context) *gocql.Iter {
 	it, _ := resilience.Run(ctx, g.exec, g.op(ctx, "query"),
-		func(ctx context.Context) (*gocql.Iter, error) { return g.next.Iter(ctx), nil },
+		func(ctx context.Context, _ chain.Peer) (*gocql.Iter, error) { return g.next.Iter(ctx), nil },
 		queryOptions...)
 	return it
 }
 
 func (g *GuardQuery) Scan(ctx context.Context, dest ...any) error {
 	_, err := resilience.Run(ctx, g.exec, g.op(ctx, "query"),
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, g.next.Scan(ctx, dest...) },
+		func(ctx context.Context, _ chain.Peer) (struct{}, error) {
+			return struct{}{}, g.next.Scan(ctx, dest...)
+		},
 		queryOptions...)
 	return err
 }
 
 func (g *GuardQuery) ScanCAS(ctx context.Context, dest ...any) (bool, error) {
 	return resilience.Run(ctx, g.exec, g.op(ctx, "query"),
-		func(ctx context.Context) (bool, error) { return g.next.ScanCAS(ctx, dest...) },
+		func(ctx context.Context, _ chain.Peer) (bool, error) { return g.next.ScanCAS(ctx, dest...) },
 		queryOptions...)
 }
 
 func (g *GuardQuery) MapScan(ctx context.Context, m map[string]any) error {
 	_, err := resilience.Run(ctx, g.exec, g.op(ctx, "query"),
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, g.next.MapScan(ctx, m) },
+		func(ctx context.Context, _ chain.Peer) (struct{}, error) { return struct{}{}, g.next.MapScan(ctx, m) },
 		queryOptions...)
 	return err
 }
 
 func (g *GuardQuery) MapScanCAS(ctx context.Context, m map[string]any) (bool, error) {
 	return resilience.Run(ctx, g.exec, g.op(ctx, "query"),
-		func(ctx context.Context) (bool, error) { return g.next.MapScanCAS(ctx, m) },
+		func(ctx context.Context, _ chain.Peer) (bool, error) { return g.next.MapScanCAS(ctx, m) },
 		queryOptions...)
 }
 

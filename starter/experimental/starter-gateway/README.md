@@ -16,7 +16,7 @@ no gateway-specific machinery. A route that fails to compile leaves the previous
 table in place, so a bad edit never takes the gateway down.
 
 Upstreams are either **direct** (`http(s)://host:port`) or **discovery-backed**
-(`lb://<service>`), the latter reusing `cloud/discovery` + `cloud/governance/capability/loadbalance`.
+(`lb://<service>`), the latter reusing `cloud/discovery` + `cloud/governance/dataplane/outbound/loadbalance`.
 Forwarding runs through `cloud/governance/dataplane/outbound/resilience` for retry / circuit-breaking / rate
 limiting. Its own metrics are OTel instruments (`gateway.requests`,
 `gateway.active_requests`, `gateway.route_reload_errors`), so they surface through whatever
@@ -98,12 +98,12 @@ Register your own filter with `StarterGateway.RegisterFilter(name, factory)`.
 
 * **Direct**: `upstream.target=http://host:port` forwards straight to that address.
 * **Discovery**: `upstream.target=lb://<service>` resolves live instances through
-  `cloud/discovery` and picks one with `cloud/governance/capability/loadbalance`. Set
+  `cloud/discovery` and picks one with `cloud/governance/dataplane/outbound/loadbalance`. Set
   a load-balancing strategy (`round_robin` default, or `least_conn` /
   `consistent_hash` / `weighted`) plus optional outlier suspension: an upstream
   instance that fails repeatedly is suspended for a cool-down and readmitted via
   a half-open trial. Both are governance rules matched by `gateway:<route-id>`
-  (`balancer` / `outlier-threshold` / `outlier-suspend-for`) that rebuild the
+  (`balancer` / `request-failures` / `suspend-for`) that rebuild the
   route's selection chain from scratch, not keys on the route
   and `upstream.discovery` (backend name), or a gateway-wide default via
   `spring.gateway.discovery`.
@@ -159,5 +159,5 @@ The [main.go](example/main.go) program demonstrates and asserts:
 * **The route map's default must be empty.** Write `${routes:=}`, never
   `${routes:={}}` — the bind layer rejects a non-empty map default.
 * **`lb://` rides the shared client-side stack.** Discovery and load balancing
-  come from `cloud/discovery` + `cloud/governance/capability/loadbalance`, so mesh mode degrades them
+  come from `cloud/discovery` + `cloud/governance/dataplane/outbound/loadbalance`, so mesh mode degrades them
   centrally with no gateway-side branching.

@@ -20,12 +20,14 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/stdlib/testing/assert"
@@ -79,20 +81,56 @@ func TestExecutorFor_FaultFiresInsideTheRetryLoop(t *testing.T) {
 	}}})).Nil()
 
 	inj := clientfault.NewManager()
-	inj.Refresh(kfault.Config{Rules: []kfault.Rule{{
-		Name: "fire", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic",
+	inj.Refresh(clientfault.ClientConfig{Rules: []clientfault.ClientRule{{
+		RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Rate: 1},
+		Class:    kfault.ClassTransient, Error: "generic",
 	}}})
 
 	r := &Runtime{Resilience: res, ClientFault: inj}
-	exec := r.ExecutorFor("test", "svc")
+	exec := r.ExecutorFor("test", "svc", nil)
 	rec := &chain.Recorder{}
 	var calls atomic.Int32
 	err = exec.Execute(context.Background(), chain.Operation{Service: "svc"}, rec,
-		func(context.Context) error {
+		func(context.Context, *chain.Round) error {
 			calls.Add(1)
 			return nil
 		})
 	assert.That(t, kfault.IsInjected(err)).True()
 	assert.That(t, calls.Load()).Equal(int32(0))
 	assert.That(t, len(rec.Rounds)).Equal(3)
+}
+
+// countingMetrics records how many calls the runtime's executor reported
+// through the injected metric seam.
+type countingMetrics struct {
+	calls int
+}
+
+func (c *countingMetrics) Inflight(context.Context, observe.Call, int64) {}
+
+func (c *countingMetrics) Call(context.Context, observe.Call, string, chain.ErrorType, time.Duration) {
+	c.calls++
+}
+
+func (c *countingMetrics) Attempt(context.Context, observe.Call, string, chain.ErrorType, time.Duration) {
+}
+
+func (c *countingMetrics) Fault(context.Context, observe.Call, observe.Fault) {}
+
+// TestExecutorFor_UsesInjectedMetrics proves the client emit layer reports
+// through the injected seam rather than the default OTel metrics.
+func TestExecutorFor_UsesInjectedMetrics(t *testing.T) {
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.Error(t, err).Nil()
+	res, err := resilience.NewManager(factories)
+	assert.That(t, err).Nil()
+	t.Cleanup(func() { _ = res.Close() })
+
+	m := &countingMetrics{}
+	r := &Runtime{Resilience: res, ClientFault: clientfault.NewManager(), ClientMetrics: m}
+	_exec := r.ExecutorFor("test", "svc", nil)
+	err = _exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder),
+		func(context.Context, *chain.Round) error { return nil })
+	assert.Error(t, err).Nil()
+	assert.Number(t, m.calls).Equal(1)
 }

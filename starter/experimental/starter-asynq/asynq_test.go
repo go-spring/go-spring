@@ -25,13 +25,13 @@ import (
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
@@ -60,10 +60,15 @@ func testCenter() *governance.Runtime {
 	if err != nil {
 		panic(err)
 	}
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		panic(err)
+	}
+	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 	ctr := &governance.Runtime{
 		Resilience:  res,
-		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-	Admission:   adm,
+		LoadBalance: lbMgr,
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -115,13 +120,13 @@ func TestNewClientDriverFallback(t *testing.T) {
 	cp := &gs.ContextProvider{Context: context.Background()}
 
 	// No Driver bean → the bundled DefaultDriver assembles the client.
-	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"}, nil, testCenter())
+	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"}, nil, testCenter(), nil)
 	assert.Error(t, err).Nil()
 	_ = c.Close()
 
 	// A provided Driver bean override is used as-is.
 	fd := &fakeDriver{}
-	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379"}, fd, testCenter())
+	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379"}, fd, testCenter(), nil)
 	assert.Error(t, err).Nil()
 	_ = c.Close()
 	assert.That(t, fd.called).True()

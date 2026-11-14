@@ -67,7 +67,7 @@ type zkDiscovery struct {
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported sync and log line is labelled with.
-	obs *discovery.Observer
+	obs discovery.Observer
 
 	mu      sync.Mutex // guards entries
 	entries map[string]*serviceEntry
@@ -76,7 +76,7 @@ type zkDiscovery struct {
 // newZookeeperDiscovery builds the read half for one configured block over the
 // block's shared session. The base path is normalized here, once, so every
 // watcher and read agrees on it.
-func newZookeeperDiscovery(c ZookeeperConfig, conn *zk.Conn, obs *discovery.Observer) *zkDiscovery {
+func newZookeeperDiscovery(c ZookeeperConfig, conn *zk.Conn, obs discovery.Observer) *zkDiscovery {
 	return &zkDiscovery{
 		conn:     conn,
 		basePath: normalizeBasePath(c.BasePath),
@@ -318,7 +318,7 @@ func firstEvent(evs []<-chan zk.Event) <-chan zk.Event {
 // decoding the instanceValue JSON the registry writes. Every node found is
 // healthy (ephemeral liveness) and enabled (the registry has no disabled
 // state); the payload's scheme field carries transport selection.
-func valuesToEndpoints(obs *discovery.Observer, vals map[string][]byte) []discovery.Endpoint {
+func valuesToEndpoints(obs discovery.Observer, vals map[string][]byte) []discovery.Endpoint {
 	eps := make([]discovery.Endpoint, 0, len(vals))
 	for name, data := range vals {
 		var v instanceValue
@@ -336,29 +336,28 @@ func valuesToEndpoints(obs *discovery.Observer, vals map[string][]byte) []discov
 			Scheme:   v.Scheme,
 			Weight:   v.Weight,
 			Healthy:  true,
-			Metadata: withDimensions(v.Metadata, v.Version, v.Zone),
+			Zone:     v.Zone,
+			Metadata: withVersion(v.Metadata, v.Version),
 		})
 	}
 	sort.Slice(eps, func(i, j int) bool { return eps[i].Addr < eps[j].Addr })
 	return eps
 }
 
-// withDimensions surfaces the payload's version/zone fields through the
-// metadata map consumers route on (zone-aware balancing reads the zone key),
-// copying only when something must be added.
-func withDimensions(md map[string]string, version, zone string) map[string]string {
-	if version == "" && zone == "" {
+// metaKeyVersion is this backend's metadata key for the version attribute: it
+// folds the payload's version field into the metadata map consumers route on.
+const metaKeyVersion = "version"
+
+// withVersion surfaces the payload's version field through the metadata map
+// consumers route on, copying only when something must be added.
+func withVersion(md map[string]string, version string) map[string]string {
+	if version == "" {
 		return md
 	}
-	out := make(map[string]string, len(md)+2)
+	out := make(map[string]string, len(md)+1)
 	for k, v := range md {
 		out[k] = v
 	}
-	if version != "" {
-		out[discovery.MetaKeyVersion] = version
-	}
-	if zone != "" {
-		out[discovery.MetaKeyZone] = zone
-	}
+	out[metaKeyVersion] = version
 	return out
 }

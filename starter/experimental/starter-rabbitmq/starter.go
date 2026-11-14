@@ -20,6 +20,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -84,7 +85,7 @@ func init() {
 // is required when linked: "governance off" is a document that configures
 // nothing, never an absent bean; a standalone, non-gs caller passes nil, which
 // reads unarmed authorities — exactly "governance off".
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime, obs Observer, obsFactory observability.Metrics) (*Client, error) {
 	// The connection's identity rides on a context derived here: every line
 	// below carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -113,7 +114,10 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// broker throttles the publisher due to resource alarms. Both channels are
 	// closed by amqp091 on connection shutdown, so the goroutines exit
 	// naturally without leaking.
-	connState := newConnStateCounter()
+	connState, err := newConnStateCounterWith(obs)
+	if err != nil {
+		return nil, err
+	}
 	closeCh := conn.NotifyClose(make(chan *amqp.Error, 1))
 	blockCh := conn.NotifyBlocked(make(chan amqp.Blocking, 1))
 	go func() {
@@ -142,7 +146,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 
 	// Assemble fully before probing: wrap the connection in its client — the
 	// emitting layer travels with the client, no registry involved.
-	cl := NewClient(conn, label.ServiceLabel("rabbitmq", c.Vhost, c.URL), center.Traffic)
+	cl := NewClient(conn, label.ServiceLabel("rabbitmq", c.Vhost, c.URL), center.Traffic, obsFactory)
 	// Then confirm the AMQP channel layer is usable, not just the TCP handshake
 	// (when Ping is enabled). The probe goes straight to the raw connection on
 	// purpose: it is a connectivity check, not business traffic, so it must not

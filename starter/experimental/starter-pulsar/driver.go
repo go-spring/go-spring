@@ -31,6 +31,7 @@ import (
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"go-spring.org/cloud/governance"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -65,7 +66,9 @@ type Driver interface {
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
-type DefaultDriver struct{}
+type DefaultDriver struct {
+	Observe observability.Metrics
+}
 
 // CreateClient creates a new pulsar.Client from the provided configuration. It
 // owns full client assembly — ClientOptions, authentication (mTLS / token), TLS,
@@ -74,7 +77,7 @@ type DefaultDriver struct{}
 // via [AttachGovernance], so the client is complete when returned) — but not the
 // startup broker probe (Ping), which is the starter's lifecycle concern (see
 // newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (pulsar.Client, error) {
+func (d DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (pulsar.Client, error) {
 	opts := pulsar.ClientOptions{
 		URL:                        c.URL,
 		OperationTimeout:           c.OperationTimeout,
@@ -123,7 +126,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// service label) and attach the governance executor here, so nothing patches
 	// it afterwards. The center is required to carry a [resilience.Manager];
 	// resolving the executor panics without one.
-	AttachObserver(cl, c.URL)
+	AttachObserver(cl, c.URL, d.Observe)
 	return cl, nil
 }
 

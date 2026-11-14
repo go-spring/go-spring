@@ -29,13 +29,13 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/fault"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/conf"
@@ -82,10 +82,15 @@ func testCenter(inj *serverfault.Manager) *governance.Runtime {
 	if err != nil {
 		panic(err)
 	}
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		panic(err)
+	}
+	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 	ctr := &governance.Runtime{
 		Resilience:  res,
-		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-	Admission:   adm,
+		LoadBalance: lbMgr,
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: inj,
 		Directory:   discovery.NewManager(nil),
@@ -430,7 +435,12 @@ func TestBodyLimit_RejectsOversizedBodyWith413(t *testing.T) {
 // up front and drives the toggle through Refresh on the same instance.
 func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
 	in := serverfault.NewManager()
-	in.Refresh(fault.Config{Rules: []fault.Rule{{Name: "all", Service: "echo", Rate: 1, Error: "generic"}}})
+	in.Refresh(serverfault.ServerConfig{Rules: []serverfault.ServerRule{{
+		RuleCore:    fault.RuleCore{Name: "all", Service: "echo", Rate: 1},
+		Status:      503,
+		Body:        `{"error":"injected"}`,
+		ContentType: "application/json",
+	}}})
 
 	e := echo.New()
 	e.HideBanner = true
@@ -443,10 +453,11 @@ func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
 	w := httptest.NewRecorder()
 	e.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/x", nil))
 	assert.That(t, w.Code).Equal(http.StatusServiceUnavailable)
-	assert.That(t, w.Body.String()).Equal("service unavailable")
+	assert.That(t, w.Body.String()).Equal(`{"error":"injected"}`)
+	assert.That(t, w.Header().Get("Content-Type")).Equal("application/json")
 
 	// Hot-toggle: swap the live config, the next request passes through.
-	in.Refresh(fault.Config{})
+	in.Refresh(serverfault.ServerConfig{})
 	w2 := httptest.NewRecorder()
 	e.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/x", nil))
 	assert.That(t, w2.Code).Equal(http.StatusOK)

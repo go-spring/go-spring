@@ -77,7 +77,7 @@ func buildClientInstruments() *clientInstrumentSet {
 
 // opInstrumentSet holds the instruments one metric prefix needs. The prefix
 // comes from the operation a client declared (see [chain.Operation]), so
-// this set cannot be built once per process the way [instrumentSet] is — a
+// this set cannot be built once per process the way [clientInstrumentSet] is — a
 // process serves any number of client families, each with its own prefix. It is
 // memoized per prefix on first use, which is also what binds it to whichever
 // meter provider is current then.

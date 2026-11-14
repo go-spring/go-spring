@@ -80,6 +80,13 @@ type Config struct {
 	// PoolSize is the maximum number of socket connections, default is 10.
 	PoolSize int `value:"${pool-size:=10}"`
 
+	// PoolTimeout is how long a command waits for a free connection when every
+	// one is busy, before failing — the pool-wait counterpart of dial-timeout.
+	// It is the static, per-instance form of the governance connect-timeout
+	// (which can only tighten a DIAL, not a vendor pool's wait). 0 adopts the
+	// go-redis default (read-timeout + 1s).
+	PoolTimeout time.Duration `value:"${pool-timeout:=0}" expr:"int($) >= 0"`
+
 	// MaxIdle is the maximum number of idle connections in the pool, default is 5.
 	MaxIdle int `value:"${max-idle:=5}"`
 

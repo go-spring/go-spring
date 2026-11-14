@@ -22,7 +22,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -36,7 +37,7 @@ type armedManager struct {
 
 func newArmedManager(t *testing.T, sel loadbalance.Selection) *armedManager {
 	t.Helper()
-	m := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	m := mustLbManager(t)
 	a := &armedManager{m: m}
 	a.push(sel)
 	return a
@@ -56,7 +57,7 @@ func (a *armedManager) push(sel loadbalance.Selection) {
 // retuning it.
 func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 	a := newArmedManager(t, loadbalance.Selection{
-		Balancer: loadbalance.LeastConn, OutlierThreshold: 3, OutlierSuspendFor: time.Minute,
+		Balancer: balancer.LeastConn, RequestFailures: 3, SuspendDuration: time.Minute,
 	})
 
 	c := Common{Addressing: discovery.Addressing{ServiceName: "user-db"}, Scheme: "tcp"}
@@ -71,27 +72,27 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 
 	// The selection in force at build time lands on the first generation, which
 	// already picks from the discovered endpoint.
-	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
-	assert.Number(t, chain.Selection().OutlierThreshold).Equal(3)
-	pick, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	assert.That(t, chain.Selection().Balancer).Equal(balancer.LeastConn)
+	assert.Number(t, chain.Selection().RequestFailures).Equal(3)
+	pick, perr := chain.Pick(context.Background(), balancer.PickInfo{}, nil)
 	assert.Error(t, perr).Nil()
 	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:3306")
 
 	// A later push rebuilds the chain whole: a fresh pool, not the old one retuned.
-	a.push(loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 5, OutlierSuspendFor: 2 * time.Minute})
+	a.push(loadbalance.Selection{Balancer: balancer.Weighted, RequestFailures: 5, SuspendDuration: 2 * time.Minute})
 
-	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.Weighted)
-	assert.Number(t, chain.Selection().OutlierThreshold).Equal(5)
+	assert.That(t, chain.Selection().Balancer).Equal(balancer.Weighted)
+	assert.Number(t, chain.Selection().RequestFailures).Equal(5)
 
 	// A rule scoped to ANOTHER entry's label does not reach this one, even though
 	// the document as a whole changed.
 	a.m.Apply(context.Background(), loadbalance.Settings{
-		Selection: loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 5, OutlierSuspendFor: 2 * time.Minute},
+		Selection: loadbalance.Selection{Balancer: balancer.Weighted, RequestFailures: 5, SuspendDuration: 2 * time.Minute},
 		Rules: []loadbalance.Rule{
-			{Service: "gorm:mysql:other-db", Selection: loadbalance.Selection{Balancer: loadbalance.P2C}},
+			{Service: "gorm:mysql:other-db", Selection: loadbalance.Selection{Balancer: balancer.P2C}},
 		},
 	})
-	assert.Number(t, chain.Selection().OutlierThreshold).Equal(5) // untouched by the other label's rule
+	assert.Number(t, chain.Selection().RequestFailures).Equal(5) // untouched by the other label's rule
 }
 
 // TestNewPickPoolAnUnarmedManagerIsPassThrough pins the "governance off" case: an
@@ -99,7 +100,7 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 // configuration, and a stop from it is safe to call anyway. The manager must be
 // non-nil — the container always supplies one.
 func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
-	unarmed := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	unarmed := mustLbManager(t)
 	c := Common{Addressing: discovery.Addressing{ServiceName: "user-db"}, Scheme: "tcp"}
 	backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:3306", Healthy: true, Weight: 1})
 
@@ -110,9 +111,9 @@ func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
 	}
 	// Nothing was ever pushed: the base generation serves, with no strategy
 	// recorded and the tracker left at the zero config.
-	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
-	assert.Number(t, chain.Selection().OutlierThreshold).Equal(0)
-	pick, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: balancer.RoundRobin})
+	assert.Number(t, chain.Selection().RequestFailures).Equal(0)
+	pick, perr := chain.Pick(context.Background(), balancer.PickInfo{}, nil)
 	assert.Error(t, perr).Nil()
 	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:3306")
 }
@@ -120,7 +121,7 @@ func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
 // TestNewPickPoolDirectAddrBindsNothing pins that a client dialing a fixed
 // address has no candidate set to choose from: no chain and no resolver.
 func TestNewPickPoolDirectAddrBindsNothing(t *testing.T) {
-	a := newArmedManager(t, loadbalance.Selection{Balancer: loadbalance.LeastConn})
+	a := newArmedManager(t, loadbalance.Selection{Balancer: balancer.LeastConn})
 
 	c := Common{}
 	chain, resolver, err := c.NewPickPool(context.Background(), nil, "gorm:mysql:127.0.0.1:3306", a.m)

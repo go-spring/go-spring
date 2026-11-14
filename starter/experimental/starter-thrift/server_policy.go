@@ -34,7 +34,7 @@ import (
 //
 // It sits on the same per-method seam as [Observe] rather than around
 // TProcessor.Process. Both must be on the same seam for the ordering promise to
-// hold: installed as `thrift.WrapProcessor(proc, Observe(), admit)`, a call this
+// hold: installed as `thrift.WrapProcessor(proc, ObserveWith(obs), admit)`, a call this
 // middleware rejects still returns through Observe and is traced, counted and
 // logged. With inbound one layer above, a rejection short-circuits before the
 // per-method functions run and would leave no trace at all.
@@ -76,7 +76,15 @@ func admit(ctx context.Context, ib *inbound.Inbound, service, name string, seqID
 		svcErr thrift.TException
 		served bool
 	)
-	err := ib.Run(ctx, observability.NewServerOperation(ctx, prop, ""), func(ctx context.Context) error {
+	op := observability.NewServerOperation(ctx, prop, service+"."+name)
+	// Thrift owns its own rpc.server.* metrics, span and access log; the
+	// governance layer keeps its admission signals and stays out of the request
+	// family.
+	op.Observe = observability.ServerObserve{
+		Metric: observability.ServerMetric{Disabled: true},
+		Log:    observability.ServerLog{QuietSuccess: true},
+	}
+	err := ib.Run(ctx, op, func(ctx context.Context) error {
 		if served {
 			return nil // reentry guard: the service already ran this call
 		}

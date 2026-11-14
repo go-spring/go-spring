@@ -55,7 +55,7 @@ func TestNewJobRejectsAnUnusableRegistration(t *testing.T) {
 }
 
 func TestScheduleRejectsDuplicates(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 
 	job := func(context.Context) error { return nil }
 	j1, err := scheduling.NewJob("dup", scheduling.FixedRate(time.Second), job)
@@ -69,7 +69,7 @@ func TestScheduleRejectsDuplicates(t *testing.T) {
 }
 
 func TestScheduleAfterStopIsRejected(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	assert.Error(t, s.Start(context.Background())).Nil()
 
 	stopCtx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -82,7 +82,7 @@ func TestScheduleAfterStopIsRejected(t *testing.T) {
 }
 
 func TestFixedRateFires(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	var count atomic.Int64
 	_, err := s.Schedule(mustJob(t, "tick", scheduling.FixedRate(20*time.Millisecond),
 		func(context.Context) error { count.Add(1); return nil }))
@@ -101,7 +101,7 @@ func TestFixedRateFires(t *testing.T) {
 func TestFixedDelayIsSerial(t *testing.T) {
 	// A fixed-delay job that sleeps must never overlap: at most one runs at a
 	// time, so the observed max concurrency is 1.
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	var inFlight, maxSeen atomic.Int64
 	_, err := s.Schedule(mustJob(t, "serial", scheduling.FixedDelay(10*time.Millisecond),
 		func(context.Context) error {
@@ -130,7 +130,7 @@ func TestFixedDelayIsSerial(t *testing.T) {
 func TestConcurrencyPolicySkip(t *testing.T) {
 	// A slow job under the default Skip policy must never overlap even at a fast
 	// fire rate: concurrent runs are dropped.
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	var inFlight, maxSeen, runs atomic.Int64
 	_, err := s.Schedule(mustJob(t, "skip", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error {
@@ -163,7 +163,7 @@ func TestConcurrencyPolicySkip(t *testing.T) {
 func TestConcurrencyPolicyReplace(t *testing.T) {
 	// Under Replace a new fire cancels the in-flight run. The cancelled runs
 	// observe ctx cancellation.
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	var cancelled atomic.Int64
 	_, err := s.Schedule(mustJob(t, "replace", scheduling.FixedRate(15*time.Millisecond),
 		func(ctx context.Context) error {
@@ -188,7 +188,7 @@ func TestConcurrencyPolicyReplace(t *testing.T) {
 
 func TestStopWaitsForInFlight(t *testing.T) {
 	// Stop must block until an in-flight run finishes (within its deadline).
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	var finished atomic.Bool
 	_, err := s.Schedule(mustJob(t, "drain", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error {
@@ -209,7 +209,7 @@ func TestStopWaitsForInFlight(t *testing.T) {
 func TestStopDeadlineExceeded(t *testing.T) {
 	// If a run ignores cancellation and outlives the Stop deadline, Stop reports
 	// the deadline error rather than blocking forever.
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	_, err := s.Schedule(mustJob(t, "stubborn", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error {
 			time.Sleep(500 * time.Millisecond) // ignores ctx
@@ -225,7 +225,7 @@ func TestStopDeadlineExceeded(t *testing.T) {
 }
 
 func TestCancelRemovesTask(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	var count atomic.Int64
 	cancel, err := s.Schedule(mustJob(t, "temp", scheduling.FixedRate(10*time.Millisecond),
 		func(context.Context) error { count.Add(1); return nil }))
@@ -299,7 +299,7 @@ func TestWithLockDeduplicates(t *testing.T) {
 	var inFlight, maxSeen, total atomic.Int64
 
 	mk := func() *scheduling.Scheduler {
-		s := scheduling.NewScheduler()
+		s := scheduling.NewScheduler(mustTestObserver(t))
 		_, err := s.Schedule(mustJob(t, "job", scheduling.FixedRate(15*time.Millisecond),
 			func(context.Context) error {
 				total.Add(1)
@@ -333,7 +333,7 @@ func TestWithLockDeduplicates(t *testing.T) {
 }
 
 func TestCancelIsIdempotent(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	cancel, err := s.Schedule(mustJob(t, "a", scheduling.FixedRate(time.Hour), func(context.Context) error { return nil }))
 	assert.Error(t, err).Nil()
 	cancel()
@@ -341,14 +341,14 @@ func TestCancelIsIdempotent(t *testing.T) {
 }
 
 func TestStopBeforeStart(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	_, err := s.Schedule(mustJob(t, "a", scheduling.FixedRate(time.Hour), func(context.Context) error { return nil }))
 	assert.Error(t, err).Nil()
 	assert.Error(t, s.Stop(context.Background())).Nil()
 }
 
 func TestStartIsIdempotent(t *testing.T) {
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	assert.Error(t, s.Start(context.Background())).Nil()
 	assert.Error(t, s.Start(context.Background())).Nil() // no double launch
 	assert.Error(t, s.Stop(context.Background())).Nil()

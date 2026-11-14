@@ -35,35 +35,12 @@ package chain
 
 import (
 	"context"
-	"errors"
 )
 
-// The rejection sentinels a chain returns from Execute when it refuses to run
-// fn at all. They live here — not in any engine — because they are part of the
-// chain contract: every engine, and every observer of one, speaks the same four
-// words. Wrap or compare them with errors.Is.
-var (
-	// ErrRateLimited is the chain's verdict that the configured rate limit is
-	// exceeded. The rate-limit stage reports admission as a boolean (see
-	// go-spring.org/cloud/governance/capability/ratelimit.Limiter), so this package owns the
-	// word without depending on the stage's implementation.
-	ErrRateLimited = errors.New("resilience: rate limited")
-
-	// ErrCircuitOpen is the chain's verdict that the circuit breaker for the
-	// executor's service is open.
-	ErrCircuitOpen = errors.New("resilience: circuit open")
-
-	// ErrBulkheadFull is the chain's verdict that the service already has the
-	// maximum number of concurrent in-flight operations allowed by the bulkhead.
-	ErrBulkheadFull = errors.New("resilience: bulkhead full")
-
-	// ErrRetryExceeded is the chain's verdict that a RETRY attempt was
-	// rejected because the executor-wide in-flight retry cap is exhausted — the
-	// process-level guard against retry amplification. The first attempt of a
-	// call never takes budget, so it only ever replaces a retry, not the initial
-	// call.
-	ErrRetryExceeded = errors.New("resilience: retry exceeded")
-)
+// RoundFunc is the caller's operation running inside one round: it receives
+// the round the layer above opened (see [Executor.Execute] for the contract)
+// and returns the call's final error untouched.
+type RoundFunc func(ctx context.Context, rd *Round) error
 
 // Executor runs one operation under the governance chain built for the ONE
 // service or route it was constructed for. The chain — not the caller — decides
@@ -99,7 +76,15 @@ type Executor interface {
 	// — see the engine's sentinels) when the call is rejected before fn runs, or
 	// fn's own (final) error otherwise. The context passed to fn may be a timeout
 	// derived from ctx.
-	Execute(ctx context.Context, op Operation, rec *Recorder, fn func(context.Context) error) error
+	//
+	// fn receives the ROUND it runs in — the one the layer above opened: it
+	// routes with rd.Peer.Addr (the endpoint the round's addressing picked; a
+	// call with no addressing carries a zero peer, whose address may be empty),
+	// writes what it learns into the round (rd.AddSpanAttrs and siblings, the
+	// values only the fn could produce), and lets the error it returns travel
+	// back untouched. op needs no hand-off: the fn's own caller built it, so a
+	// closure captures whatever it needs.
+	Execute(ctx context.Context, op Operation, rec *Recorder, fn RoundFunc) error
 
 	// Close releases any background resources held by the executor (e.g. metric
 	// pumps in a production engine). It is safe to call more than once.
@@ -114,9 +99,9 @@ type Executor interface {
 // the nil case calls fn, the innermost layer is simply the one whose next is
 // nil, and the order layers are composed in is the order they run in: no layer
 // has to wrap the whole stack from outside to get inside another layer's loop.
-func Next(next Executor, ctx context.Context, op Operation, rec *Recorder, fn func(context.Context) error) error {
+func Next(next Executor, ctx context.Context, op Operation, rec *Recorder, fn RoundFunc) error {
 	if next == nil {
-		return fn(ctx)
+		return fn(ctx, rec.LastRound())
 	}
 	return next.Execute(ctx, op, rec, fn)
 }

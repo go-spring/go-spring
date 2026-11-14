@@ -24,7 +24,7 @@ container required. Container wiring for each family lives in the
 | [governance](governance/) | The service-governance runtime: each policy domain (timeout/retry, breaker, rate limit, endpoint selection, admission) and fault injection is its own control-plane root over the shared source transport, and the package holds the assembled data plane plus the composition root. The process's single injection point is `governance.Runtime`. |
 | [admission](governance/dataplane/inbound/admission/) | Server-side inbound governance behind one `Guard` object: per-instance rate limiting, bulkhead, circuit breaking and fault injection, with one request judgment plus one completion. |
 | [label](governance/capability/label/) | Service-label composition (`ServiceLabel`) — the key governance rules and managers match on. |
-| [loadbalance](governance/capability/loadbalance/) | "Given the live instance set, which one gets this request?" — client-side balancing with failure-based suspension. |
+| [loadbalance](governance/dataplane/outbound/loadbalance/) | "Given the live instance set, which one gets this request?" — client-side balancing with failure-based suspension. |
 | [lock](lock/) | "May this replica run this exclusive work right now?" — distributed locking and leader election behind one contract. |
 | [mesh](mesh/) | "Am I behind a service-mesh sidecar?" — when yes, the app's own discovery/load-balancing steps aside. |
 | [messaging](messaging/) | Publish/consume `Message` envelopes through one `Publisher`/`Subscriber` pair; switching brokers is a wiring change. |

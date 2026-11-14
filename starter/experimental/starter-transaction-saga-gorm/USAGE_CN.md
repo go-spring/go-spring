@@ -130,7 +130,6 @@ spring.transaction.saga.store=gorm
 # --- Saga 能力（父 starter；tracing/恢复开关）---------------------------------
 # 默认 true，写出便于发现。每个步骤阶段一个 otel 子 span：
 # saga.action <step> / saga.compensate <step>。
-spring.transaction.saga.tracing=true
 # 启动恢复 Runner：扫 Pending() 并补偿崩溃的 saga。
 spring.transaction.saga.recover-on-start=true
 
@@ -266,7 +265,7 @@ SELECT id, method, status, in_progress, completed, step_results FROM saga_snapsh
 
 ### 4.3 在 trace 里观察恢复
 
-`tracing=true` + starter-otel 时，重启期的补偿发出带 `saga.id` / `saga.step` /
+引入 starter-otel 时，重启期的补偿发出带 `saga.id` / `saga.step` /
 `saga.phase` 标签的 `saga.compensate <step>` span，挂在 Runner 传入 context 之下——
 §4.2 重启后去 collector 里查。
 

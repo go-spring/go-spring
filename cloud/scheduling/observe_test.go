@@ -59,7 +59,7 @@ func withoutTracer(t *testing.T) {
 func TestRunLeavesIdentityToItsSpan(t *testing.T) {
 	withTracer(t)
 
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 	var mu sync.Mutex
 	var runs []context.Context
 	_, err := s.Schedule(mustJob(t, "spanned", scheduling.FixedRate(20*time.Millisecond),
@@ -132,7 +132,7 @@ func fireCounts(t *testing.T, rdr *sdkmetric.ManualReader) map[string]int64 {
 // fire of a failing job reports one scheduling.runs record with job and status.
 func TestBuiltinObservabilityCountsFires(t *testing.T) {
 	rdr := withMeter(t)
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 
 	n := 0
 	_, err := s.Schedule(mustJob(t, "obs", scheduling.FixedRate(10*time.Millisecond),

@@ -46,7 +46,7 @@ import (
 // admission (innermost, after the breaker gate), so ordering and breaker accounting
 // are fixed in one place. A caller with no injector gets governance without
 // fault.
-func Over(system, label string, mgr *admission.Manager, inj ...*fault.Manager) (*Inbound, error) {
+func Over(system, label string, mgr *admission.Manager, m observe.Metrics, inj ...*fault.Manager) (*Inbound, error) {
 	if mgr == nil {
 		return nil, errutil.Explain(nil, "runtime: inbound construction requires a non-nil admission.Manager")
 	}
@@ -54,10 +54,7 @@ func Over(system, label string, mgr *admission.Manager, inj ...*fault.Manager) (
 	if len(inj) > 0 && inj[0] != nil {
 		opts = append(opts, admission.WithFault(fault.Stage(system, inj[0].NewServer())))
 	}
-	obs, err := observe.NewServerObserver(system, label)
-	if err != nil {
-		return nil, err
-	}
+	obs := newObserver(system, label, m)
 	g, err := mgr.GuardFor(admission.Identity{System: system, Service: label}, opts...)
 	if err != nil {
 		return nil, err
@@ -102,7 +99,7 @@ func (r *Refusal) Fault() kfault.Result { return r.result.Fault() }
 // fix the layer order — observation outermost, admission inside — so an adapter
 // cannot get it wrong and a rejected request is still traced.
 type Inbound struct {
-	observe *observe.ServerObserver
+	observe Observer
 	govern  admission.Guard
 }
 
@@ -115,7 +112,7 @@ type Inbound struct {
 // code) uses the [Inbound.Before]/[Inbound.After] form instead, whose [Hooks]
 // exposes the observation.
 func (in *Inbound) Run(ctx context.Context, op observe.ServerOperation, fn func(context.Context) error) error {
-	return in.observe.Run(ctx, op, func(ctx context.Context, ob *observe.Observation) error {
+	return in.observe.Run(ctx, op, func(ctx context.Context, ob Observation) error {
 		return in.run(ctx, op, ob, fn)
 	})
 }
@@ -129,14 +126,14 @@ func (in *Inbound) GovernedRun(ctx context.Context, op observe.ServerOperation, 
 
 // run is the shared admission + completion path. ob is nil under
 // [Inbound.GovernedRun]; the fault tag is a no-op there.
-func (in *Inbound) run(ctx context.Context, op observe.ServerOperation, ob *observe.Observation, fn func(context.Context) error) (err error) {
+func (in *Inbound) run(ctx context.Context, op observe.ServerOperation, ob Observation, fn func(context.Context) error) (err error) {
 	r, done := in.govern.Admit(ctx, chain.Request{
 		Action:   op.Action,
 		Metadata: op.Metadata,
 	})
 	// Tag the trace before the refusal is settled: an injected request is the
 	// one case a reader most needs to tell apart from a real failure.
-	if fr := r.Fault(); fr.Fired() {
+	if fr := r.Fault(); fr.Fired() && ob != nil {
 		ob.MarkInjected(fr)
 	}
 	if !r.Admitted() {
@@ -166,7 +163,7 @@ func (in *Inbound) Before(ctx context.Context, op observe.ServerOperation) (*Hoo
 		Action:   op.Action,
 		Metadata: op.Metadata,
 	})
-	if fr := r.Fault(); fr.Fired() {
+	if fr := r.Fault(); fr.Fired() && ob != nil {
 		ob.MarkInjected(fr)
 	}
 	if !r.Admitted() {
@@ -196,7 +193,7 @@ func (in *Inbound) After(h *Hooks, err error) {
 // objects, not here.
 type Hooks struct {
 	ctx    context.Context
-	ob     *observe.Observation
+	ob     Observation
 	done   admission.Done
 	cancel context.CancelFunc
 }
@@ -206,7 +203,7 @@ type Hooks struct {
 func (h *Hooks) Context() context.Context { return h.ctx }
 
 // Observation returns the request's observation, for recording the response half.
-func (h *Hooks) Observation() *observe.Observation { return h.ob }
+func (h *Hooks) Observation() Observation { return h.ob }
 
 // withBudget applies the policy's handling budget when one is configured.
 func withBudget(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {

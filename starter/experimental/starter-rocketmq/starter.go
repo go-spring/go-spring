@@ -23,6 +23,7 @@ package StarterRocketmq
 
 import (
 	"go-spring.org/cloud/governance"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -84,7 +85,7 @@ func init() {
 // it to [NewClient] — so the client is assembled complete in one step, with the
 // resilience manager required: the container supplies it via the governance
 // center, so a center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime, obsFactory observability.Metrics) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -103,7 +104,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
-		d = DefaultDriver{}
+		d = DefaultDriver{Observe: obsFactory}
 	}
 	cl, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {

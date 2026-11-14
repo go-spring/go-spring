@@ -22,6 +22,7 @@ import (
 	"slices"
 	"sync"
 
+	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -44,10 +45,6 @@ type Option func(*coordinator)
 // is acceptable for single-writer setups and tests; pass one in production.
 func WithGlobalLock(l GlobalLock) Option { return func(c *coordinator) { c.lock = l } }
 
-// WithObserver sets the [Observer] used to instrument every branch phase, e.g. a
-// starter that opens otel spans.
-func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
-
 // WithTraffic sets the process traffic convention used to stamp each branch
 // phase's operation, so a fault rule can target match.traffic.exact. Without it the
 // coordinator uses go-spring's standard binding.
@@ -61,7 +58,7 @@ func WithTraffic(prop traffic.Propagator) Option {
 func WithRetry(p Retry) Option { return func(c *coordinator) { c.retry = p } }
 
 // NewCoordinator returns the bundled in-process [Coordinator]. With no options it
-// uses no global lock and no observer, which is a valid transparent setup for
+// uses no global lock, which is a valid transparent setup for
 // tests and single-writer development.
 func NewCoordinator(opts ...Option) Coordinator {
 	c := &coordinator{
@@ -76,10 +73,9 @@ func NewCoordinator(opts ...Option) Coordinator {
 }
 
 type coordinator struct {
-	lock     GlobalLock
-	observer Observer
-	retry    Retry
-	prop     traffic.Propagator
+	lock  GlobalLock
+	retry Retry
+	prop  traffic.Propagator
 
 	mu       sync.Mutex
 	active   map[string][]Branch // xid -> registered branches, in registration order
@@ -189,17 +185,14 @@ func (c *coordinator) release(ctx context.Context, xid string) {
 	}
 }
 
-// runPhase runs one branch phase under the retry policy and observer. The
-// observer end func always fires with the phase's final error so failures are
+// runPhase runs one branch phase under the retry policy and its standard span.
+// The span's end func always fires with the phase's final error so failures are
 // observable.
 func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase Phase,
 	fn func(context.Context, string) error) error {
 
-	end := func(error) {}
-	if c.observer != nil {
-		ctx, end = c.observer.Begin(ctx, xid, b.ID(), phase.TxPhase())
-	}
-	err := runWithPolicy(ctx, c.prop, c.retry, b.ID(), func(ctx context.Context) error {
+	ctx, end := transaction.BeginAtSpan(ctx, xid, b.ID(), phase.TxPhase())
+	err := runWithPolicy(ctx, c.prop, c.retry, b.ID(), func(ctx context.Context, _ *chain.Round) error {
 		return fn(ctx, xid)
 	})
 	end(err)
@@ -210,9 +203,9 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
 // reuses [resilience.TimeoutRetry] so AT phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
-func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn chain.RoundFunc) error {
 	if p.IsZero() {
-		return fn(ctx)
+		return fn(ctx, new(chain.Recorder).NewRound())
 	}
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {

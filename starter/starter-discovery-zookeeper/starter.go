@@ -117,8 +117,8 @@ type zkBackend struct {
 	// obs and regObs are this block's two observability layers: the read-side
 	// sync observer (data plane) and the registration observer (control plane).
 	// They are independent by design and both are closed by the bean destructor.
-	obs    *discovery.Observer
-	regObs *registration.Observer
+	obs    discovery.Observer
+	regObs registration.Observer
 
 	// conn is the session this block created and owns. The registry and the
 	// discovery watchers both read through it; nothing else in the process
@@ -130,17 +130,23 @@ type zkBackend struct {
 // both halves. The probe is the fail-fast: a misconfigured or unreachable
 // ensemble fails startup here, once per block; with Ping off (the default)
 // construction skips it.
-func newZkBackend(c ZookeeperConfig, name string) (*zkBackend, error) {
+func newZkBackend(c ZookeeperConfig, name string, discFactory discovery.ObserverFactory, regFactory registration.ObserverFactory) (*zkBackend, error) {
+	if discFactory == nil {
+		return nil, errutil.Explain(nil, "discovery: observer factory is required")
+	}
+	if regFactory == nil {
+		return nil, errutil.Explain(nil, "registration: observer factory is required")
+	}
 	conn, err := connectZookeeper(c)
 	if err != nil {
 		return nil, err
 	}
-	obs, err := discovery.NewObserver(obsSystem, name)
+	obs, err := discFactory.New(obsSystem, name)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-	regObs, err := registration.NewObserver(obsSystem, name)
+	regObs, err := regFactory.New(obsSystem, name)
 	if err != nil {
 		conn.Close()
 		return nil, err

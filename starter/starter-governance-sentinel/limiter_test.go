@@ -58,7 +58,7 @@ func TestProviderIsSelectableAlgorithm(t *testing.T) {
 	exec := mgr.Wrap("svc-fusion", nil)
 	run := func() error {
 		return exec.Execute(context.Background(), chain.Operation{Service: "svc-fusion"}, new(chain.Recorder),
-			func(context.Context) error { return nil })
+			func(context.Context, *chain.Round) error { return nil })
 	}
 
 	assert.Error(t, run()).Nil()

@@ -37,7 +37,7 @@ type stubExecutor struct {
 	err error
 }
 
-func (s *stubExecutor) Execute(context.Context, chain.Operation, *chain.Recorder, func(context.Context) error) error {
+func (s *stubExecutor) Execute(context.Context, chain.Operation, *chain.Recorder, chain.RoundFunc) error {
 	return s.err
 }
 
@@ -45,7 +45,7 @@ func (s *stubExecutor) Close() error { return nil }
 
 func TestRunNilExecutorIsPassThrough(t *testing.T) {
 	var calls int
-	got, err := Run(context.Background(), nil, chain.Operation{Service: "svc"}, func(context.Context) (int, error) {
+	got, err := Run(context.Background(), nil, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (int, error) {
 		calls++
 		return 7, nil
 	})
@@ -60,13 +60,13 @@ func TestRunReturnsResultAndFailure(t *testing.T) {
 
 	// Success: the operation's value comes back.
 	got, err := Run(context.Background(), newBuiltin(t, TimeoutRetry{}), chain.Operation{Service: "svc"},
-		func(context.Context) (string, error) { return "reply", nil })
+		func(context.Context, chain.Peer) (string, error) { return "reply", nil })
 	assert.Error(t, err).Nil()
 	assert.String(t, got).Equal("reply")
 
 	// Failure: fn's own error is returned (and the retry loop ran).
 	e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 1}})
-	_, err = Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (string, error) {
+	_, err = Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (string, error) {
 		calls++
 		return "", boom
 	})
@@ -80,7 +80,7 @@ func TestRunToleratedErrorIsNotAFault(t *testing.T) {
 	t.Run("no retry", func(t *testing.T) {
 		e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 3}})
 		var calls int
-		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (struct{}, error) {
+		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (struct{}, error) {
 			calls++
 			return struct{}{}, errCacheMiss
 		}, Tolerate(errCacheMiss))
@@ -91,7 +91,7 @@ func TestRunToleratedErrorIsNotAFault(t *testing.T) {
 	t.Run("does not trip the breaker", func(t *testing.T) {
 		e := newBuiltin(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour})
 		call := func() error {
-			_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (struct{}, error) {
+			_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (struct{}, error) {
 				return struct{}{}, errCacheMiss
 			}, Tolerate(errCacheMiss))
 			return err
@@ -105,7 +105,7 @@ func TestRunToleratedErrorIsNotAFault(t *testing.T) {
 	t.Run("stacks", func(t *testing.T) {
 		other := errors.New("no rows")
 		e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 3}})
-		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (struct{}, error) {
+		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (struct{}, error) {
 			return struct{}{}, other
 		}, Tolerate(errCacheMiss), Tolerate(other))
 		assert.Error(t, err).Is(other)
@@ -115,7 +115,7 @@ func TestRunToleratedErrorIsNotAFault(t *testing.T) {
 		business := &typedErr{code: 550, normal: true}
 		e := newBuiltin(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour})
 		call := func() error {
-			_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (struct{}, error) {
+			_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (struct{}, error) {
 				return struct{}{}, business
 			}, TolerateFunc(func(err error) bool {
 				var te *typedErr
@@ -146,7 +146,7 @@ func TestRunRetryOn(t *testing.T) {
 		boom := errors.New("transient")
 		e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 2}})
 		var calls int
-		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (struct{}, error) {
+		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (struct{}, error) {
 			calls++
 			return struct{}{}, boom
 		}, RetryOn(func(err error) bool { return errors.Is(err, boom) }))
@@ -158,7 +158,7 @@ func TestRunRetryOn(t *testing.T) {
 		boom := errors.New("transient")
 		e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 2}})
 		var calls int
-		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (struct{}, error) {
+		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (struct{}, error) {
 			calls++
 			return struct{}{}, boom
 		}, RetryOn(func(error) bool { return false }))
@@ -169,7 +169,7 @@ func TestRunRetryOn(t *testing.T) {
 	t.Run("tolerated wins over retry", func(t *testing.T) {
 		e := newBuiltin(t, TimeoutRetry{Retry: Retry{MaxRetries: 2}})
 		var calls int
-		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context) (struct{}, error) {
+		_, err := Run(context.Background(), e, chain.Operation{Service: "svc"}, func(context.Context, chain.Peer) (struct{}, error) {
 			calls++
 			return struct{}{}, errCacheMiss
 		}, Tolerate(errCacheMiss), RetryOn(func(error) bool { return true }))
@@ -184,11 +184,11 @@ func TestRunRejectionIsReturnedVerbatim(t *testing.T) {
 	op := chain.Operation{Service: "svc"}
 
 	// Spend the budget.
-	_, err := Run(ctx, e, op, func(context.Context) (struct{}, error) { return struct{}{}, nil })
+	_, err := Run(ctx, e, op, func(context.Context, chain.Peer) (struct{}, error) { return struct{}{}, nil })
 	assert.Error(t, err).Nil()
 
 	var ran bool
-	_, err = Run(ctx, e, op, func(context.Context) (struct{}, error) {
+	_, err = Run(ctx, e, op, func(context.Context, chain.Peer) (struct{}, error) {
 		ran = true
 		return struct{}{}, nil
 	})
@@ -201,7 +201,7 @@ func TestRunRejectionIsReturnedVerbatim(t *testing.T) {
 func TestRunPrefersExecutorErrorWhenFnNeverRan(t *testing.T) {
 	injected := errors.New("injected")
 	_, err := Run(context.Background(), &stubExecutor{err: injected}, chain.Operation{Service: "svc"},
-		func(context.Context) (int, error) { return 42, nil })
+		func(context.Context, chain.Peer) (int, error) { return 42, nil })
 	assert.Error(t, err).Is(injected)
 }
 

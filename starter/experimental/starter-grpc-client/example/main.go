@@ -16,7 +16,7 @@
 
 // Command example-lb is a self-contained smoke test for the gRPC client-side
 // load-balancing adapter (starter-grpc-client/balancer.go) built on
-// go-spring.org/cloud/governance/capability/loadbalance. It needs no external services or docker: it
+// go-spring.org/cloud/governance/dataplane/outbound/loadbalance. It needs no external services or docker: it
 // starts three in-process Echo backends, adapts them through a static discovery
 // backend, and drives one gRPC client that dials "gsdiscovery:///echo".
 //
@@ -42,7 +42,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/starter-grpc-client"
 	"go-spring.org/starter-grpc-client/example/idl/proto"
 	"google.golang.org/grpc"
@@ -183,8 +183,11 @@ func main() {
 	// container, so it hands the dialer the two authorities directly (a gs.Run app
 	// injects *StarterGrpcClient.Client instead, and the center supplies both).
 	d := newDisco(eps)
-	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
-
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		fatalf("loadbalance observer: %v", err)
+	}
+	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 	// A short-fused suspension policy so the breaker phases finish quickly: three
 	// consecutive failures evict an instance, and a 2s cool-down readmits it. It
 	// is a governance rule for the connection's label — the same shape a pushed
@@ -192,8 +195,8 @@ func main() {
 	lbMgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
 		Service: StarterGrpcClient.GovernLabel("echo"),
 		Selection: loadbalance.Selection{
-			OutlierThreshold:  3,
-			OutlierSuspendFor: 2 * time.Second,
+			RequestFailures: 3,
+			SuspendDuration: 2 * time.Second,
 		},
 	}}})
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
 # Smoke test for the starter-echo cloud-native flagship. Runs the app, which
-# self-asserts all four capabilities (health, service discovery, resilience,
-# dynamic config) and exits non-zero on failure. No external services are
-# required — the app resolves a static discovery backend pointing at itself and
-# hot-reloads a watched file locally.
+# self-asserts its capabilities (health, resilience, dynamic config) and exits
+# non-zero on failure. No external services are required — the app rate-limits
+# in-process and hot-reloads a watched file locally.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"

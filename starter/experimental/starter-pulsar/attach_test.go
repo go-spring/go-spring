@@ -48,7 +48,7 @@ func (p *okPulsarProducer) Send(context.Context, *pulsar.ProducerMessage) (pulsa
 // left unobserved — and that forgetObserver drops it again.
 func TestAttachObserverAttaches(t *testing.T) {
 	cl := &fakePulsarClient{}
-	AttachObserver(cl, "pulsar://127.0.0.1:6650")
+	AttachObserver(cl, "pulsar://127.0.0.1:6650", nil)
 	if _, ok := clientGuards.Load(cl); !ok {
 		t.Fatal("AttachObserver must attach an observer")
 	}

@@ -161,7 +161,6 @@ spring.transaction.at.enabled=true
 # One otel child span per branch second-phase operation (at.commit <branch> /
 # at.rollback <branch>) on the globals starter-otel installs. No-op — costs
 # almost nothing — without starter-otel (the global tracer is then a no-op).
-spring.transaction.at.tracing=true
 
 # Startup crash recovery: scan every enrolled database's at_undo_log and roll
 # back the undo logs a previous run's crash left behind. Set false only when
@@ -204,7 +203,7 @@ gs.Run()
   ├─ lock bean: in-memory MemoryGlobalLock; a durable-lock bean from the
   │  container makes it step aside (OnMissingBean)         (starter.go:77-79)
   ├─ coordinator bean: at.NewCoordinator(WithGlobalLock(lock)
-  │  [+ WithObserver(AtObserver{}) when tracing=true])    (starter.go:91-98)
+  │  [standard otel spans when starter-otel is present])    (starter.go:91-98)
   ├─ your bean constructor runs: Migrate(db) + db.Use(NewPlugin(resource, coord, lock))
   │  per database — enrollment is CODE wiring, invisible in configuration; the
   │  plugin registers the handle for the recovery scan (plugin.go Initialize)
@@ -212,7 +211,7 @@ gs.Run()
      previous run's crash left and rolls them back (§4.3); no server, no port
 ```
 
-Log line to expect at construction: `at coordinator created tracing=true` (tag `AppDef`).
+Log line to expect at construction: `at coordinator created metrics=true` (tag `AppDef`).
 
 ### 2.2 One global transaction with a failure — full walk
 
@@ -274,7 +273,6 @@ top-level absolute keys under that prefix. Verified against
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.transaction.at.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` (starter.go:70). `false` contributes neither bean — import without assembly. | `false` → autowiring `at.Coordinator`/`at.GlobalLock` fails at container assembly (no such bean); runtime writes run without capture, silently non-AT. |
-| `spring.transaction.at.tracing` | bool | `true` | Appends `at.WithObserver(transaction.AtObserver{})` at coordinator construction (starter.go:93-94). Span per branch phase: `at.commit <branch>` / `at.rollback <branch>`, attributes `at.xid` / `at.branch` / `at.phase` (cloud/experimental/transaction/observe.go). | `false` (or forgetting starter-otel with `true`): silent — no spans, no warning. |
 | `spring.transaction.at.recover-on-start` | bool | `true` | Registers the crash-recovery gs.Runner (starter.go:95-99, recovery.go). At startup it scans every AT-enrolled database's `at_undo_log` and rolls back each orphaned XID (see §4.3). | `false` → orphaned undo logs from a crash are NOT replayed: `at_undo_log` keeps growing and phase-one business changes stay applied until reconciled manually. |
 
 No enum keys; no coupled keys. Note the *enrollment* knobs (resource id, which databases

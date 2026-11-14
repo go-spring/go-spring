@@ -23,7 +23,6 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
@@ -31,6 +30,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
@@ -60,8 +60,8 @@ func testCenter(t *testing.T) *governance.Runtime {
 	}
 	center := &governance.Runtime{
 		Resilience:  res,
-		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-	Admission:   adm,
+		LoadBalance: mustLbManager(t),
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -87,4 +87,14 @@ func TestOpenLeavesThePoolAloneWithoutARule(t *testing.T) {
 	sqlDB, err := db.DB.DB()
 	assert.Error(t, err).Nil("raw pool")
 	assert.Number(t, sqlDB.Stats().MaxOpenConnections).Equal(3)
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

@@ -25,7 +25,7 @@ import (
 // Every authority it holds is registered by the package that owns it — the
 // outbound resilience manager by cloud/governance/dataplane/outbound/resilience,
 // the inbound admission manager by cloud/governance/dataplane/inbound/admission,
-// endpoint selection by cloud/governance/capability/loadbalance, fault
+// endpoint selection by cloud/governance/dataplane/outbound/loadbalance, fault
 // injection by the two fault packages, traffic and discovery by their kernel
 // packages. This package only declares the runtime over them, so adding an
 // authority never touches this file.

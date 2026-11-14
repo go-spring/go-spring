@@ -178,7 +178,7 @@ Kubernetes has no `UpdateWeight`; draining a Pod is the platform's job and flows
   (`endpointslice.go:276`, `cloud/discovery/discovery.go:65-77`). dns mode instead sees the record
   disappear (headless DNS publishes ready addresses only, `dns.go:82-89`), after a `refresh-interval` lag.
 - Weight semantics: only SRV records carry weight (`dns.go:140`); `Weight == 0` there is subject to the
-  pool's soft-drain filter (`cloud/governance/capability/loadbalance/pool.go:93-134`).
+  pool's soft-drain filter (`cloud/governance/dataplane/outbound/loadbalance/pool.go:93-134`).
 
 ---
 

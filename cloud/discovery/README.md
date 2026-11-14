@@ -152,7 +152,7 @@ ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
   backend hiccup is not hidden).
 - Endpoint selection — round-robin, weights, consistent hash, failure
   ejection — all of that lives one layer up in
-  [`loadbalance`](../governance/capability/loadbalance/README.md), which takes the resolver (via
+  [`loadbalance`](../governance/dataplane/outbound/loadbalance/README.md), which takes the resolver (via
   the resolver func) as its endpoint source. Discovery itself carries
   no selection policy, and the resolver owns no resources — freshness lives
   inside the backend, so there is nothing to stop.
@@ -324,7 +324,7 @@ func (m *Manager) Names() []string
   A future infra client that needs weighted reconnects should layer
   `loadbalance` internally; **do not add a policy to the resolver**. (2026-09-04)
 - `Pool` takes a `discovery.Resolver` directly:
-  `NewPool(src discovery.Resolver, bal Balancer, tracker *Tracker, sel Selection)`, and
+  `NewPool(resolver discovery.Resolver, bal Balancer, tracker *Tracker, sel Selection)`, and
   `Pool.Pick` propagates the source error. `EndpointSource` / `SourceFunc` are
   deleted; `discovery.Allows` long ago moved to loadbalance's private
   `admission`.

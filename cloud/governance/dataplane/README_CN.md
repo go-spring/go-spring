@@ -51,7 +51,7 @@
 
 | 指标 | 含义 |
 | --- | --- |
-| `resilience.client.duration`、`.calls` | 出站耗时与结果；`resilience.error_type` 是完备的：拒绝调用的门禁、`downstream` 或 `canceled` |
+| `resilience.client.duration`、`.calls` | 出站耗时与结果；`resilience.error_type` 是完备的：拒绝调用的门禁或超时预算（`call_timeout`）、`connect_failed`、`resource_exhausted`、`context_canceled`,或 `unknown`(残余兜底) |
 | `*.operation.duration`、`*.attempt.duration` | 按 operation 的整体/单次尝试耗时 |
 | `resilience.server.duration`、`.calls` | 入站耗时与结果 |
 | `*.request.duration`、`*.active_requests` | 入站单路由耗时与在途请求数 |

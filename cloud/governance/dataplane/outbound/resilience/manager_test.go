@@ -86,7 +86,7 @@ func limitsRules(limits map[string]TimeoutRetry) []TimeoutRetryService {
 func runOnce(t *testing.T, e chain.Executor) bool {
 	t.Helper()
 	ran := false
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context, *chain.Round) error {
 		ran = true
 		return nil
 	})
@@ -105,7 +105,7 @@ func TestManagerBuildsBeforeAnySettings(t *testing.T) {
 	if e == nil {
 		t.Fatal("executor construction must not depend on configuration")
 	}
-	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })
 	if err != nil {
 		t.Fatalf("an unconfigured executor must pass through, got %v", err)
 	}
@@ -176,11 +176,11 @@ func TestManagerApplyPublishesForPulling(t *testing.T) {
 func timeoutOf(t *testing.T, e chain.Executor, service string) time.Duration {
 	t.Helper()
 	rec := &chain.Recorder{}
-	err := e.Execute(context.Background(), chain.Operation{Service: service}, rec, func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{Service: service}, rec, func(context.Context, *chain.Round) error { return nil })
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	return rec.Timeout
+	return rec.LastRound().Timeout
 }
 
 // TestManagerPushIsContentDerivedAndPerLabel pins the push contract at the
@@ -360,7 +360,7 @@ func TestManagerMatchesRuleByAction(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	e := m.mgr.Wrap("svc", nil)
-	noop := func(context.Context) error { return nil }
+	noop := func(context.Context, *chain.Round) error { return nil }
 
 	limited := chain.Operation{Service: "svc", Request: chain.Request{Action: "limited"}}
 	other := chain.Operation{Service: "svc", Request: chain.Request{Action: "other"}}

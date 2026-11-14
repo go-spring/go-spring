@@ -130,7 +130,6 @@ spring.transaction.tcc.store=gorm
 spring.transaction.tcc.enabled=true
 # 默认 true,列出以便发现。每个阶段一个 otel 子 span:
 # tcc.try <participant> / tcc.confirm <participant> / tcc.cancel <participant>。
-spring.transaction.tcc.tracing=true
 # 启动恢复 Runner:扫 Pending() 并取消崩溃的事务。
 spring.transaction.tcc.recover-on-start=true
 
@@ -256,7 +255,7 @@ SELECT id, method, status, in_progress, tried, try_results FROM tcc_snapshots;
 
 ### 4.3 在 trace 里观察恢复
 
-`tracing=true` + starter-otel 下,重启期取消按阶段发子 span,带事务 id / 参与者 / 阶段标签——
+引入 starter-otel 下,重启期取消按阶段发子 span,带事务 id / 参与者 / 阶段标签——
 §4.2 重启后去 collector 查。
 
 ### 4.4 AutoMigrate 快速失败演练

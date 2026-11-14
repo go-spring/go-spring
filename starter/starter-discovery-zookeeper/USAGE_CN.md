@@ -4,7 +4,7 @@
 `registry.go`、`discovery.go`、`config.go`、`starter_test.go`、`registry_test.go`、
 `discovery_test.go`）、
 注册核心（`../starter-discovery/starter.go`、`../starter-discovery/config.go`）、`cloud/discovery`
-接缝（`cloud/discovery/registry.go`、`cloud/governance/capability/loadbalance/pool.go`）与可运行的 [example/](example/)
+接缝（`cloud/discovery/registry.go`、`cloud/governance/dataplane/outbound/loadbalance/pool.go`）与可运行的 [example/](example/)
 （`example/check.sh` 跑单测 + docker-compose ZooKeeper 端到端启动）核实。**ZooKeeper 自身语义
 （会话、临时 znode、watcher、digest 认证）见
 [ZooKeeper 文档](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html)**——

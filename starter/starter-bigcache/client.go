@@ -156,18 +156,19 @@ type ObsCache struct {
 // standard reorganization does not hit this: wrapping the current head adds a
 // layer without building another ObsCache.
 //
-// The error is a rejected argument (an empty instanceName) or the process-wide
-// instrument set failing to build (see [newStatObserver]) — never the layers,
+// The error is a rejected argument (an empty instanceName) — never the layers,
 // which are only held, never touched here.
 func NewObsCache(next InnerCache, raw *bigcache.BigCache, instanceName string) (*ObsCache, error) {
+	return NewObsCacheWith(next, raw, instanceName, nil)
+}
+
+// NewObsCacheWith is the injection point for a custom [Observer]. A nil observer
+// disables observation for this cache.
+func NewObsCacheWith(next InnerCache, raw *bigcache.BigCache, instanceName string, obs Observer) (*ObsCache, error) {
 	if err := errutil.RequireField("bigcache", "instance-name", instanceName); err != nil {
 		return nil, err
 	}
-	obs, err := newStatObserver(raw, instanceName)
-	if err != nil {
-		return nil, err
-	}
-	return &ObsCache{obs: obs, next: next}, nil
+	return &ObsCache{obs: newStatObserverWith(raw, instanceName, obs), next: next}, nil
 }
 
 // Release takes away this layer's gauge registration — its own resource,
@@ -212,12 +213,17 @@ func (o *ObsCache) Delete(ctx context.Context, key string) error {
 // facility is taken either — an in-process cache has nothing to protect, and
 // nothing to declare to an emitter.
 //
-// The error is a rejected argument (an empty instanceName) or the process-wide
-// instrument set failing to build (see [newStatObserver]) — never the raw cache,
-// which is already open and healthy
-// when this is called. The caller owns that raw cache, so it must close it when
-// this returns an error; [Driver.CreateClient] does.
-func NewCache(client *bigcache.BigCache, instanceName string) (*Cache, error) {
+// The error is a rejected argument (an empty instanceName) — never the raw
+// cache, which is already open and healthy when this is called. The caller owns
+// that raw cache, so it must close it when this returns an error;
+// [Driver.CreateClient] does.
+func NewCache(client *bigcache.BigCache, instanceName string, obs Observer) (*Cache, error) {
+	return NewCacheWithObserver(client, instanceName, obs)
+}
+
+// NewCacheWithObserver is the injection point for a custom [Observer]. A nil
+// observer disables the metrics.
+func NewCacheWithObserver(client *bigcache.BigCache, instanceName string, obs Observer) (*Cache, error) {
 	if err := errutil.RequireField("bigcache", "instance-name", instanceName); err != nil {
 		return nil, err
 	}
@@ -226,11 +232,11 @@ func NewCache(client *bigcache.BigCache, instanceName string) (*Cache, error) {
 	// Close is nothing but the head's. The Cache itself holds no observability
 	// of its own.
 	tail := NewRawCache(client)
-	obs, err := NewObsCache(tail, client, instanceName)
+	o, err := NewObsCacheWith(tail, client, instanceName, obs)
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{Client: client, InnerCache: obs}, nil
+	return &Cache{Client: client, InnerCache: o}, nil
 }
 
 // Close tears the cache down through its chain — the head's Release(true),

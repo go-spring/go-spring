@@ -75,7 +75,7 @@ type etcdDiscovery struct {
 
 	// obs is the backend block's observability layer; it carries the identity
 	// (system, center) every reported sync and log line is labelled with.
-	obs *discovery.Observer
+	obs discovery.Observer
 
 	mu      sync.Mutex // guards entries
 	entries map[string]*serviceEntry
@@ -226,7 +226,7 @@ func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, 
 // discovery endpoints, decoding the instanceValue JSON the registry writes.
 // Every key found is healthy (lease liveness) and enabled (the registry has
 // no disabled state); the payload's scheme field carries transport selection.
-func kvsToEndpoints(obs *discovery.Observer, kvs []*mvccpb.KeyValue) []discovery.Endpoint {
+func kvsToEndpoints(obs discovery.Observer, kvs []*mvccpb.KeyValue) []discovery.Endpoint {
 	eps := make([]discovery.Endpoint, 0, len(kvs))
 	for _, kv := range kvs {
 		var v instanceValue
@@ -244,30 +244,29 @@ func kvsToEndpoints(obs *discovery.Observer, kvs []*mvccpb.KeyValue) []discovery
 			Scheme:   v.Scheme,
 			Weight:   v.Weight,
 			Healthy:  true,
-			Metadata: withDimensions(v.Metadata, v.Version, v.Zone),
+			Zone:     v.Zone,
+			Metadata: withVersion(v.Metadata, v.Version),
 		})
 	}
 	sortEndpoints(eps)
 	return eps
 }
 
-// withDimensions surfaces the payload's version/zone fields through the
-// metadata map consumers route on (zone-aware balancing reads the zone key),
-// copying only when something must be added.
-func withDimensions(md map[string]string, version, zone string) map[string]string {
-	if version == "" && zone == "" {
+// metaKeyVersion is this backend's metadata key for the version attribute: it
+// folds the payload's version field into the metadata map consumers route on.
+const metaKeyVersion = "version"
+
+// withVersion surfaces the payload's version field through the metadata map
+// consumers route on, copying only when something must be added.
+func withVersion(md map[string]string, version string) map[string]string {
+	if version == "" {
 		return md
 	}
-	out := make(map[string]string, len(md)+2)
+	out := make(map[string]string, len(md)+1)
 	for k, v := range md {
 		out[k] = v
 	}
-	if version != "" {
-		out[discovery.MetaKeyVersion] = version
-	}
-	if zone != "" {
-		out[discovery.MetaKeyZone] = zone
-	}
+	out[metaKeyVersion] = version
 	return out
 }
 

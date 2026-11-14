@@ -136,7 +136,6 @@ spring.transaction.saga.store=gorm
 # --- Saga capability (parent starter; tracing/recovery toggles) ---------------
 # Default true, shown for discoverability. One otel child span per step phase:
 # saga.action <step> / saga.compensate <step>.
-spring.transaction.saga.tracing=true
 # Startup recovery Runner: scan Pending() and compensate crashed sagas.
 spring.transaction.saga.recover-on-start=true
 
@@ -281,7 +280,7 @@ returns nothing.
 
 ### 4.3 Observing recovery in traces
 
-With `tracing=true` + starter-otel, restart-time compensation emits
+With 引入 starter-otel, restart-time compensation emits
 `saga.compensate <step>` spans tagged `saga.id` / `saga.step` / `saga.phase`, children of
 whatever context the Runner passes — check your collector after the §4.2 restart.
 

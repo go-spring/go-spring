@@ -18,12 +18,15 @@ package StarterGoRedis
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/connpool"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -121,6 +124,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 			DB:               c.DB,
 			Username:         c.Username,
 			PoolSize:         c.PoolSize,
+			PoolTimeout:      c.PoolTimeout,
 			MaxIdleConns:     c.MaxIdle,
 			ConnMaxLifetime:  c.ConnMaxLifetime,
 			MaxRetries:       c.MaxRetries,
@@ -139,6 +143,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 		DB:              c.DB,
 		Username:        c.Username,
 		PoolSize:        c.PoolSize,
+		PoolTimeout:     c.PoolTimeout,
 		MaxIdleConns:    c.MaxIdle,
 		ConnMaxLifetime: c.ConnMaxLifetime,
 		MaxRetries:      c.MaxRetries,
@@ -180,14 +185,43 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	}
 	opts.Addr = c.ServiceName
 	opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
-		pick, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
+		// The chain's addressing stage stages the peer it picked on the ctx
+		// (one pick per round, excluded peers avoided); dial exactly that. The
+		// chain settles the outcome — the dial only marks a failure as a
+		// connect error so the settlement reads it as the strong evidence it
+		// is. A dial with no staged addr (a warm-up outside any governed call)
+		// picks for itself and settles for itself.
+		if addr, ok := connpool.DialAddrFrom(ctx); ok {
+			// Keep the context the dial handed us, before this hook adds the
+			// round's budget: if it ends, the failure is not attributable —
+			// and ambiguity resolves against blaming the peer.
+			parent := ctx
+			// The governance connection budget tightens the dial when the round
+			// staged one; the static DialTimeout above stays the cap for dials
+			// outside any governed call.
+			if rd, ok := chain.RoundFrom(ctx); ok && rd.ConnectTimeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, rd.ConnectTimeout)
+				defer cancel()
+			}
+			conn, derr := nd.DialContext(ctx, network, addr)
+			if derr != nil {
+				// A dial cut off by the context this hook was handed is not
+				// connect evidence: the peer was never given a chance to
+				// refuse. The vendor pool's own dial budget may live on that
+				// context too, so ambiguity resolves against blaming the peer.
+				if parent.Err() != nil {
+					return nil, fmt.Errorf("%w: %w", parent.Err(), derr)
+				}
+				return nil, chain.ConnectError(derr)
+			}
+			return conn, nil
+		}
+		pick, err := lbChain.Pick(ctx, balancer.PickInfo{}, nil)
 		if err != nil {
 			return nil, err
 		}
 		conn, derr := nd.DialContext(ctx, network, pick.Endpoint.Addr)
-		// The dial outcome is the only signal this picker has; feeding it
-		// makes outlier suspension evict an instance that keeps refusing
-		// connections.
 		pick.Complete(ctx, derr)
 		return conn, derr
 	}
@@ -211,6 +245,7 @@ func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config, center *
 		RouteByLatency:  c.RouteByLatency,
 		RouteRandomly:   c.RouteRandomly,
 		PoolSize:        c.PoolSize,
+		PoolTimeout:     c.PoolTimeout,
 		MaxIdleConns:    c.MaxIdle,
 		ConnMaxLifetime: c.ConnMaxLifetime,
 		MaxRetries:      c.MaxRetries,

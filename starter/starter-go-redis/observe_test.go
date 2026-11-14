@@ -90,11 +90,11 @@ func TestPipelineOperationDeclaresBatch(t *testing.T) {
 	assert.Number(t, len(detailAttrs(op))).Equal(0)
 }
 
-// TestSkipOpsDeclareNoIdentity proves the health-check PING is a skip op, so it
-// declares no Operation and is left to the resilience layer's undeclared path.
-func TestSkipOpsDeclareNoIdentity(t *testing.T) {
-	_, skip := skipOps[pipeCmd("ping").FullName()]
-	assert.That(t, skip).True()
+// TestSkipOpsAreQuiet proves the health-check PING still declares its identity
+// but is levelled out of the everyday log: the skip list sets QuietSuccess.
+func TestSkipOpsAreQuiet(t *testing.T) {
+	assert.That(t, operationForCommand(context.Background(), testProp, pipeCmd("ping")).Observe.Log.QuietSuccess).True()
+	assert.That(t, operationForCommand(context.Background(), testProp, pipeCmd("get")).Observe.Log.QuietSuccess).False()
 }
 
 // detailAttrs returns the operation's span attributes that are NOT metric

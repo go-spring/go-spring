@@ -69,8 +69,8 @@ func init() {
 			// this package). Named "memcached:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
-			r.Provide(func(c *Client) (*cache.Cache, error) {
-				return cache.New(NewByteCache(c))
+			r.Provide(func(c *Client, obs cache.Observer) (*cache.Cache, error) {
+				return cache.New(NewByteCache(c), cache.WithObserver(obs))
 			}, gs.TagArg(name)).Name("memcached:" + name).Caller(1)
 			return nil
 		})

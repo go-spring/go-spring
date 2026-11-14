@@ -24,21 +24,12 @@ package conf
 
 import (
 	"context"
-	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
 var configTag = log.RegisterAppTag("config", "")
-
-// componentName is the instrumentation componentName name every meter and tracer in this
-// package reports under.
-const componentName = "go-spring.org/cloud/observability/conf"
 
 // Status attribute values. The statuses are exclusive, so
 // config.refresh.total summed over status is the number of refreshes
@@ -47,41 +38,6 @@ const (
 	statusOK    = "ok"
 	statusError = "error"
 )
-
-// instrumentSet bundles the metrics a refresh records: one per process, resolved
-// lazily on first use so the set binds to whichever OTel global provider is
-// current then (starter-otel wires it during RefreshPrepare, after all package
-// inits), and immutable afterwards. It holds no per-refresh state.
-type instrumentSet struct {
-	total       metric.Int64Counter
-	duration    metric.Float64Histogram
-	lastSuccess metric.Float64Gauge
-}
-
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
-	m := otel.Meter(componentName)
-	in := &instrumentSet{}
-	in.total, _ = m.Int64Counter("config.refresh.total",
-		metric.WithDescription("Property refreshes triggered, by status"),
-		metric.WithUnit("{refresh}"))
-	in.duration, _ = m.Float64Histogram("config.refresh.duration",
-		metric.WithDescription("Duration of a triggered property refresh"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	in.lastSuccess, _ = m.Float64Gauge("config.refresh.last_success_timestamp",
-		metric.WithDescription("Unix time of the last successful property refresh"),
-		metric.WithUnit("s"))
-	return in
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // Refresh is the shared funnel for property-refresh triggers. Every config
 // backend (nacos, etcd, consul, vault, k8s, file, ...) fires the same
@@ -115,8 +71,12 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // closed over. The refresh itself runs on the application's own context (see
 // gs.RefreshProperties), which re-roots these fields onto it.
 func Refresh(ctx context.Context, fn func(ctx context.Context) error) error {
-	in := instruments()
+	return RefreshWith(ctx, fn, defaultObserver())
+}
 
+// RefreshWith is the injection point for a custom observability adapter. A nil
+// observer disables observation; the log line is still written.
+func RefreshWith(ctx context.Context, fn func(ctx context.Context) error, obs Observer) error {
 	start := time.Now()
 	err := fn(ctx)
 	elapsed := time.Since(start)
@@ -125,10 +85,8 @@ func Refresh(ctx context.Context, fn func(ctx context.Context) error) error {
 	if err != nil {
 		status = statusError
 	}
-	in.total.Add(ctx, 1, metric.WithAttributes(attribute.String("status", status)))
-	in.duration.Record(ctx, elapsed.Seconds())
-	if err == nil {
-		in.lastSuccess.Record(ctx, float64(time.Now().Unix()))
+	if obs != nil {
+		obs.Refresh(ctx, status, elapsed)
 	}
 
 	// One status value drives both the metrics and the log, so they can never

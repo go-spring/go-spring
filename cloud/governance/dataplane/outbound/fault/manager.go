@@ -17,28 +17,60 @@
 package fault
 
 import (
+	"context"
+
 	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
-// Manager is the OUTBOUND fault authority: it owns the outbound document and
-// publishes a new kernel when the document changes.
+// Manager is the OUTBOUND fault authority: it owns the outbound document, its
+// [ClientRule] list and the injection kernel, and publishes a new kernel when
+// the document changes.
 //
-// It embeds the direction-neutral kernel manager but exposes its own type, so a
-// client starter can only reach the outbound object. An outbound fire and an
-// inbound one never see or trip each other.
+// It is a SEPARATE object and a SEPARATE configuration type from the inbound
+// authority: a client starter can only reach this one, an outbound fire and an
+// inbound one never see or trip each other, and the two directions cannot
+// express each other's effects.
 //
 // The call path never touches the manager: the executor reads the published
 // kernel pointer per attempt, and the manager is reached only on creation and
 // on a config push.
 type Manager struct {
-	*kfault.Manager
+	kernel *kfault.Kernel[ClientConfig]
 }
 
-// NewManager returns an unarmed outbound authority: it carries no rules,
-// so it injects nothing until a document is pushed.
+// NewManager returns an unarmed outbound authority: it carries no rules, so it
+// injects nothing until a document is pushed.
 func NewManager() *Manager {
-	return &Manager{Manager: kfault.NewManager()}
+	return &Manager{kernel: kfault.NewKernel[ClientConfig]()}
+}
+
+// Refresh adopts c as this direction's document, then publishes the new kernel.
+// Callers must serialize pushes (the center's source loop already does); an
+// attempt reads the kernel when it starts, so a toggle takes effect on the next
+// attempt.
+//
+// c is ALREADY validated: every expr tag runs where the document enters —
+// conf.Bind calls it for every bound field, and a source rejects a document that
+// fails it before pushing. This boundary therefore commits what it is given; it
+// does not judge it. Callers that construct a ClientConfig in code must validate
+// it themselves before committing.
+func (m *Manager) Refresh(c ClientConfig) {
+	m.kernel.Refresh(c, c.RunID, toRules(c.Rules))
+}
+
+// Config returns the document this authority currently runs — the cfg inside the
+// published kernel, so there is exactly one copy of the document (the zero
+// ClientConfig when nothing has been pushed, which is a no-op).
+func (m *Manager) Config() ClientConfig {
+	return m.kernel.Config()
+}
+
+// Fire evaluates one outbound attempt against the current kernel. See
+// [kfault.Kernel.Fire] for the sequence; the outbound rule supplies the error
+// kind and class.
+func (m *Manager) Fire(ctx context.Context, t kfault.Target) (kfault.Result, error) {
+	return m.kernel.Fire(ctx, t)
 }
 
 // WrapClientExecutor returns a chain.Executor that injects faults into fn before
@@ -71,5 +103,5 @@ func NewManager() *Manager {
 // mislabelled call look correctly targeted. next is the executor for the same
 // service, so a fault rule and a resilience rule name the same thing.
 func (m *Manager) WrapClientExecutor(next chain.Executor) chain.Executor {
-	return &faultExecutor{mgr: m.Manager, next: next}
+	return &faultExecutor{mgr: m, next: next}
 }

@@ -79,6 +79,10 @@ type Server struct {
 	// schedule, options and lock.
 	Jobs []*scheduling.Job `autowire:"?"`
 
+	// Observer is the per-fire metric seam; the container injects the default
+	// when the application contributes none.
+	Observer scheduling.Observer `autowire:""`
+
 	sched *scheduling.Scheduler
 }
 
@@ -92,7 +96,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		return []log.Field{log.Int("jobs", len(s.Jobs))}
 	})
 
-	s.sched = scheduling.NewScheduler()
+	s.sched = scheduling.NewScheduler(s.Observer)
 	if err := s.build(); err != nil {
 		return err
 	}

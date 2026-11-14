@@ -69,8 +69,9 @@ type Client struct {
 // resilience executor, so there is no governance here: the observer emits the
 // produce/consume span, metrics and access log, and nothing throttles or
 // retries.
-func NewClient(cl *kgo.Client, brokers string, prop traffic.Propagator) *Client {
-	obs := observability.NewOperationObserver("kafka", serviceLabelOf(brokers))
+func NewClient(cl *kgo.Client, brokers string, prop traffic.Propagator, obsFactory observability.Metrics) *Client {
+
+	obs := observability.NewOperationObserver("kafka", serviceLabelOf(brokers), obsFactory)
 	return &Client{Kafka: cl, InnerKafka: NewObsKafka(NewRawKafka(cl), obs, prop), obs: obs, prop: prop}
 }
 

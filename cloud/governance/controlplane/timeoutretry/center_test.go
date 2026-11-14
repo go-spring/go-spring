@@ -87,8 +87,8 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	rec := new(chain.Recorder)
 	assert.Error(t, mgr.Wrap("redis:cache", nil).Execute(
 		context.Background(), chain.Operation{Service: "redis:cache"}, rec,
-		func(context.Context) error { return nil })).Nil()
-	assert.That(t, rec.Timeout).Equal(100 * time.Millisecond)
+		func(context.Context, *chain.Round) error { return nil })).Nil()
+	assert.That(t, rec.LastRound().Timeout).Equal(100 * time.Millisecond)
 
 	// The interface rule wins for a matching call.
 	rec = new(chain.Recorder)
@@ -96,6 +96,6 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 		context.Background(), chain.Operation{
 			Service: "redis:cache",
 			Request: chain.Request{Action: "GET /slow/x", Metadata: map[string]string{"tenant": "core"}},
-		}, rec, func(context.Context) error { return nil })).Nil()
-	assert.That(t, rec.Timeout).Equal(2 * time.Second)
+		}, rec, func(context.Context, *chain.Round) error { return nil })).Nil()
+	assert.That(t, rec.LastRound().Timeout).Equal(2 * time.Second)
 }

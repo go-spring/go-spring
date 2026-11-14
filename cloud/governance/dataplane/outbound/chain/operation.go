@@ -140,16 +140,16 @@ type Observe struct {
 // Log is the ACCESS-LOG group of [Observe]: how the call's access line is
 // tagged, levelled and filled.
 type Log struct {
-	// Tag is the tag the access log for this operation is written under. It is
-	// the client's, not the emitter's, so a service's existing access log keeps
-	// its identity across the move to a single emitter.
-	Tag *log.Tag
-
 	// QuietSuccess levels the call's SUCCESS access line: true logs it at Debug,
 	// so a high-frequency operation (a cache GET, a health PING) does not flood
 	// the log with uninteresting lines until it fails; false logs it at Info. A
 	// failure is always logged at Warn regardless.
 	QuietSuccess bool
+
+	// Tag is the tag the access log for this operation is written under. It is
+	// the client's, not the emitter's, so a service's existing access log keeps
+	// its identity across the move to a single emitter.
+	Tag *log.Tag
 
 	// Fields are the fields that become ACCESS-LOG fields, verbatim. They are
 	// [log.Field] rather than an attribute, so this list is also the escape

@@ -37,7 +37,7 @@ import (
 
 // faultExec composes the injector under this layer for service "svc", with cfg
 // as the whole-service policy of its capability.
-func faultExec(t *testing.T, cfg any, conf kfault.Config) chain.Executor {
+func faultExec(t *testing.T, cfg any, conf fault.ClientConfig) chain.Executor {
 	t.Helper()
 	inj := fault.NewManager()
 	inj.Refresh(conf)
@@ -45,8 +45,8 @@ func faultExec(t *testing.T, cfg any, conf kfault.Config) chain.Executor {
 }
 
 // countFn counts the real call and returns ret — the terminal a test observes.
-func countFn(calls *int32, ret error) func(context.Context) error {
-	return func(context.Context) error {
+func countFn(calls *int32, ret error) func(context.Context, *chain.Round) error {
+	return func(context.Context, *chain.Round) error {
 		atomic.AddInt32(calls, 1)
 		return ret
 	}
@@ -55,9 +55,7 @@ func countFn(calls *int32, ret error) func(context.Context) error {
 // TestInjectedFaultIsRetried: every attempt is injected, so the real fn never
 // runs and the retry loop exhausts MaxRetries+1 attempts.
 func TestInjectedFaultIsRetried(t *testing.T) {
-	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 2}}, kfault.Config{
-		Rules: []kfault.Rule{{Name: "fire", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic"}},
-	})
+	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 2}}, fault.ClientConfig{Rules: []fault.ClientRule{{RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Rate: 1}, Class: kfault.ClassTransient, Error: "generic"}}})
 	var calls int32
 	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), countFn(&calls, nil))
 	assert.Error(t, err).NotNil()
@@ -78,9 +76,7 @@ func TestInjectedErrorIsRetryable(t *testing.T) {
 // open and subsequent calls are rejected as ErrCircuitOpen without touching fn —
 // the closed loop (fault → breaker → neutral sentinel) holds.
 func TestInjectedFaultTripsBreaker(t *testing.T) {
-	exec := faultExec(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Second}, kfault.Config{
-		Rules: []kfault.Rule{{Name: "fire", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic"}},
-	})
+	exec := faultExec(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Second}, fault.ClientConfig{Rules: []fault.ClientRule{{RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Rate: 1}, Class: kfault.ClassTransient, Error: "generic"}}})
 	var calls int32
 	_ = exec.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), countFn(&calls, nil)) // trips the breaker
 	firstCalls := atomic.LoadInt32(&calls)
@@ -95,9 +91,7 @@ func TestInjectedFaultTripsBreaker(t *testing.T) {
 // TestInjectedLatencyHonoursTimeout: injected latency sleeps, and the call-level
 // timeout cancels the sleep instead of retrying forever.
 func TestInjectedLatencyHonoursTimeout(t *testing.T) {
-	exec := faultExec(t, TimeoutRetry{Timeout: 50 * time.Millisecond}, kfault.Config{
-		Rules: []kfault.Rule{{Name: "fire", Service: "svc", Rate: 0, Class: kfault.ClassTransient, Error: kfault.ErrorGeneric, Latency: 200 * time.Millisecond}},
-	})
+	exec := faultExec(t, TimeoutRetry{Timeout: 50 * time.Millisecond}, fault.ClientConfig{Rules: []fault.ClientRule{{RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Rate: 0, Latency: 200 * time.Millisecond}, Class: kfault.ClassTransient, Error: kfault.ErrorGeneric}}})
 	var calls int32
 	start := time.Now()
 	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), countFn(&calls, nil))
@@ -117,46 +111,40 @@ func TestInjectedLatencyHonoursTimeout(t *testing.T) {
 // the guardrail's budget), the retry sees the budget gone and runs clean, so the
 // call SUCCEEDS with a fire on its record.
 func TestFireOnAnEarlierAttemptSurvives(t *testing.T) {
-	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 1}}, kfault.Config{
-		Rules: []kfault.Rule{{Name: "fire", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic", MaxAffected: 1}},
-	})
+	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 1}}, fault.ClientConfig{Rules: []fault.ClientRule{{RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Rate: 1, MaxAffected: 1}, Class: kfault.ClassTransient, Error: "generic"}}})
 	rec := &chain.Recorder{}
 	var calls int32
 	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, rec, countFn(&calls, nil))
 
-	assert.Error(t, err).Nil()                 // the retry succeeded
-	assert.Number(t, int(calls)).Equal(1)      // fn ran on the clean retry
-	assert.Number(t, len(rec.Rounds)).Equal(2) // two attempts recorded
-	assert.That(t, rec.Fault).NotNil()         // the first attempt's fire survived
-	assert.String(t, rec.Fault.Error).Equal("generic")
+	assert.Error(t, err).Nil()                   // the retry succeeded
+	assert.Number(t, int(calls)).Equal(1)        // fn ran on the clean retry
+	assert.Number(t, len(rec.Rounds)).Equal(2)   // two attempts recorded
+	assert.That(t, rec.Rounds[0].Fault).NotNil() // the first attempt's fire survived
+	assert.String(t, rec.Rounds[0].Fault.Error).Equal("generic")
 }
 
-// TestInjectedClassClassification pins the two independent questions a class
-// answers: may I retry it, and does it count against the breaker.
-func TestInjectedClassClassification(t *testing.T) {
+// TestInjectedClassRetryClassification pins the one question an OUTBOUND class
+// answers: may I retry it. business is an inbound-only class — the document
+// validation rejects it on the client side (see controlplane/fault).
+func TestInjectedClassRetryClassification(t *testing.T) {
 	cases := []struct {
-		class        string
-		retry, count bool
+		class string
+		retry bool
 	}{
-		{"", true, true}, // zero value keeps the historical behaviour
-		{kfault.ClassTransient, true, true},
-		{kfault.ClassPermanent, false, true},
-		{kfault.ClassBusiness, false, false},
+		{"", true}, // zero value keeps the historical behaviour
+		{kfault.ClassTransient, true},
+		{kfault.ClassPermanent, false},
 	}
 	for _, tc := range cases {
-		err := &kfault.InjectedError{Kind: "generic", Class: tc.class}
+		err := &kfault.InjectedError{Kind: kfault.ErrorGeneric, Class: tc.class}
 		assert.That(t, ShouldRetry(err)).Equal(tc.retry)
-		assert.That(t, CountsAsFailure(err)).Equal(tc.count)
 	}
-	assert.That(t, CountsAsFailure(nil)).False()
 }
 
 // TestPermanentInjectionIsNotRetried: class=permanent suppresses retry — the
 // path "this failure is deterministic, retrying is pointless".
 func TestPermanentInjectionIsNotRetried(t *testing.T) {
-	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 3}}, kfault.Config{
-		Rules: []kfault.Rule{{Name: "permanent", Service: "svc", Rate: 1, Error: "generic", Class: kfault.ClassPermanent}},
-	})
+	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 3}}, fault.ClientConfig{Rules: []fault.ClientRule{{RuleCore: kfault.RuleCore{Name: "permanent", Service: "svc", Rate: 1}, Error: "generic", Class: kfault.ClassPermanent}}})
 	rec := &chain.Recorder{}
 	var calls int32
 	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, rec, countFn(&calls, nil))
@@ -165,15 +153,84 @@ func TestPermanentInjectionIsNotRetried(t *testing.T) {
 	assert.Number(t, len(rec.Rounds)).Equal(1) // exactly one attempt
 }
 
-// TestBusinessInjectionDoesNotTripBreaker: class=business is a caller mistake, so
-// even a threshold-1 breaker must ignore it and stay closed.
-func TestBusinessInjectionDoesNotTripBreaker(t *testing.T) {
-	exec := faultExec(t, BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Second}, kfault.Config{
-		Rules: []kfault.Rule{{Name: "business", Service: "svc", Rate: 1, Error: "generic", Class: kfault.ClassBusiness}},
+// retryableFailure is a real failure the retry loop will retry, used to make an
+// attempt sequence deterministic without using the injector's own error.
+type retryableFailure struct{}
+
+func (retryableFailure) Error() string   { return "transient failure" }
+func (retryableFailure) Retryable() bool { return true }
+
+// TestInjectedEveryCountsAttempts pins the per-ATTEMPT semantics of the dose
+// knobs: `every` counts each attempt, and two logical calls with one attempt
+// each consume two sequence numbers (the second call fires, the first does not).
+func TestInjectedEveryCountsAttempts(t *testing.T) {
+	exec := faultExec(t, TimeoutRetry{}, fault.ClientConfig{
+		Rules: []fault.ClientRule{{
+			RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Every: 2},
+			Error:    kfault.ErrorGeneric, Class: kfault.ClassTransient,
+		}},
 	})
-	for range 3 {
-		err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, new(chain.Recorder), countFn(new(int32), nil))
-		assert.That(t, kfault.IsInjected(err)).True()
-		assert.That(t, errors.Is(err, chain.ErrCircuitOpen)).False()
+	var calls int32
+
+	// Call 1: attempt #1 does not fire; the real fn runs and succeeds.
+	assert.Error(t, exec.Execute(context.Background(), chain.Operation{Service: "svc"},
+		new(chain.Recorder), countFn(&calls, nil))).Nil()
+	assert.Number(t, int(atomic.LoadInt32(&calls))).Equal(1)
+
+	// Call 2: attempt #2 fires; the real fn does not run.
+	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"},
+		new(chain.Recorder), countFn(&calls, nil))
+	assert.That(t, kfault.IsInjected(err)).True()
+	assert.Number(t, int(atomic.LoadInt32(&calls))).Equal(1)
+}
+
+// TestInjectedEveryCountsRetryAttempts pins the other half: a RETRY is another
+// attempt, so the injector can fire on the second attempt of the SAME logical
+// call. This is the per-request model Envoy/Istio use, and it is why the
+// call-level failure rate is a composition, not the rule's own rate.
+func TestInjectedEveryCountsRetryAttempts(t *testing.T) {
+	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 1}}, fault.ClientConfig{
+		Rules: []fault.ClientRule{{
+			RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Every: 2},
+			Error:    kfault.ErrorGeneric, Class: kfault.ClassTransient,
+		}},
+	})
+	var calls int32
+	fn := func(context.Context, *chain.Round) error {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return retryableFailure{} // the first attempt fails for real -> retry
+		}
+		return nil
 	}
+	rec := &chain.Recorder{}
+	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, rec, fn)
+
+	// Attempt 1 did not fire (fn ran); attempt 2 fired (fn did not run).
+	assert.That(t, kfault.IsInjected(err)).True()
+	assert.Number(t, int(atomic.LoadInt32(&calls))).Equal(1)
+	assert.Number(t, len(rec.Rounds)).Equal(2)
+	assert.That(t, rec.Rounds[0].Fault).Nil()
+	assert.That(t, rec.Rounds[1].Fault).NotNil()
+	assert.That(t, rec.Rounds[1].Fault.Inject).True()
+}
+
+// TestInjectedMaxAffectedCountsAttempts pins that the blast-radius cap counts
+// ATTEMPTS: the first attempt spends the only unit, so the retry runs clean and
+// the call succeeds. A call-level count would have kept firing.
+func TestInjectedMaxAffectedCountsAttempts(t *testing.T) {
+	exec := faultExec(t, TimeoutRetry{Retry: Retry{MaxRetries: 2}}, fault.ClientConfig{
+		Rules: []fault.ClientRule{{
+			RuleCore: kfault.RuleCore{Name: "fire", Service: "svc", Rate: 1, MaxAffected: 1},
+			Error:    kfault.ErrorGeneric, Class: kfault.ClassTransient,
+		}},
+	})
+	var calls int32
+	rec := &chain.Recorder{}
+	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, rec, countFn(&calls, nil))
+
+	assert.Error(t, err).Nil()                               // the clean retry succeeded
+	assert.Number(t, int(atomic.LoadInt32(&calls))).Equal(1) // fn ran on the retry
+	assert.Number(t, len(rec.Rounds)).Equal(2)               // injected attempt + clean retry
+	assert.That(t, rec.Rounds[0].Fault).NotNil()             // the first attempt was injected
+	assert.That(t, rec.Rounds[1].Fault).Nil()                // the retry ran clean
 }

@@ -52,11 +52,11 @@ const maxStatement = 512
 // exist before the framework's first property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("redis", "access")
 
-// skipOps are the commands that declare no identity, so nothing
-// family-specific is emitted for them: the health-check PING (health/health.go)
-// fires periodically per instance and would flood the log with uninteresting
-// success lines. They still run under the resilience layer, which reports them
-// as it reports any other call whose identity is undeclared.
+// skipOps are the commands whose SUCCESS line is levelled out of the everyday
+// log: the health-check PING (health/health.go) fires periodically per instance
+// and would flood the log with uninteresting lines. They still declare their
+// full identity and emit their span/metrics — only the success line drops to
+// Debug.
 var skipOps = map[string]struct{}{"ping": {}}
 
 // operation is the semantic identity of one redis command. The command's full
@@ -75,6 +75,17 @@ func operation(ctx context.Context, prop traffic.Propagator, cmd redis.Cmder) ch
 	o := chain.DBOp(ctx, prop, redisSystem, cmd.FullName(), argOf(cmd))
 	o.Observe.Log.Tag = accessTag
 	return o
+}
+
+// operationForCommand is the command operation with the skip list applied: a
+// high-frequency command (PING on every health probe) still declares its
+// identity; its success line is levelled to Debug instead.
+func operationForCommand(ctx context.Context, prop traffic.Propagator, cmd redis.Cmder) chain.Operation {
+	op := operation(ctx, prop, cmd)
+	if _, skip := skipOps[cmd.FullName()]; skip {
+		op.Observe.Log.QuietSuccess = true
+	}
+	return op
 }
 
 // pipelineOperation is the semantic identity of a pipelined batch: a pipeline

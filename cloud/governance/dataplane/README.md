@@ -59,7 +59,7 @@ Request plane (existing):
 
 | Metric | Meaning |
 | --- | --- |
-| `resilience.client.duration`, `.calls` | Outbound latency and outcome, with a total `resilience.error_type`: the gate that refused the call, `downstream`, or `canceled` |
+| `resilience.client.duration`, `.calls` | Outbound latency and outcome, with a total `resilience.error_type`: the gate that refused the call or the timeout budget (`call_timeout`), `connect_failed`, `resource_exhausted`, `context_canceled`, or `unknown` (the residual) |
 | `*.operation.duration`, `*.attempt.duration` | Per-operation and per-attempt latency |
 | `resilience.server.duration`, `.calls` | Inbound latency and outcome |
 | `*.request.duration`, `*.active_requests` | Per-route inbound latency and in-flight requests |

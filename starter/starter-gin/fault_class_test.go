@@ -30,23 +30,24 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/observe"
 )
 
-// TestHTTPStatusFor_FollowsFaultClass pins the inbound half of the business
-// classification: a rule that declares class=business must cross the wire as a
-// caller error (400), not as "the downstream is down" (503), which is what every
-// injected fault used to become.
-func TestHTTPStatusFor_FollowsFaultClass(t *testing.T) {
+// TestHTTPStatusFor_FollowsDeclaredStatus pins that an injected inbound fault
+// answers with the status its rule declared. An unset status on a direct,
+// unvalidated config falls back to 503 rather than writing an invalid code.
+func TestHTTPStatusFor_FollowsDeclaredStatus(t *testing.T) {
 	cases := []struct {
-		class string
-		want  int
+		status int
+		want   int
 	}{
-		{kfault.ClassBusiness, http.StatusBadRequest},
-		{kfault.ClassPermanent, http.StatusServiceUnavailable},
-		{"", http.StatusServiceUnavailable},
+		{http.StatusBadRequest, http.StatusBadRequest},
+		{http.StatusTooManyRequests, http.StatusTooManyRequests},
+		{http.StatusServiceUnavailable, http.StatusServiceUnavailable},
+		{0, http.StatusServiceUnavailable}, // unvalidated direct config
 	}
 	for _, tc := range cases {
 		inj := serverfault.NewManager()
-		inj.Refresh(kfault.Config{Rules: []kfault.Rule{{
-			Name: "fire", Service: "gin", Rate: 1, Class: tc.class,
+		inj.Refresh(serverfault.ServerConfig{Rules: []serverfault.ServerRule{{
+			RuleCore: kfault.RuleCore{Name: "fire", Service: "gin", Rate: 1},
+			Status:   tc.status,
 		}}})
 		fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 		if err != nil {
@@ -56,7 +57,7 @@ func TestHTTPStatusFor_FollowsFaultClass(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := inbound.Over("gin", "gin:test", gm, inj)
+		in, err := inbound.Over("gin", "gin:test", gm, nil, inj)
 		if err != nil {
 			gm.Close()
 			t.Fatal(err)
@@ -67,10 +68,10 @@ func TestHTTPStatusFor_FollowsFaultClass(t *testing.T) {
 
 		var ref *inbound.Refusal
 		if !errors.As(err, &ref) {
-			t.Fatalf("class %q: want a refusal, got %v", tc.class, err)
+			t.Fatalf("status %d: want a refusal, got %v", tc.status, err)
 		}
 		if got := httpStatusFor(ref); got != tc.want {
-			t.Fatalf("class %q: status %d, want %d", tc.class, got, tc.want)
+			t.Fatalf("status %d: got %d, want %d", tc.status, got, tc.want)
 		}
 	}
 }

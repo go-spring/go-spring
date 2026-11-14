@@ -21,7 +21,6 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/cloud/experimental/transaction/tcc"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -35,22 +34,11 @@ func okParticipant(name string, confirmed, cancelled *[]string) tcc.Participant 
 	}
 }
 
-func TestNewCoordinator_TracingToggle(t *testing.T) {
-	// Both variants must produce a usable coordinator; the tracing flag only
-	// controls whether an observer is attached.
-	coord, err := newCoordinator(Config{Tracing: true}, &tcc.MemoryStore{})
-	assert.That(t, err).Nil()
-	assert.That(t, coord).NotNil()
-	coord, err = newCoordinator(Config{Tracing: false}, &tcc.MemoryStore{})
-	assert.That(t, err).Nil()
-	assert.That(t, coord).NotNil()
-}
-
-func TestOtelObserver_DrivesTCCWithoutPanic(t *testing.T) {
-	// With no TracerProvider installed the otel global is a no-op, but the observer
-	// must still return a usable context and an end func that records the outcome
-	// without panicking — exercised here through a real cancel path.
-	coord, err := tcc.NewCoordinator(tcc.WithObserver(transaction.TccObserver{}))
+func TestCoordinator_DrivesTCCWithoutTracer(t *testing.T) {
+	// With no TracerProvider installed the otel global is a no-op; the span
+	// helpers must still return a usable context and an end func that records the
+	// outcome without panicking — exercised here through a real cancel path.
+	coord, err := tcc.NewCoordinator()
 	assert.That(t, err).Nil()
 
 	var confirmed, cancelled []string

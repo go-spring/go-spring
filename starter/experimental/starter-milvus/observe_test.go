@@ -89,9 +89,9 @@ type observation struct {
 	ok bool
 }
 
-func (e *captureExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+func (e *captureExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	e.seen.op, e.seen.ok = op, true
-	return fn(ctx)
+	return fn(ctx, rec.NewRound())
 }
 func (e *captureExecutor) Close() error { return nil }
 

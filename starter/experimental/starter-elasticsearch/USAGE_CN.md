@@ -330,7 +330,7 @@ docker start starter-elasticsearch
   `db.operation=<METHOD>`（有界）、`status` = ok/error，均不含 URL 路径。同一层还发
   `resilience.client.calls` 计数器，带 `status` ∈ {ok, error}，以及完备的
   `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, retry_exceeded,
-  timeout, downstream, canceled}。
+  call_timeout, no_endpoints, connect_failed, resource_exhausted, context_canceled, unknown}。
 - **span**：每请求一个 span，由 resilience 层打开（internal 类型），形如
   `POST /demo-docs/_search`，带 `db.system`/`db.operation` 属性及 `db.statement` = URL 路径。
   验证：`curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`

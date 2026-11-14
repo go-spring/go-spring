@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/traffic"
@@ -94,7 +95,7 @@ const pingTimeout = 10 * time.Second
 // point; the ctor hands it to the driver, which applies its authorities while
 // building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	center *governance.Runtime) (*Client, error) {
+	center *governance.Runtime, obsFactory observability.Metrics) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating kafka client", func() []log.Field {
 		return []log.Field{
 			log.String("brokers", c.Brokers),
@@ -118,7 +119,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// goes straight to the raw client on purpose: it is a connectivity check,
 	// not business traffic, so it must not spend limiter/breaker budget. A
 	// failure abandons the client, chain and all.
-	cl := NewClient(raw, c.Brokers, center.Traffic)
+	cl := NewClient(raw, c.Brokers, center.Traffic, obsFactory)
 	if c.Ping {
 		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 		defer cancel()

@@ -25,6 +25,7 @@ package StarterGormClickhouse
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
@@ -32,7 +33,10 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/connpool"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -117,6 +121,7 @@ func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.
 	// over a configured service-name (the sidecar owns discovery+LB) but may
 	// still need native for TLS.
 	useDiscovery := center.UsesDiscovery(c.ServiceName)
+	var picker *loadbalance.Chain
 	var backend discovery.Discovery
 	if useDiscovery {
 		// Resolve the discovery backend the entry cites before building the
@@ -158,19 +163,50 @@ func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.
 				log.Error(ctx, log.TagAppDef, derr, "gorm clickhouse build discovery resolver failed")
 				return gormcore.Spec{}, derr
 			}
+			picker = lb
 			// ch.Options.DialContext is 2-arg: func(ctx, addr string) (net.Conn, error).
 			// The addr is ignored; the dialer picks a live endpoint from the
 			// chain's current generation.
 			nd := &net.Dialer{}
 			opts.DialContext = func(ctx context.Context, _ string) (net.Conn, error) {
-				pick, perr := lb.Pick(ctx, loadbalance.PickInfo{})
+				// The chain addressing stage stages the peer it picked on the ctx (one
+				// pick per round, excluded peers avoided); dial exactly that. The chain
+				// settles the outcome - the dial only marks a failure as a connect error.
+				// A dial with no staged addr (a warm-up outside any governed call) picks
+				// for itself and settles for itself.
+				if addr, ok := connpool.DialAddrFrom(ctx); ok {
+					// Keep the context the dial handed us, before this hook
+					// adds the round's budget: if it ends, the failure is not
+					// attributable — and ambiguity resolves against blaming
+					// the peer.
+					parent := ctx
+					// The governance connection budget tightens the dial when the round staged
+					// one; the static dial timeout stays the cap for dials outside any
+					// governed call.
+					if rd, ok := chain.RoundFrom(ctx); ok && rd.ConnectTimeout > 0 {
+						var cancel context.CancelFunc
+						ctx, cancel = context.WithTimeout(ctx, rd.ConnectTimeout)
+						defer cancel()
+					}
+					conn, derr := nd.DialContext(ctx, "tcp", addr)
+					if derr != nil {
+						// A dial cut off by the context this hook was handed is
+						// not connect evidence: the peer was never given a
+						// chance to refuse. A driver's own dial budget may live
+						// on that context too, so ambiguity resolves against
+						// blaming the peer.
+						if parent.Err() != nil {
+							return nil, fmt.Errorf("%w: %w", parent.Err(), derr)
+						}
+						return nil, chain.ConnectError(derr)
+					}
+					return conn, nil
+				}
+				pick, perr := lb.Pick(ctx, balancer.PickInfo{}, nil)
 				if perr != nil {
 					return nil, perr
 				}
 				conn, derr := nd.DialContext(ctx, "tcp", pick.Endpoint.Addr)
-				// The dial outcome is the only signal this picker has; feeding it
-				// makes outlier suspension evict an instance that keeps refusing
-				// connections.
 				pick.Complete(ctx, derr)
 				return conn, derr
 			}
@@ -180,6 +216,7 @@ func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.
 
 	return gormcore.Spec{
 		Dialector:      dialector,
+		Picker:         picker,
 		Pool:           c.Pool(),
 		Service:        service,
 		ObserveEnabled: c.ObserveEnabled,

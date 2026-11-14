@@ -46,38 +46,39 @@ import (
 // real engine would have written, so the emitter is exercised against the
 // contract it actually consumes.
 type stubChain struct {
-	run func(context.Context, chain.Operation, *chain.Recorder, func(context.Context) error) error
+	run func(context.Context, chain.Operation, *chain.Recorder, chain.RoundFunc) error
 }
 
-func (s stubChain) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+func (s stubChain) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	return s.run(ctx, op, rec, fn)
 }
 
 func (stubChain) Close() error { return nil }
 
-// round runs fn once and records the round, the way a chain node does.
-func round(ctx context.Context, rec *chain.Recorder, fn func(context.Context) error) error {
+// round runs fn once and records the round the way the retry loop does: the
+// round is CREATED before fn runs — so what fn writes lands on it — and SEALED
+// with the measured facts when fn returns.
+func round(ctx context.Context, rec *chain.Recorder, fn chain.RoundFunc) error {
+	rd := rec.NewRound()
 	start := time.Now()
-	err := fn(ctx)
-	rec.AddRound(chain.Round{
-		Start:    start,
-		Duration: time.Since(start),
-		Status:   chain.ClassifyStatus(err),
-		Error:    err,
-	})
+	err := fn(ctx, rd)
+	rd.Start = start
+	rd.Duration = time.Since(start)
+	rd.Status = chain.ClassifyStatus(err)
+	rd.Error = err
 	return err
 }
 
 // oneRound is a chain node that runs fn once and records the round.
-var oneRound = stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+var oneRound = stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	return round(ctx, rec, fn)
 }}
 
 // twoAttempts retries once, recording each attempt — the shape a retry leaves
 // in the recorder.
-var twoAttempts = stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+var twoAttempts = stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	var err error
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		err = round(ctx, rec, fn)
 		if err == nil {
 			break
@@ -91,18 +92,17 @@ var twoAttempts = stubChain{run: func(ctx context.Context, _ chain.Operation, re
 // admission stage leaves behind.
 func firstServedThenRejected() stubChain {
 	calls := 0
-	return stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	return stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 		calls++
 		if calls == 1 {
 			return round(ctx, rec, fn)
 		}
 		err := chain.ErrRateLimited
-		rec.AddRound(chain.Round{
-			Start:     time.Now(),
-			Status:    chain.ClassifyStatus(err),
-			ErrorType: chain.ClassifyErrorType(err),
-			Error:     err,
-		})
+		rd := rec.NewRound()
+		rd.Start = time.Now()
+		rd.Status = chain.ClassifyStatus(err)
+		rd.ErrorType = chain.RoundErrorType(err)
+		rd.Error = err
 		return err
 	}}
 }
@@ -212,20 +212,20 @@ func histAttrs(t *testing.T, m metricdata.Metrics) []map[string]string {
 // rec.Rounds carries what happened on its own attempt, so "which node is
 // failing" stays answerable when the balancer moved the call between rounds.
 func TestRoundsAreRecordedPerAttempt(t *testing.T) {
-	e := WrapClientExecutor(stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	e := WrapClientExecutor(stubChain{run: func(ctx context.Context, _ chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 		var err error
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			err = round(ctx, rec, fn)
 			if err == nil {
 				break
 			}
 		}
 		return err
-	}}, "redis", "redis:cache")
+	}}, "redis", "redis:cache", NewOTelMetrics())
 	op := chain.Operation{Request: chain.Request{Action: "get"}}
 	rec := &chain.Recorder{}
 	var i int
-	err := e.Execute(context.Background(), op, rec, func(ctx context.Context) error {
+	err := e.Execute(context.Background(), op, rec, func(ctx context.Context, _ *chain.Round) error {
 		i++
 		if i == 1 {
 			return errutil.Explain(nil, "transient")
@@ -248,14 +248,14 @@ func TestRoundsAreRecordedPerAttempt(t *testing.T) {
 func TestProducedObservabilityReachesEverySignal(t *testing.T) {
 	exp := withTracer(t)
 	rdr := withMeter(t)
-	exec := WrapClientExecutor(oneRound, "memcached", "memcached:svc")
+	exec := WrapClientExecutor(oneRound, "memcached", "memcached:svc", NewOTelMetrics())
 	op := dbOperation()
 	rec := &chain.Recorder{}
 
-	err := exec.Execute(context.Background(), op, rec, func(context.Context) error {
-		rec.AddLogFields(log.String("cache", "hit"))
-		rec.AddSpanAttrs(attribute.String("cache.result", "hit"))
-		rec.AddMetricAttrs(attribute.String("cache.result", "hit"))
+	err := exec.Execute(context.Background(), op, rec, func(context.Context, *chain.Round) error {
+		rec.LastRound().AddLogFields(log.String("cache", "hit"))
+		rec.LastRound().AddSpanAttrs(attribute.String("cache.result", "hit"))
+		rec.LastRound().AddMetricAttrs(attribute.String("cache.result", "hit"))
 		return nil
 	})
 	assert.Error(t, err).Nil()
@@ -287,8 +287,8 @@ func TestProducedObservabilityReachesEverySignal(t *testing.T) {
 	_, has := attemptAttrs[0]["cache.result"]
 	assert.That(t, has).False("a call-level label must not reach the attempt grain")
 
-	// And the record kept what the client reported, so a caller can read it back.
-	assert.Number(t, len(rec.Observed.LogFields)).Equal(1)
+	// And the round kept what the client reported, so a caller can read it back.
+	assert.Number(t, len(rec.Rounds[0].Observed.LogFields)).Equal(1)
 }
 
 // TestDeclaredSpanKind proves the emitter opens the call's span with the kind the
@@ -298,35 +298,36 @@ func TestProducedObservabilityReachesEverySignal(t *testing.T) {
 // edge on the other side.
 func TestDeclaredSpanKind(t *testing.T) {
 	exp := withTracer(t)
-	e := WrapClientExecutor(oneRound, "kafka", "kafka:svc")
+	e := WrapClientExecutor(oneRound, "kafka", "kafka:svc", NewOTelMetrics())
 
 	declared := chain.Operation{
 		Request: chain.Request{Action: "publish"},
 		Observe: chain.Observe{Metric: chain.Metric{Name: "messaging.client"},
 			Span: chain.Span{Kind: trace.SpanKindProducer}},
 	}
-	assert.Error(t, e.Execute(context.Background(), declared, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), declared, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })).Nil()
+	// An unspecified kind is the CLIENT edge.
+	assert.Error(t, e.Execute(context.Background(), dbOperation(), new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })).Nil()
 
 	spans := exp.GetSpans()
 	assert.Number(t, len(spans)).Equal(2)
 	assert.That(t, spans[0].SpanKind).Equal(trace.SpanKindProducer)
-	// An undeclared kind is the CLIENT edge: these calls reach another
+	// An unspecified kind is the CLIENT edge: these calls reach another
 	// service, a database or a broker, never the current process.
 	assert.That(t, spans[1].SpanKind).Equal(trace.SpanKindClient)
 }
 
-// TestDeclaredOperationEmitsTwoGrains proves a call that declared its operation
-// reports the call level and the attempt level under the operation's own metric
-// prefix, and stops reporting the undeclared layer's generic duration.
+// TestDeclaredOperationEmitsTwoGrains proves a call reports the call level and
+// the attempt level under the operation's own metric prefix, and does not also
+// report the layer's generic duration.
 func TestDeclaredOperationEmitsTwoGrains(t *testing.T) {
 	rdr := withMeter(t)
-	exec := WrapClientExecutor(twoAttempts, "memcached", "svc")
+	exec := WrapClientExecutor(twoAttempts, "memcached", "svc", NewOTelMetrics())
 	op := dbOperation()
 
 	boom := errutil.Explain(nil, "transient")
 	var calls int
-	err := exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
+	err := exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context, *chain.Round) error {
 		calls++
 		if calls < 2 {
 			return boom
@@ -349,25 +350,6 @@ func TestDeclaredOperationEmitsTwoGrains(t *testing.T) {
 	assert.Slice(t, histPairs(t, attempts)).Equal([]string{"error|", "ok|"})
 }
 
-// TestUndeclaredOperationKeepsHistoricalSignals proves a call that declared no
-// operation still reports exactly what this layer has always reported, so a
-// deployment on the pre-migration path sees no change.
-func TestUndeclaredOperationKeepsHistoricalSignals(t *testing.T) {
-	rdr := withMeter(t)
-	exec := WrapClientExecutor(oneRound, "redis", "svc")
-
-	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
-
-	got := collect(t, rdr)
-	_, ok := got["resilience.client.duration"]
-	assert.That(t, ok).True()
-	_, hasOp := got["db.client.operation.duration"]
-	assert.That(t, hasOp).False()
-	// The status counter is the one signal both paths carry.
-	_, hasCalls := got["resilience.client.calls"]
-	assert.That(t, hasCalls).True()
-}
-
 // TestRejectedCallStillEmits proves a call a protection stage rejects before
 // touching the downstream still reports at BOTH grains: the call level and the
 // status counter fire, and the refusal lands in the attempt level as its own
@@ -375,12 +357,12 @@ func TestUndeclaredOperationKeepsHistoricalSignals(t *testing.T) {
 // volume is visible next to served volume instead of being silently absent.
 func TestRejectedCallStillEmits(t *testing.T) {
 	rdr := withMeter(t)
-	exec := WrapClientExecutor(firstServedThenRejected(), "memcached", "svc")
+	exec := WrapClientExecutor(firstServedThenRejected(), "memcached", "svc", NewOTelMetrics())
 	op := dbOperation()
 
 	// First call spends the burst; the second is rejected before running fn.
-	assert.Error(t, exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
-	assert.Error(t, exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
+	assert.Error(t, exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })).Nil()
+	assert.Error(t, exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })).Is(chain.ErrRateLimited)
 
 	got := collect(t, rdr)
 	call, ok := got["db.client.operation.duration"]

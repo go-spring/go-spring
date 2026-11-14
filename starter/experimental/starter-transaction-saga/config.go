@@ -25,12 +25,6 @@ type Config struct {
 	// is enough; set it to false to import the module without contributing beans.
 	Enabled bool `value:"${enabled:=true}"`
 
-	// Tracing wires the otel [Observer] so each Saga step emits a child span
-	// (one for the action, one for each compensation) on the globals installed by
-	// starter-otel. It defaults to true and costs almost nothing without
-	// starter-otel, since the global tracer is then a no-op.
-	Tracing bool `value:"${tracing:=true}"`
-
 	// RecoverOnStart makes the starter scan the durable Store at startup and
 	// compensate any saga left in flight by a crash (backward recovery). It
 	// defaults to true. With the in-memory default Store the scan is always empty

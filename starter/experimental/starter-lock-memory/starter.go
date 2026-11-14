@@ -55,12 +55,12 @@ func init() {
 // observe adapter by default; observe.enabled=false opts out. Timing knobs
 // (TTL, renew, retry) are not configured here — they are per-acquire
 // [lock.Option] values, identical across every backend.
-func newLocker(c Config) (lock.Locker, error) {
+func newLocker(c Config, obs lock.Observer) (lock.Locker, error) {
 	inner := lock.NewMemoryLocker()
 	if !c.ObserveEnabled {
 		return inner, nil
 	}
-	return lock.Observe(inner, "memory")
+	return lock.ObserveWith(inner, "memory", obs), nil
 }
 
 // destroyLocker closes the Locker (passes through the observe wrapper).

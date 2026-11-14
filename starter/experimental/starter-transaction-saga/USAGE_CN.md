@@ -193,7 +193,6 @@ func (s *OrderService) place(ctx context.Context, id string) (transaction.Result
 # --- saga --------------------------------------------------------------------
 # 三个 key 全部默认开；blank import 即可。此处列出便于发现。
 spring.transaction.saga.enabled=true
-spring.transaction.saga.tracing=true
 
 # 启动恢复扫描。⚠ 默认内存 Store 下是 no-op（重启即丢日志）；只有接了持久化
 # Store 才真正生效 —— 见下。
@@ -217,7 +216,7 @@ spring.observability.trace.sampler-ratio=1.0
 **预期输出**（故障演练 —— `place(ctx, "order-1")`，NotifyUser 失败）：
 
 ```
-... saga coordinator created tracing=true
+... saga coordinator created metrics=true
 ... inventory: deducted 2 for order-1
 ... payment: charged 50 for order-1
 ... payment: refunded pay:order-1        # 补偿按步骤逆序执行
@@ -247,7 +246,7 @@ gs.Run()
   ├─ bean 装配: Store 注入协调器；StepRegistry + Store + Coordinator 注入恢复 Runner
   ├─ Rooter/bean 构造: 你的代码在此调用 reg.Register(...) —— 这就是注册必须
   │   在装配期而非 Runner 里做的原因
-  ├─ 日志: "saga coordinator created tracing=<v>"
+  ├─ 日志: "saga coordinator created metrics=<v>"
   ├─ Runner 执行（除非持久化 Store 里留有 StatusRunning 快照，恢复 Runner 首跑
   │   是 no-op）—— 绝不令启动失败
   └─ SIGTERM: 标准容器停机；无 saga 专属 drain
@@ -274,7 +273,7 @@ moment a durable-Store starter contributes its own transaction.Store"）。
    `StepResults`。
 5. **步骤 3 Action 失败**：失败错误先追加进 `Result.Errors`（被补偿的 saga 仍能解释为何
    回滚）；随后 `compensate` 按**逆序**跑已成功步骤 —— ChargePayment.Compensate(token) →
-   DeductInventory.Compensate —— 各自在与 action 相同的 retry 策略与 observer 下执行；
+   DeductInventory.Compensate —— 各自在与 action 相同的 retry 策略与 span 下执行；
    被触及的步骤若 Compensate 为 nil，置 `StatusCompensationFailed` 并记为不可逆（上抛，
    绝不静默跳过）。
 6. **finish**：已提交 saga 的日志被**删除**（无需恢复）；被补偿/失败 saga 的日志**保留**
@@ -298,7 +297,6 @@ in the log"（coordinator.go）。重试复用 `resilience.Policy`（"default" e
 | key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.transaction.saga.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` —— 缺省即开启。`false` 导入模块但不贡献任何 bean（测试二进制要类型不要装配时有用）。 | 误设 `false` → 无 Coordinator bean → 装配期 autowire `transaction.Coordinator` 失败（可见，不静默）。 |
-| `spring.transaction.saga.tracing` | bool | `true` | 协调器构造时挂 `transaction.SagaObserver{}` → 在 starter-otel 全局上为每个步骤相位开一个 otel 子 span。无 starter-otel 时是 no-op（无 span 也无告警）。 | 期望 trace 却没引 starter-otel → 什么都没有；且任何地方都不报错。 |
 | `spring.transaction.saga.recover-on-start` | bool | `true` | 注册恢复 `gs.Runner`：扫描 `Store.Pending()` 找 `StatusRunning` 快照并逐个补偿（backward recovery）。⚠ **与 store seam 耦合**：默认内存 `MemoryStore` 重启后扫描恒空 —— 除非持久化 Store starter 生效（如 `spring.transaction.saga.store=gorm` + starter-transaction-saga-gorm），此 key 实际是死 key。 | 持久化 store 下设 `false` → 崩溃遗留 saga 永不补偿（静默不一致）；无持久化 store 设 `true` → no-op、无告警。 |
 
 由**其他模块**持有、在此联动的 key（不属于本 starter 配置面）：
@@ -350,7 +348,7 @@ res, err := svc.place(ctx, "order-1")
 - Trace（需 starter-otel）：每相位一个 span，`saga.action <step>` / `saga.compensate
   <step>`，属性 `saga.id`、`saga.step`、`saga.phase`；失败以 error 状态记录。按服务名查
   Jaeger；被补偿的 saga 呈现为 action span 失败 + 其下的 compensate span。
-- 日志：tag `AppDef`；`saga coordinator created tracing=…` 与 `saga recovery: …` 系列。
+- 日志：tag `AppDef`；`saga coordinator created metrics=…` 与 `saga recovery: …` 系列。
 - 无 metrics、无健康指标（见 §6）。
 
 ---
@@ -365,7 +363,7 @@ res, err := svc.place(ctx, "order-1")
 | 两个并发 saga 互相覆盖 | 未用 `WithSagaID` → id 退回方法名，每方法只剩一个日志槽 | 边缘处设 id：`transaction.WithSagaID(ctx, id)`。 |
 | 结果里出现 `StatusCompensationFailed` | 补偿报错，或已成功步骤的 Compensate 为 nil | 查 `Result.Errors`；让 Compensate 幂等并配 `Step.Retry`；遗留的失败日志按运维积压处理。 |
 | `Recover requires a Store` 错误 | 无 store 的协调器被手动调用 `Recover` | 只影响手工 Recover；starter 恒挂内存 store，出现即说明协调器是手搓的。 |
-| `tracing=true` 却无 span | 未引 starter-otel / observability 关闭 | 引入 starter-otel 并配 `spring.observability.*`；否则 observer 是静默 no-op。 |
+| 引了 starter-otel 却无 span | observability 关闭 | 配 `spring.observability.*`；无 starter-otel 时全局 tracer 是 no-op。 |
 | `execute` 返回错误但账本残留部分效果 | Compensate 不幂等，或忽略递入的 Action result | 基于递入 `result`（token/id）补偿，副作用按 saga id 键控；恢复后可能重放。 |
 
 ## 6. 设计体检表

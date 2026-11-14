@@ -1,18 +1,14 @@
 # starter-echo Cloud-Native Example
 
 A self-contained flagship for starter-echo that composes the full cloud-native
-capability set in one app — **health**, **service discovery**, **resilience**,
-**observability** and **dynamic configuration** — with no external services or
-docker required.
+capability set in one app — **health**, **resilience**, **observability** and
+**dynamic configuration** — with no external services or docker required.
 
 ## Capabilities
 
 - **Health**: a `health.Indicator` bean is aggregated by `starter-actuator` on
   its management port (`:9370`). Toggling it flips `/readyz` between `200` and
   `503` while `/health` stays up.
-- **Service discovery**: a `discovery.NewStaticDiscovery` backend hands out the
-  app's own echo address (`:8082`); the app resolves it client-side and dials it
-  end-to-end.
 - **Resilience**: the builtin `"default"` driver rate-limits an arbitrary
   function (`Executor.Execute` → `ErrRateLimited`) and an inbound route
   (`/limited` → `429`).
@@ -48,7 +44,6 @@ In another terminal, exercise each capability:
 curl http://127.0.0.1:9370/readyz                 # health
 curl http://127.0.0.1:8082/greeting               # dynamic config (edit ./mount to hot-reload)
 for i in $(seq 1 15); do curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8082/limited; done
-curl http://127.0.0.1:8082/                       # discovery resolves the app itself
 ```
 
 ## Smoke Test

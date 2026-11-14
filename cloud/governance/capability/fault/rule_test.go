@@ -21,8 +21,6 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/matcher"
-	"go-spring.org/spring/conf"
-	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -49,12 +47,12 @@ func TestActionMatch_Matches(t *testing.T) {
 	}
 }
 
-// TestRule_Matches pins the three positive axes in [Rule.Matches]: Service by
-// exact compare (no catch-all), Action by the one-of match, Metadata by
-// subset — a call may carry dimensions the rule does not name, and a key the
-// rule names must be present with an equal value.
-func TestRule_Matches(t *testing.T) {
-	base := Rule{
+// TestRuleCore_Matches pins the three positive axes: Service by exact compare
+// (no catch-all), Action by the one-of match, Metadata by subset — a call may
+// carry dimensions the rule does not name, and a key the rule names must be
+// present with an equal value.
+func TestRuleCore_Matches(t *testing.T) {
+	base := RuleCore{
 		Name:          "r",
 		Service:       "svc",
 		ActionMatch:   matcher.ActionMatch{Prefix: "GET /users"},
@@ -76,109 +74,96 @@ func TestRule_Matches(t *testing.T) {
 	assert.That(t, base.Matches(Target{Service: "svc", Action: "GET /users/1"})).False() // named key absent
 }
 
-// TestRule_Roll pins the dose semantics: Latency applies to EVERY attempt
-// regardless of Rate, the error draws at Rate (0 never, 1 always) and carries
-// the rule's identity, kind and class onto the Result.
-func TestRule_Roll(t *testing.T) {
-	// Rate 0 + latency: the delay is drawn on every attempt, never an error.
-	r := Rule{Name: "slow", Service: "svc", Latency: 10 * time.Millisecond, Error: ErrorReset, Class: ClassBusiness}
+// TestRuleCore_Dose pins the dose semantics: Latency applies to EVERY attempt
+// regardless of Rate, and the effect draws at Rate (0 never, 1 always).
+func TestRuleCore_Dose(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+
+	// Rate 0 + latency: the delay is drawn on every attempt, never an effect.
+	r := RuleCore{Name: "slow", Service: "svc", Latency: 10 * time.Millisecond}
+	b := &Budget{}
 	for range 20 {
-		o := r.roll()
-		assert.That(t, o.Fired()).True()
-		assert.That(t, o.Inject).False()
-		assert.Number(t, o.Delay).Equal(10 * time.Millisecond)
+		d := r.Dose(b, now)
+		assert.That(t, d.Inject).False()
+		assert.Number(t, d.Delay).Equal(10 * time.Millisecond)
 	}
 
-	// Rate 1: every attempt injects, carrying the identity and the declared kind/class.
-	r2 := Rule{Name: "dead", Service: "svc", Rate: 1, Error: ErrorTimeout, Class: ClassPermanent}
+	// Rate 1: every attempt injects.
+	r2 := RuleCore{Name: "dead", Service: "svc", Rate: 1}
+	b2 := &Budget{}
 	for range 20 {
-		o := r2.roll()
-		assert.That(t, o.Inject).True()
-		assert.String(t, o.Name).Equal("dead")
-		assert.String(t, o.Error).Equal(ErrorTimeout)
-		assert.String(t, o.Class).Equal(ClassPermanent)
+		d := r2.Dose(b2, now)
+		assert.That(t, d.Inject).True()
+		assert.Number(t, d.Delay).Equal(time.Duration(0))
 	}
 
-	// An unarmed rule rolls a zero Result: nothing it governs is affected.
-	o := Rule{Name: "idle", Service: "svc"}.roll()
-	assert.That(t, o.Fired()).False()
+	// An unarmed rule draws nothing.
+	d := RuleCore{Name: "idle", Service: "svc"}.Dose(&Budget{}, now)
+	assert.That(t, d.Inject).False()
+	assert.Number(t, d.Delay).Equal(time.Duration(0))
 }
 
-// TestRule_LatencyJitterBounds: with LatencyJitter J, every draw lands in
+// TestRuleCore_StartAfterAndWindows pins the time axis: nothing fires before
+// StartAfter, and an On/Off pair alternates eligibility from that anchor.
+func TestRuleCore_StartAfterAndWindows(t *testing.T) {
+	start := time.Unix(1_700_000_000, 0)
+
+	r := RuleCore{Name: "delayed", Service: "svc", Rate: 1, StartAfter: time.Second}
+	b := &Budget{}
+	assert.That(t, r.Dose(b, start).Inject).False() // starts the clock, not the fire
+	assert.That(t, r.Dose(b, start.Add(500*time.Millisecond)).Inject).False()
+	assert.That(t, r.Dose(b, start.Add(time.Second)).Inject).True()
+
+	// On 10s / Off 10s from StartAfter.
+	r2 := RuleCore{Name: "flaky", Service: "svc", Rate: 1, On: 10 * time.Second, Off: 10 * time.Second}
+	b2 := &Budget{}
+	assert.That(t, r2.Dose(b2, start).Inject).True() // phase 0, inside On
+	assert.That(t, r2.Dose(b2, start.Add(9*time.Second)).Inject).True()
+	assert.That(t, r2.Dose(b2, start.Add(10*time.Second)).Inject).False() // Off
+	assert.That(t, r2.Dose(b2, start.Add(19*time.Second)).Inject).False()
+	assert.That(t, r2.Dose(b2, start.Add(20*time.Second)).Inject).True() // next On
+}
+
+// TestRuleCore_Every pins the deterministic alternative to Rate: every Nth
+// matching call fires, counted per rule identity.
+func TestRuleCore_Every(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	r := RuleCore{Name: "nth", Service: "svc", Every: 3}
+	b := &Budget{}
+	want := []bool{false, false, true, false, false, true}
+	for i, w := range want {
+		if got := r.Dose(b, now).Inject; got != w {
+			t.Fatalf("call %d: inject = %v, want %v", i+1, got, w)
+		}
+	}
+}
+
+// TestRuleCore_Validate pins the cross-field constraints: Rate and Every are
+// alternatives, and On/Off is a pair.
+func TestRuleCore_Validate(t *testing.T) {
+	assert.Error(t, (&RuleCore{Name: "both", Rate: 0.5, Every: 2}).Validate()).NotNil()
+	assert.Error(t, (&RuleCore{Name: "half", On: time.Second}).Validate()).NotNil()
+	assert.Error(t, (&RuleCore{Name: "half", Off: time.Second}).Validate()).NotNil()
+	assert.Error(t, (&RuleCore{Name: "ok", Rate: 0.5}).Validate()).Nil()
+	assert.Error(t, (&RuleCore{Name: "ok", Every: 2}).Validate()).Nil()
+	assert.Error(t, (&RuleCore{Name: "ok", On: time.Second, Off: time.Second}).Validate()).Nil()
+}
+
+// TestRuleCore_LatencyJitterBounds: with LatencyJitter J, every draw lands in
 // [Latency-J, Latency+J] clamped to ≥ 0; the midpoint over many draws stays
 // near Latency.
-func TestRule_LatencyJitterBounds(t *testing.T) {
+func TestRuleCore_LatencyJitterBounds(t *testing.T) {
 	const base, jitter = 100 * time.Millisecond, 80 * time.Millisecond
-	r := Rule{Name: "jitter", Latency: base, LatencyJitter: jitter}
+	r := RuleCore{Name: "jitter", Latency: base, LatencyJitter: jitter}
+	b := &Budget{}
+	now := time.Unix(1_700_000_000, 0)
 	var sum time.Duration
-	for i := 0; i < 200; i++ {
-		d := r.roll()
+	for range 200 {
+		d := r.Dose(b, now)
 		assert.That(t, d.Delay >= base-jitter).True()
 		assert.That(t, d.Delay <= base+jitter).True()
 		sum += d.Delay
 	}
 	mid := sum / 200
 	assert.That(t, mid > base-40*time.Millisecond && mid < base+40*time.Millisecond).True()
-}
-
-// TestRule_BindsMatchAndAction pins that a rule's Match and Action — fault's own
-// types, not chain's — bind from the flattened properties a platform writes.
-// Both are reached by reflect kind rather than a registered converter, so what
-// matters is the spelling: match.<key>.<op> per metadata dimension, action.exact
-// / action.prefix for the interface.
-func TestRule_BindsMatchAndAction(t *testing.T) {
-	storage := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
-		"rules[0].name":               "gin-users",
-		"rules[0].service":            "gin",
-		"rules[0].action.exact":       "GET /users/{id}",
-		"rules[0].match.tenant.exact": "acme",
-		"rules[0].match.region.exact": "cn",
-		"rules[0].rate":               "1",
-		"rules[1].name":               "redis",
-		"rules[1].service":            "redis:cache",
-		"rules[1].action.prefix":      "GET /users",
-	}))
-	var c Config
-	assert.Error(t, conf.Bind(storage, &c)).Nil()
-
-	assert.Number(t, len(c.Rules)).Equal(2)
-	r0 := c.Rules[0]
-	assert.String(t, r0.Service).Equal("gin")
-	assert.String(t, r0.ActionMatch.Exact).Equal("GET /users/{id}")
-	assert.String(t, r0.ActionMatch.Prefix).Equal("")
-	assert.String(t, r0.MetadataMatch["tenant"].Exact).Equal("acme")
-	assert.String(t, r0.MetadataMatch["region"].Exact).Equal("cn")
-	assert.Number(t, int(c.Rules[1].Rate)).Equal(0)
-
-	// The bound rule governs exactly the call it names: same service, same
-	// interface, matching metadata — and nothing else.
-	assert.That(t, r0.Matches(Target{Service: "gin", Action: "GET /users/{id}",
-		Metadata: map[string]string{"tenant": "acme", "region": "cn"}})).True()
-	assert.That(t, r0.Matches(Target{Service: "gin", Action: "GET /users/{id}",
-		Metadata: map[string]string{"tenant": "acme"}})).False() // region missing
-	assert.That(t, r0.Matches(Target{Service: "gin", Action: "POST /orders",
-		Metadata: map[string]string{"tenant": "acme", "region": "cn"}})).False()
-}
-
-// TestRule_ExprRejectsBadValues pins the single-field boundary on the path
-// that owns it: the binder evaluates each field's expr tag, so a bad dose, an
-// unknown vocabulary word or an empty name never becomes a Rule at all.
-func TestRule_ExprRejectsBadValues(t *testing.T) {
-	bad := []map[string]any{
-		{"rules[0].name": "", "rules[0].rate": "0.5"},
-		{"rules[0].name": "r", "rules[0].rate": "1.5"},
-		{"rules[0].name": "r", "rules[0].rate": "-0.1"},
-		{"rules[0].name": "r", "rules[0].latency": "-1ms"},
-		{"rules[0].name": "r", "rules[0].latency-jitter": "-1ms"},
-		{"rules[0].name": "r", "rules[0].max-duration": "-1s"},
-		{"rules[0].name": "r", "rules[0].max-affected": "-1"},
-		{"rules[0].name": "r", "rules[0].error": "boom"},
-		{"rules[0].name": "r", "rules[0].error": ""},
-		{"rules[0].name": "r", "rules[0].class": "sometimes"},
-		{"rules[0].name": "r", "rules[0].class": ""},
-	}
-	for _, props := range bad {
-		var c Config
-		assert.Error(t, conf.Bind(flatten.NewPropertiesStorage(flatten.MapProperties(props)), &c)).NotNil()
-	}
 }

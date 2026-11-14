@@ -121,11 +121,14 @@ func (c Config) validate() error {
 }
 
 // newBackend builds the discovery.Discovery backend for the given Config.
-func newBackend(ctx *gs.ContextProvider, c Config, name string) (discovery.Discovery, error) {
+func newBackend(ctx *gs.ContextProvider, c Config, name string, discFactory discovery.ObserverFactory) (discovery.Discovery, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
-	obs, err := discovery.NewObserver(obsSystem, name)
+	if discFactory == nil {
+		return nil, errutil.Explain(nil, "discovery: observer factory is required")
+	}
+	obs, err := discFactory.New(obsSystem, name)
 	if err != nil {
 		return nil, err
 	}

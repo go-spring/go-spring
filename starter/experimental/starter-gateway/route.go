@@ -28,7 +28,7 @@
 // gateway down.
 //
 // Upstreams are either direct (http(s)://host:port) or discovery-backed
-// (lb://<service>), the latter reusing cloud/discovery + cloud/governance/capability/loadbalance.
+// (lb://<service>), the latter reusing cloud/discovery + cloud/governance/dataplane/outbound/loadbalance.
 // Forwarding runs through cloud/governance/dataplane/outbound/resilience for retry/circuit-breaking, and the
 // gateway contributes /metrics to the actuator management port.
 package StarterGateway
@@ -114,8 +114,8 @@ type RouteRaw struct {
 		Discovery string `value:"${discovery:=}"`
 		// The load-balancing strategy and outlier suspension for this route's
 		// lb:// upstream are NOT keys here: they are governance rules matched by
-		// "gateway:<route-id>" (client.loadbalance.services[N].balancer / .outlier-threshold /
-		// .outlier-suspend-for), applied to the live pool on every change.
+		// "gateway:<route-id>" (client.loadbalance.services[N].balancer / .request-failures /
+		// .suspend-for), applied to the live pool on every change.
 	} `value:"${upstream}"`
 
 	Resilience struct {

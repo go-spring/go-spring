@@ -85,7 +85,7 @@ func TestServiceRuleWinsOutright(t *testing.T) {
 		return e.Execute(context.Background(), chain.Operation{
 			Service: "redis:cache",
 			Request: chain.Request{Action: "GET /x"},
-		}, new(chain.Recorder), func(context.Context) error { return boom })
+		}, new(chain.Recorder), func(context.Context, *chain.Round) error { return boom })
 	}
 
 	// The service rule (threshold 1) governs even though an interface rule with
@@ -94,5 +94,5 @@ func TestServiceRuleWinsOutright(t *testing.T) {
 	assert.Error(t, e.Execute(context.Background(), chain.Operation{
 		Service: "redis:cache",
 		Request: chain.Request{Action: "GET /x"},
-	}, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
+	}, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })).Is(chain.ErrCircuitOpen)
 }

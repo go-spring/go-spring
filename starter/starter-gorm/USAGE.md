@@ -153,7 +153,7 @@ spring.governance.client.resilience.open-duration=5s
 spring.governance.client.resilience.max-retries=1
 spring.governance.client.resilience.timeout=500ms
 # Endpoint selection rides the same label: spring.governance.client.loadbalance.services[N].balancer /
-# outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" rebuild the
+# request-failures / suspend-for for "gorm:mysql:orders-db" rebuild the
 # entry's chain from scratch (see cloud/governance/README.md §3.1).
 ```
 
@@ -161,9 +161,9 @@ Every dialect that dials through discovery builds its chain with a suspension tr
 it under the entry's service label as `lbMgr.Chain(resolver, label)` is called — the
 `*loadbalance.Manager` bean is injected into the module ctor and threaded down to the dialect's
 `Build` — the same label that
-already carries its protection policy — so `balancer` / `outlier-threshold` / `outlier-suspend-for`
+already carries its protection policy — so `balancer` / `request-failures` / `suspend-for`
 rebuild the chain (a fresh balancer, tracker and pool), without restarting or rebuilding the client. The dialer's only outcome signal is the
-dial itself, so `outlier-threshold` evicts instances that keep refusing *connections*; query
+dial itself, so `request-failures` evicts instances that keep refusing *connections*; query
 failures belong to the resilience executor. Direct (`addr`/`host`-only) entries have no candidate
 set, so these keys are inert for them.
 

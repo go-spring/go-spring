@@ -56,7 +56,8 @@ type RouterRegister func(h *server.Hertz)
 // via the RouterRegister); this adapter only drives its start/stop according to
 // the Go-Spring readiness signal.
 type SimpleHertzServer struct {
-	h *server.Hertz
+	h   *server.Hertz
+	obs Observer
 }
 
 // NewSimpleHertzServer builds a *server.Hertz listening on the configured
@@ -71,7 +72,7 @@ type SimpleHertzServer struct {
 // resolving per request, so a config swap on the bean takes effect without
 // re-resolution. prop is the load-test convention bean — the application.s when it provides
 // one, go-spring.s default otherwise — handed to the inbound LoadTest middleware.
-func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governance.Runtime, prop traffic.Propagator) (*SimpleHertzServer, error) {
+func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governance.Runtime, prop traffic.Propagator, obs Observer) (*SimpleHertzServer, error) {
 	opts := []config.Option{
 		server.WithHostPorts(cfg.Addr),
 		server.WithReadTimeout(cfg.ReadTimeout),
@@ -95,7 +96,7 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governanc
 
 	h := server.New(opts...)
 
-	if err := applyMiddlewares(h, cfg, center, prop); err != nil {
+	if err := applyMiddlewares(h, cfg, center, prop, obs); err != nil {
 		return nil, err
 	}
 

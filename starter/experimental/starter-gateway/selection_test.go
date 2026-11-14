@@ -23,7 +23,8 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -55,12 +56,12 @@ func TestClientIP(t *testing.T) {
 // different clients spread across both — which is the whole reason the key is
 // computed on the proxy path.
 func TestSelectionHashKeyAffinity(t *testing.T) {
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 	chain, err := mgr.Chain(context.Background(), gatewaySource(t, "10.0.0.1:80", "10.0.0.2:80"), gatewayLabel("orders"))
 	assert.Error(t, err).Nil()
 
 	pickFor := func(clientIP string) string {
-		pick, err := chain.Pick(context.Background(), loadbalance.PickInfo{HashKey: clientIP})
+		pick, err := chain.Pick(context.Background(), balancer.PickInfo{HashKey: clientIP}, nil)
 		assert.Error(t, err).Nil()
 		pick.Complete(context.Background(), nil)
 		return pick.Endpoint.Addr
@@ -79,11 +80,11 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
 		Service: gatewayLabel("orders"),
 		Selection: loadbalance.Selection{
-			Balancer:               loadbalance.ConsistentHash,
+			Balancer:               balancer.ConsistentHash,
 			ConsistentHashReplicas: 100,
 		},
 	}}})
-	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.ConsistentHash)
+	assert.That(t, chain.Selection().Balancer).Equal(balancer.ConsistentHash)
 
 	pinned := pickFor("203.0.113.7")
 	for range 8 {
@@ -116,4 +117,14 @@ func TestClientIPHeadersAreNotTheOnlySource(t *testing.T) {
 	var r http.Request
 	r.RemoteAddr = ""
 	assert.That(t, clientIP(&r)).Equal("")
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

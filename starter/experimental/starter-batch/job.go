@@ -82,9 +82,24 @@ func NewJob(name string, steps ...batch.Step) (JobDefinition, error) {
 // other beans), implement [JobDefinition] on your own type and register it with
 // gs.Provide directly, exporting as JobDefinition.
 func Provide(name string, steps ...batch.Step) {
-	gs.Provide(func() (JobDefinition, error) { return NewJob(name, steps...) }).
+	gs.Provide(func(obs batch.Observer) (JobDefinition, error) {
+		return newJob(name, steps, obs)
+	}).
 		Name(name).
 		Export(gs.As[JobDefinition]())
+}
+
+// NewJobWithObserver is [NewJob] with an explicit observability adapter.
+func NewJobWithObserver(name string, obs batch.Observer, steps ...batch.Step) (JobDefinition, error) {
+	return newJob(name, steps, obs)
+}
+
+// newJob is the shared constructor.
+func newJob(name string, steps []batch.Step, obs batch.Observer) (JobDefinition, error) {
+	if name == "" {
+		return nil, errutil.Explain(nil, "batch: job definition name must not be empty")
+	}
+	return &staticJob{name: name, steps: steps, obs: obs}, nil
 }
 
 // staticJob is a JobDefinition whose steps are fixed at registration time. It
@@ -93,6 +108,7 @@ func Provide(name string, steps ...batch.Step) {
 type staticJob struct {
 	name  string
 	steps []batch.Step
+	obs   batch.Observer
 }
 
 func (j *staticJob) JobName() string { return j.name }
@@ -105,5 +121,9 @@ func (j *staticJob) Build() (*batch.Job, error) {
 	// definition's own step list.
 	steps := make([]batch.Step, len(j.steps))
 	copy(steps, j.steps)
-	return &batch.Job{Name: j.name, Steps: steps}, nil
+	job := &batch.Job{Name: j.name, Steps: steps}
+	if j.obs != nil {
+		job = job.WithObserver(j.obs)
+	}
+	return job, nil
 }

@@ -61,8 +61,9 @@ type Client struct {
 // rabbitmq client has no seam for the resilience executor, so there is no
 // governance: the observer emits the span, metrics and access log, and nothing
 // throttles or retries.
-func NewClient(conn *amqp.Connection, serviceLabel string, prop traffic.Propagator) *Client {
-	obs := observability.NewOperationObserver("rabbitmq", serviceLabel)
+func NewClient(conn *amqp.Connection, serviceLabel string, prop traffic.Propagator, obsFactory observability.Metrics) *Client {
+
+	obs := observability.NewOperationObserver("rabbitmq", serviceLabel, obsFactory)
 	return &Client{Conn: conn, InnerPublisher: NewObsPublisher(nil, obs, prop), obs: obs}
 }
 

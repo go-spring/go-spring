@@ -38,7 +38,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/lock"
 	"go-spring.org/cloud/security"
 	"go-spring.org/cloud/traffic"
@@ -198,7 +198,9 @@ func init() {
 
 // memory_cache registers the in-process cache under the luohua driver name.
 func init() {
-	gs.Provide(func() (*cache.Cache, error) { return NewLuohuaCache() }).Name("luohua")
+	gs.Provide(func(obs cache.Observer) (*cache.Cache, error) {
+		return cache.New(&byteCache{m: make(map[string]luohuaValue)}, cache.WithObserver(obs))
+	}).Name("luohua")
 }
 
 // propagate registers luohua's wire vocabulary into the otel trace propagator.

@@ -57,7 +57,7 @@ type endpointSliceDiscovery struct {
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported sync and log line is labelled with, and its gauge
 	// callbacks are released by Close.
-	obs *discovery.Observer
+	obs discovery.Observer
 
 	mu       sync.Mutex // guards entries and watchers
 	entries  map[string]*esEntry
@@ -100,7 +100,7 @@ func (h *watcherHandle) stop() {
 // empty, otherwise from the kubeconfig file) and returns an informer-backed
 // backend. The client is built eagerly so a missing ServiceAccount or bad
 // kubeconfig fails at startup.
-func newEndpointSliceDiscovery(cfg Config, obs *discovery.Observer) (*endpointSliceDiscovery, error) {
+func newEndpointSliceDiscovery(cfg Config, obs discovery.Observer) (*endpointSliceDiscovery, error) {
 	restCfg, err := buildRESTConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -297,7 +297,7 @@ func (d *endpointSliceDiscovery) Close() error {
 }
 
 // slicesToEndpoints flattens EndpointSlices into discovery endpoints, selecting
-// the port per Config and carrying ready/zone as health and metadata.
+// the port per Config and carrying ready/zone as health and locality.
 func slicesToEndpoints(cfg Config, slices []*discoveryv1.EndpointSlice) []discovery.Endpoint {
 	var eps []discovery.Endpoint
 	for _, sl := range slices {
@@ -309,15 +309,15 @@ func slicesToEndpoints(cfg Config, slices []*discoveryv1.EndpointSlice) []discov
 		for i := range sl.Endpoints {
 			e := &sl.Endpoints[i]
 			ready := e.Conditions.Ready == nil || *e.Conditions.Ready
-			var md map[string]string
-			if e.Zone != nil && *e.Zone != "" {
-				md = map[string]string{discovery.MetaKeyZone: *e.Zone}
+			var zone string
+			if e.Zone != nil {
+				zone = *e.Zone
 			}
 			for _, addr := range e.Addresses {
 				eps = append(eps, discovery.Endpoint{
-					Addr:     net.JoinHostPort(addr, portStr),
-					Healthy:  ready,
-					Metadata: md,
+					Addr:    net.JoinHostPort(addr, portStr),
+					Healthy: ready,
+					Zone:    zone,
 				})
 			}
 		}

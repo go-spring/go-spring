@@ -97,15 +97,18 @@ func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 	// The user's interceptor never sees a span: it annotates the ctx and
 	// forwards, exactly as the README's recipe says.
 	user := CommandInterceptor(func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+		return func(ctx context.Context, peer chain.Peer, cmd string, args []interface{}) (interface{}, error) {
 			ctx = attrs.WithSpanAttributes(ctx, attribute.String("tenant", "acme"))
-			return next(ctx, cmd, args)
+			return next(ctx, peer, cmd, args)
 		}
 	})
 	// The resilience layer declares the command's identity and the executor
 	// emits from it — one merged layer.
-	exec := observability.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc")
-	c := NewConn(inner, user, resilienceInterceptor(exec, "svc", testProp))
+	exec := observability.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc", nil)
+	sink := func(ctx context.Context, _ chain.Peer, cmd string, args []interface{}) (interface{}, error) {
+		return inner.DoContext(ctx, cmd, args...)
+	}
+	c := NewConn(sink, user, resilienceInterceptor(exec, "svc", testProp))
 
 	ctx := attrs.WithSpanAttributes(context.Background(),
 		attribute.String("deployment", "canary"))
@@ -129,7 +132,7 @@ func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 // assertion comes from the resilience wrapper above it.
 type passthroughExecutor struct{}
 
-func (passthroughExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
-	return fn(ctx)
+func (passthroughExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
+	return fn(ctx, rec.NewRound())
 }
 func (passthroughExecutor) Close() error { return nil }

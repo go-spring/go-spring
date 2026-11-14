@@ -283,7 +283,7 @@ detail 的 SQL（截断至 512 字节）。resilience 层是 executor 链条上�
 | 指标 | `db.client.operation.duration`（直方图，s）——每次调用，含重试 | `db.system`、`db.operation`、`status` |
 | 指标 | `db.client.attempt.duration`（直方图，s）——每次下游尝试 | `db.system`、`db.operation`、`status` |
 | 指标 | `db.client.active_requests`（up-down counter） | `db.system`、`db.operation` |
-| 指标 | `resilience.client.calls`（counter） | `system=tdengine`、`service`、`status=ok\|error`，另有完备的 `resilience.error_type`（门禁词、`downstream` 或 `canceled`） |
+| 指标 | `resilience.client.calls`（counter） | `system=tdengine`、`service`、`status=ok\|error`，另有完备的 `resilience.error_type`（门禁词或 `call_timeout`、`connect_failed`、`resource_exhausted`、`context_canceled` 或 `unknown`） |
 | 日志 | tag `_app_tdengine_access` | db.system=tdengine db.operation=… status duration_ms；错误 → Warn，成功且带 SQL → Debug，普通成功 → Info |
 
 未引入 starter-otel 时，span/指标是 no-op（全局 provider 为空）——只有访问日志产出，

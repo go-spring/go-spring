@@ -206,7 +206,6 @@ func (s *OrderService) place(ctx context.Context, txID string, qty, cost int) (t
 # --- tcc ---------------------------------------------------------------------
 # 三个 key 全部默认开；blank import 即可。此处列出便于发现。
 spring.transaction.tcc.enabled=true
-spring.transaction.tcc.tracing=true
 
 # 启动恢复扫描。⚠ 默认内存 Store 下是 no-op（重启即丢日志）；只有存在持久化
 # tcc.Store bean 才真正生效。注意：与 saga（starter-transaction-saga-gorm）不同，
@@ -228,7 +227,7 @@ spring.observability.metrics.path=/metrics
 **预期输出**（故障演练 —— `place(ctx, "order-rollback", 2, 999)`）：
 
 ```
-... tcc coordinator created tracing=true
+... tcc coordinator created metrics=true
 commit path OK: Committed                    （自测里路径 1 先跑）
 rollback path OK: Cancelled - tcc: participant FreezeBalance Try: insufficient
 ```
@@ -264,7 +263,7 @@ gs.Run()
   ├─ bean 装配: Store 注入协调器；registry + Store + Coordinator 注入恢复 Runner
   ├─ Rooter/bean 构造: 你的代码在此调用 reg.Register(...) —— 装配期注册是硬性
   │   要求（恢复按方法名重建参与者）
-  ├─ 日志: "tcc coordinator created tracing=<v>"
+  ├─ 日志: "tcc coordinator created metrics=<v>"
   ├─ Runner 执行（除非持久化 Store 留有非终态快照，恢复 Runner 是 no-op）
   │   —— 绝不令启动失败
   └─ SIGTERM: 标准容器停机；无 tcc 专属 drain
@@ -310,7 +309,6 @@ group。
 | key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.transaction.tcc.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` —— 缺省即开启。`false` 导入模块但不贡献任何 bean。 | 误设 `false` → 无 Coordinator bean → 装配期 autowire `tcc.Coordinator` 失败（可见）。 |
-| `spring.transaction.tcc.tracing` | bool | `true` | 构造时挂 `transaction.TccObserver{}` → 在 starter-otel 全局上为每个参与者相位开一个 otel 子 span（`tcc.try/confirm/cancel <name>`）。无 starter-otel 时是 no-op。 | 期望 trace 却没引 starter-otel → 什么都没有，且无任何告警。 |
 | `spring.transaction.tcc.recover-on-start` | bool | `true` | 注册恢复 `gs.Runner`：扫描 `Store.Pending()` 找**非终态**快照（`Trying`/`Confirming`/`Cancelling`）并推向已决结果 —— `Confirming` 正向 Confirm，否则逆向 Cancel。⚠ **与 store seam 耦合且当前为死 key**：没有随仓的持久化 TCC Store starter；内存 store 重启后扫描恒空。自备 `tcc.Store` bean 才能激活。 | 持久化 store 下设 `false` → 崩溃遗留事务永不收敛（静默不一致）；无持久化 store 设 `true` → no-op、无告警。 |
 
 由**其他模块**持有的联动 key：`spring.observability.*`（starter-otel）。注意代码中**不存在**
@@ -378,7 +376,7 @@ go run ./example | grep -E 'commit path OK|rollback path OK'
   `tcc.cancel <…>`，属性 `tcc.id`、`tcc.participant`、`tcc.phase`；失败以 error 状态记录。
   [example-otel](example-otel/) 端到端验证了这条链（`docker compose up -d` 后 `go run .`，
   程序查询 Jaeger API 断言服务 `transaction-tcc-otel-example` 的 trace 存在）。
-- 日志：tag `AppDef`；`tcc coordinator created tracing=…` 与 `tcc recovery: …` 系列。
+- 日志：tag `AppDef`；`tcc coordinator created metrics=…` 与 `tcc recovery: …` 系列。
 - 无 metrics、无健康指标（见 §6）。
 
 ---
@@ -394,7 +392,7 @@ go run ./example | grep -E 'commit path OK|rollback path OK'
 | 并发事务重复预留 | 预留未按 tx id 键控 → Try 重放不是 no-op（违反防悬挂） | 一切预留以事务 id 为键（`WithTransactionID`），照 example 的账本做。 |
 | `StatusConfirmFailed` 且 `Execute` 返回 nil 错误 | Confirm 最终失败 —— 设计上不算 try 错误 | 对 Confirm 重试/告警（`Participant.Retry` 非零）；查 `Result.Errors`；不存在 Confirm 后的 Cancel 回退。 |
 | Cancel 报 "already released" 类错误 | Cancel 不幂等 / 不耐空回滚 | 让 Cancel 容忍缺失的预留（nil tried 值）—— 见 example 的 `cancel`。 |
-| `tracing=true` 却无 span | 未引 starter-otel / observability 关闭 | 引入 starter-otel 并配 `spring.observability.*`。 |
+| 引了 starter-otel 却无 span | observability 关闭 | 配 `spring.observability.*`。 |
 
 ## 6. 设计体检表
 

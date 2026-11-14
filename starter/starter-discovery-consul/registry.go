@@ -46,14 +46,14 @@ type consulRegistry struct {
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported attempt and log line is labelled with.
-	obs *registration.Observer
+	obs registration.Observer
 }
 
 // newConsulRegistry returns a registry writing through client (the shared
 // center client; the agent was already probed when client was built) with c's
 // TTL and auto-deregistration window. It does NOT close client — the owner
 // (consulCenter, or the standalone fallback in starter.go) does.
-func newConsulRegistry(c ConsulConfig, client *api.Client, obs *registration.Observer) (*consulRegistry, error) {
+func newConsulRegistry(c ConsulConfig, client *api.Client, obs registration.Observer) (*consulRegistry, error) {
 	if client == nil {
 		return nil, errutil.Explain(nil, "discovery-consul: nil consul client")
 	}
@@ -73,9 +73,18 @@ func newConsulRegistry(c ConsulConfig, client *api.Client, obs *registration.Obs
 
 // serviceID returns the Consul service instance id: the caller-supplied ID, or a
 // stable one derived from the service name and advertised address.
+// Consul's own metadata keys: the catalog has no dedicated fields for these
+// attributes, so [Instance.Version], [Instance.Zone] and [Instance.Scheme]
+// ride the meta map under these keys.
+const (
+	metaKeyVersion = "version"
+	metaKeyZone    = "zone"
+	metaKeyScheme  = "scheme"
+)
+
 // registrationMeta folds the instance's routing dimensions (version, zone,
 // scheme) into the meta map Consul stores: the catalog has no dedicated fields
-// for them, and the discovery read side restores them from these reserved keys.
+// for them, and the discovery read side restores them from these keys.
 func registrationMeta(reg discovery.Instance) map[string]string {
 	if reg.Version == "" && reg.Zone == "" && reg.Scheme == "" {
 		return reg.Metadata
@@ -85,13 +94,13 @@ func registrationMeta(reg discovery.Instance) map[string]string {
 		md[k] = v
 	}
 	if reg.Version != "" {
-		md[discovery.MetaKeyVersion] = reg.Version
+		md[metaKeyVersion] = reg.Version
 	}
 	if reg.Zone != "" {
-		md[discovery.MetaKeyZone] = reg.Zone
+		md[metaKeyZone] = reg.Zone
 	}
 	if reg.Scheme != "" {
-		md[discovery.MetaKeyScheme] = reg.Scheme
+		md[metaKeyScheme] = reg.Scheme
 	}
 	return md
 }
@@ -127,7 +136,7 @@ func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) e
 	}
 	id := serviceID(reg)
 	checkID := "service:" + id
-	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
+	if err := registration.RegisterAttempt(ctx, r.obs, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
 		return r.upsert(reg)
 	}); err != nil {
 		return errutil.Explain(err, "discovery-consul: register %q", reg.ServiceName)
@@ -180,7 +189,7 @@ func (r *consulRegistry) reRegister(ctx context.Context, id string) error {
 	// instance's fields and joins the attempt's own span: the retry being
 	// reported and the span recording it are one event in the trace, not two
 	// unconnected ones.
-	return r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonSelfHeal, func(actx context.Context) error {
+	return registration.RegisterAttempt(ctx, r.obs, reg.ServiceName, registration.ReasonSelfHeal, func(actx context.Context) error {
 		err := r.upsert(reg)
 		if err != nil {
 			log.Error(actx, starterTag, err, "consul re-register failed; the heartbeat retries it",
@@ -243,7 +252,7 @@ func (r *consulRegistry) UpdateWeight(ctx context.Context, reg discovery.Instanc
 		return errutil.Explain(nil, "discovery-consul: update weight for unregistered instance %q", id)
 	}
 	last.Weight = normalizeWeight(weight)
-	if err := r.obs.WeightChange(ctx, last.ServiceName, func(context.Context) error {
+	if err := registration.WeightChange(ctx, r.obs, last.ServiceName, func(context.Context) error {
 		return r.upsert(last)
 	}); err != nil {
 		return errutil.Explain(err, "discovery-consul: update weight %q", last.ServiceName)
@@ -327,7 +336,7 @@ func (r *consulRegistry) Deregister(ctx context.Context, reg discovery.Instance)
 	}
 	delete(r.regs, id)
 	r.mu.Unlock()
-	if err := r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(context.Context) error {
+	if err := registration.DeregisterAttempt(ctx, r.obs, reg.ServiceName, func(context.Context) error {
 		err := r.client.Agent().ServiceDeregister(id)
 		var statusErr api.StatusError
 		if errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound {

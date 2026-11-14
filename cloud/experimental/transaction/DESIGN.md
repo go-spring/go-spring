@@ -14,9 +14,9 @@ different failure semantics and it is honest to keep them separate.
   failure of a later step, in reverse order.
 - Persist a saga log via `Store` so a crashed process can resume compensation;
   backward recovery only.
-- Expose an `Observer` seam; the parent package ships otel-backed observers
-  (`SagaObserver` / `TccObserver` / `AtObserver`, see observe.go) while the
-  model subpackages stay otel-free.
+- Open standard OTel spans from the parent package's `BeginSagaSpan` /
+  `BeginTccSpan` / `BeginAtSpan` (see observe.go) while the model subpackages
+  stay otel-free. Metrics are the only observer seam (`MetricsObserver`).
 - Refuse isolation. Intermediate saga states are visible to concurrent readers;
   business code must guard dirty reads with a status flag or a `cloud/lock`.
 - Refuse SQL parsing / undo-log generation. That would be the AT model, which

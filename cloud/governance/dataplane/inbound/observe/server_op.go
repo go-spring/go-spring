@@ -94,10 +94,17 @@ type ServerSpan struct {
 
 // ServerMetric is the metric group of a server operation.
 type ServerMetric struct {
-	// Name is the metric family prefix ("http.server"). Empty means the request
-	// declares no signals and takes the observer's fallback path.
+	// Name is the metric family prefix ("http.server"). It is required unless
+	// Disabled says another layer already owns the family.
 	Name string
 
 	// Attrs are the bounded metric labels.
 	Attrs []attribute.KeyValue
+
+	// Disabled states that this route's request-plane family metrics are emitted
+	// by the protocol's own instrumentation, so this layer must not emit them
+	// again. The always-on resilience.server.* signals are still emitted: they
+	// are this layer's own, not the family's. It is the explicit form of "this
+	// route needs no declared metrics", replacing the old zero-value shorthand.
+	Disabled bool
 }

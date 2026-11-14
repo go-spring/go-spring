@@ -87,7 +87,7 @@ func TestEndpointSlice_ResolveNamedPortReadyZone(t *testing.T) {
 	}
 	assert.That(t, byAddr["10.0.0.1:8080"].Healthy).True()
 	assert.That(t, byAddr["10.0.0.2:8080"].Healthy).False()
-	assert.String(t, byAddr["10.0.0.1:8080"].Metadata["zone"]).Equal("z-a")
+	assert.String(t, byAddr["10.0.0.1:8080"].Zone).Equal("z-a")
 }
 
 func TestEndpointSlice_ResolveSinglePortFallback(t *testing.T) {

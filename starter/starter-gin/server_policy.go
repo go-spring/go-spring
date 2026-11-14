@@ -71,6 +71,13 @@ func resilienceServerPolicy(in *inbound.Inbound, prop traffic.Propagator) gin.Ha
 		// operation's metadata, so a rule matches match.traffic.exact=... like any other
 		// dimension.
 		op := observability.NewServerOperation(c.Request.Context(), prop, faultTarget(c).Action)
+		// gin owns its own http.server.* metrics, span and access log; the
+		// governance layer keeps its admission signals and stays out of the
+		// request family.
+		op.Observe = observability.ServerObserve{
+			Metric: observability.ServerMetric{Disabled: true},
+			Log:    observability.ServerLog{QuietSuccess: true},
+		}
 		err := in.Run(c.Request.Context(), op, func(ctx context.Context) error {
 			if served {
 				return nil // reentry guard: handler already ran this request
@@ -88,20 +95,29 @@ func resilienceServerPolicy(in *inbound.Inbound, prop traffic.Propagator) gin.Ha
 		})
 		var ref *inbound.Refusal
 		if errors.As(err, &ref) && !c.Writer.Written() {
-			c.AbortWithStatus(httpStatusFor(ref))
+			status := httpStatusFor(ref)
+			if ref.Verdict() == admission.VerdictFaultInjected {
+				if body := ref.Fault().Body; body != "" {
+					ct := ref.Fault().ContentType
+					if ct == "" {
+						ct = "text/plain; charset=utf-8"
+					}
+					c.Data(status, ct, []byte(body))
+					return
+				}
+			}
+			c.AbortWithStatus(status)
 		}
 	}
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429; an injected fault follows the class the rule
-// declared — a business failure (the caller's mistake) is 400, anything else is
-// 503. Mapping every injected fault to 503 would make "inject a 4xx" impossible
-// and would teach the caller that a healthy downstream is down.
+// rate/bulkhead rejections are 429; an injected fault answers with the status
+// the rule declared (a 4xx/5xx — the handler never ran).
 func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
-		if ref.Fault().Business() {
-			return http.StatusBadRequest
+		if s := ref.Fault().Status; s != 0 {
+			return s
 		}
 		return http.StatusServiceUnavailable
 	}

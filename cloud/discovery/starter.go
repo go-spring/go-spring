@@ -38,4 +38,8 @@ func init() {
 	gs.Provide(func(backends map[string]Discovery) *Manager {
 		return NewManager(backends)
 	}, gs.IndexArg(0, gs.TagArg("?"))).Caller(1)
+
+	// The package's default ObserverFactory bean: an application that
+	// contributes its own factory takes precedence.
+	gs.Provide(NewOTelObserverFactory).Condition(gs.OnMissingBean[ObserverFactory]()).Caller(1)
 }

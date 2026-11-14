@@ -220,7 +220,7 @@ gs.Run()
 | `upstream.target` | string | — | **事实必填**:`lb://<service>` 或 `http(s)://host[:port]`。缺失/畸形 → `parseError`(compile.go:379-392)。 | 路由编译失败。 |
 | *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `spring.governance.client.loadbalance.services[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 链路在 push 时整条重建换策略,不需要重载路由表。 |
 | `upstream.discovery` | string | "" | 覆盖顶层 `discovery` 的每路由后端。 | |
-| *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`spring.governance.client.loadbalance.services[N].outlier-threshold` / `.outlier-suspend-for`,`outlier-suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
+| *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`spring.governance.client.loadbalance.services[N].request-failures` / `.suspend-for`,`suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
 | `resilience.policy` | string | "" | 必须指向已存在的 `spring.gateway.resilience.<name>` key。⚠ 耦合:未知名字 → `unknown resilience policy` 编译错误(compile.go:236)。 | 启动失败 / reload 保留旧表。 |
 
 ⚠ **优先级耦合**:没有任何路由配 `priority` 时,匹配顺序按路由 id 排序(compile.go)。

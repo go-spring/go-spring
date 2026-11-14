@@ -91,6 +91,7 @@ type SimpleThriftServer struct {
 	cfg  Config
 	proc thrift.TProcessor
 	svr  *thrift.TSimpleServer
+	obs  Observer
 
 	// center is the runtime bean gs injects (nil in a standalone
 	// call); its resilience authority backs the inbound middleware Run installs.
@@ -100,7 +101,7 @@ type SimpleThriftServer struct {
 // NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server}
 // configuration. center is the injected runtime the inbound
 // middleware is armed from.
-func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governance.Runtime) *SimpleThriftServer {
+func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governance.Runtime, obs Observer) *SimpleThriftServer {
 	log.Debug(context.Background(), log.TagAppDef, "create thrift server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),
@@ -108,7 +109,7 @@ func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governanc
 			log.String("transport", cfg.Transport),
 		}
 	})
-	return &SimpleThriftServer{cfg: cfg, proc: proc, center: center}
+	return &SimpleThriftServer{cfg: cfg, proc: proc, center: center, obs: obs}
 }
 
 // newTransport builds a server transport honoring the client timeout and,
@@ -194,11 +195,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	// it costs a call frame and changes nothing else.
 	var mws []thrift.ProcessorMiddleware
 	if s.cfg.Observer.Tracing.Enabled || s.cfg.Observer.Metrics.Enabled {
-		mw, err := Observe()
-		if err != nil {
-			return err
-		}
-		mws = append(mws, mw)
+		mws = append(mws, ObserveWith(s.obs))
 	}
 	mws = append(mws, AccessLog())
 	admit, err := Admit(label.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center)

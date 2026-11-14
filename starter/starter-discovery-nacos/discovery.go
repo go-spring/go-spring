@@ -50,7 +50,7 @@ type nacosDiscovery struct {
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported sync and log line is labelled with.
-	obs *discovery.Observer
+	obs discovery.Observer
 
 	mu      sync.Mutex // guards entries
 	entries map[string]*nacosEntry
@@ -67,7 +67,7 @@ type nacosEntry struct {
 // newNacosDiscovery returns the read side of one block, backed by client. The
 // cache map is created here: a caller that builds the struct literally leaves
 // it nil and panics on the first Resolve.
-func newNacosDiscovery(client naming_client.INamingClient, group, cluster string, obs *discovery.Observer) *nacosDiscovery {
+func newNacosDiscovery(client naming_client.INamingClient, group, cluster string, obs discovery.Observer) *nacosDiscovery {
 	return &nacosDiscovery{
 		client:  client,
 		group:   group,
@@ -174,18 +174,20 @@ func (d *nacosDiscovery) subscribe(name string, e *nacosEntry) error {
 
 // instancesToEndpoints maps Nacos instances to discovery endpoints. Enable
 // maps to Disabled inverted (Nacos "enabled=false" is an operator removal);
-// an optional "scheme" metadata key carries transport selection.
+// the optional "scheme" and "zone" metadata keys carry transport selection
+// and locality.
 func instancesToEndpoints(instances []model.Instance) []discovery.Endpoint {
 	eps := make([]discovery.Endpoint, 0, len(instances))
 	for _, in := range instances {
 		eps = append(eps, discovery.Endpoint{
 			Addr:     fmt.Sprintf("%s:%d", in.Ip, in.Port),
-			Scheme:   in.Metadata[discovery.MetaKeyScheme],
+			Scheme:   in.Metadata[metaKeyScheme],
+			Zone:     in.Metadata[metaKeyZone],
 			Weight:   int(in.Weight),
 			Disabled: !in.Enable,
 			Healthy:  in.Healthy,
-			// The full metadata rides along, as in the other backends: zone /
-			// version attributes are what zone-aware selection reads.
+			// The full metadata rides along, as in the other backends: version
+			// attributes are what consumer selection reads.
 			Metadata: in.Metadata,
 		})
 	}

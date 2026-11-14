@@ -65,9 +65,9 @@ func operation(ctx context.Context, prop traffic.Propagator, system, kind, stmt 
 // SQL builder to learn the SQL an operation is about to build.
 //
 // Only the four data processors are supplied; gorm's noisy internal callbacks
-// (row processing, transaction bookkeeping) are not operations here, so
-// [Plugin.Operation] returns the zero Operation for them and the resilience
-// layer reports them as any other undeclared call.
+// (row processing, transaction bookkeeping) get a minimal declaration from
+// [Plugin.Operation] — the system and kind, no statement — so they still have
+// an identity, quieted by the operation's success-levelling.
 type Plugin struct {
 	system string
 	prop   traffic.Propagator
@@ -104,10 +104,10 @@ func (p *Plugin) Initialize(db *gorm.DB) error {
 }
 
 // Operation returns the semantic identity of the gorm operation kind is about to
-// run, for the resilience layer to pass explicitly to the executor. It returns
-// the zero [chain.Operation] for a kind this plugin does not supply (gorm:row,
-// gorm:raw), so the resilience layer reports those as any other call whose
-// identity is undeclared.
+// run, for the resilience layer to pass explicitly to the executor. A kind this
+// plugin does not supply (gorm:row, gorm:raw) still declares its identity — the
+// system and the kind, with no statement detail — because every call has one;
+// [chain.DBOp] levels its success line out of the everyday log instead.
 //
 // The SQL the operation is about to build is not known yet — gorm builds it
 // inside the very processor the resilience layer wraps — so the plugin dry-runs
@@ -118,11 +118,11 @@ func (p *Plugin) Initialize(db *gorm.DB) error {
 // statement, and the operation is built without detail.
 func (p *Plugin) Operation(tx *gorm.DB, kind string) chain.Operation {
 	if tx == nil || tx.Statement == nil {
-		return chain.Operation{}
+		return operation(context.Background(), p.prop, p.system, kind, "")
 	}
 	orig := p.orig[kind]
 	if orig == nil {
-		return chain.Operation{}
+		return operation(tx.Statement.Context, p.prop, p.system, kind, "")
 	}
 	orig(tx.Session(&gorm.Session{DryRun: true}))
 	return operation(tx.Statement.Context, p.prop, p.system, kind, tx.Statement.SQL.String())

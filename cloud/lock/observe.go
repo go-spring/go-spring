@@ -49,102 +49,124 @@ import (
 // span and passes its context down, so whatever instrumentation the client
 // library ships nests underneath it in the same trace.
 //
-// Two invariants:
-//   - lock.key is a caller-chosen resource name. It belongs on spans and in
-//     logs, never on a metric, where its cardinality is unbounded.
-//   - Every backend closes the lost channel on a voluntary release as well as
-//     on a real loss, so the two are told apart by whether Unlock ran first.
+// The observation itself goes through [Observer], whose default is the
+// OTel-backed [NewOTelObserver]; the access log stays on the log package.
 
 // lockTag is the static log tag of the lock access log (renders as
 // "_app_lock_access"); the backend's system is a log field, not part of the
 // tag.
 var lockTag = log.RegisterAppTag("lock", "access")
 
-// instrumentSet is this package's metric set: one per observed locker, resolved
-// when that locker is constructed. It holds no per-locker state — the system
-// label travels with each wrapper, not here.
-type instrumentSet struct {
-	total    metric.Int64Counter
-	duration metric.Float64Histogram
-	lost     metric.Int64Counter
-	held     metric.Int64UpDownCounter
+// componentName is the instrumentation componentName name every meter and tracer in this
+// package reports under.
+const componentName = "go-spring.org/cloud/lock"
+
+// OperationResult is one finished lock operation, as the observer reports it.
+type OperationResult struct {
+	// Status is ok | missed | error | not_held | lost.
+	Status string
+	// Duration is the operation's measured duration; for acquire it includes the
+	// blocking wait and retry time.
+	Duration time.Duration
+	// Err is the backend failure, when there was one.
+	Err error
 }
 
-// buildInstruments resolves this package's instruments against the meter
-// provider the otel starter installs before any bean is constructed. The
-// observed locker owns the set, so a failed registration fails construction
-// instead of silently dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
+// Observer receives the lock layer's observability events. It is the seam: the
+// decorator reports what happened in the lock's own vocabulary, and an
+// implementation decides how to record it — the default is OTel (see
+// [NewOTelObserver]). A nil Observer disables observation; implementations must
+// not block.
+type Observer interface {
+	// Operation records one finished lock operation.
+	Operation(ctx context.Context, system, operation string, r OperationResult)
+
+	// Held moves the number of locks currently held through this locker: +1 on a
+	// successful acquisition, -1 on release or loss.
+	Held(ctx context.Context, system string, delta int64)
+
+	// Lost records a lease lost while still in use.
+	Lost(ctx context.Context, system string)
+}
+
+// NewOTelObserver resolves the layer's instruments and returns the default
+// OTel-backed [Observer]. It is registered as the process's default bean.
+func NewOTelObserver() (Observer, error) {
 	m := otel.Meter(componentName)
-	in := &instrumentSet{}
+	o := &otelObserver{}
 	var err error
-	in.total, err = m.Int64Counter("lock.operation.total",
+	o.total, err = m.Int64Counter("lock.operation.total",
 		metric.WithDescription("Lock operations executed, by operation and status"),
 		metric.WithUnit("{operation}"))
 	if err != nil {
 		return nil, errutil.Explain(err, "lock: register lock.operation.total")
 	}
-	in.duration, err = m.Float64Histogram("lock.operation.duration",
+	o.duration, err = m.Float64Histogram("lock.operation.duration",
 		metric.WithDescription("Duration of lock operations; for acquire this includes the blocking wait and retry time"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	if err != nil {
 		return nil, errutil.Explain(err, "lock: register lock.operation.duration")
 	}
-	in.lost, err = m.Int64Counter("lock.lost.total",
+	o.lost, err = m.Int64Counter("lock.lost.total",
 		metric.WithDescription("Locks lost while still in use, because the lease expired or renewal failed"))
 	if err != nil {
 		return nil, errutil.Explain(err, "lock: register lock.lost.total")
 	}
-	in.held, err = m.Int64UpDownCounter("lock.held",
+	o.held, err = m.Int64UpDownCounter("lock.held",
 		metric.WithDescription("Locks currently held through this locker, by backend"),
 		metric.WithUnit("{lock}"))
 	if err != nil {
 		return nil, errutil.Explain(err, "lock: register lock.held")
 	}
-	return in, nil
+	return o, nil
 }
 
-// Observe returns a [Locker] that decorates inner with a client span per
-// operation, the lock.operation.total, lock.operation.duration,
-// lock.lost.total and lock.held metrics, and an access log, labelled with the
-// backend's system value. When starter-otel is not imported the global OTel
-// providers are no-ops, so the wrapper adds negligible overhead and changes no
-// behaviour.
-//
-// Instruments are resolved when the wrapper is constructed, so construction
-// fails if they cannot be registered. The tracer is looked up per use.
-//
-// A lock starter installs it with its backend's system value:
-//
-//	locker, err = lock.Observe(inner, "redis")
-func Observe(inner Locker, system string) (Locker, error) {
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return &observedLocker{
-		system: system,
-		inner:  inner,
-		ins:    ins,
-	}, nil
+// otelObserver adapts the layer's events to OTel metrics. The instruments are
+// resolved when the observer is constructed and hold no per-locker state.
+type otelObserver struct {
+	total    metric.Int64Counter
+	duration metric.Float64Histogram
+	lost     metric.Int64Counter
+	held     metric.Int64UpDownCounter
 }
 
-// componentName is the instrumentation componentName name every meter and tracer in this
-// package reports under.
-const componentName = "go-spring.org/cloud/lock"
+// Operation implements [Observer].
+func (o *otelObserver) Operation(ctx context.Context, system, operation string, r OperationResult) {
+	attrsOpt := metric.WithAttributes(
+		attribute.String("system", system),
+		attribute.String("operation", operation),
+		attribute.String("status", r.Status),
+	)
+	o.total.Add(ctx, 1, attrsOpt)
+	o.duration.Record(ctx, r.Duration.Seconds(), attrsOpt)
+}
+
+// Held implements [Observer].
+func (o *otelObserver) Held(ctx context.Context, system string, delta int64) {
+	o.held.Add(ctx, delta, metric.WithAttributes(attribute.String("system", system)))
+}
+
+// Lost implements [Observer].
+func (o *otelObserver) Lost(ctx context.Context, system string) {
+	o.lost.Add(ctx, 1, metric.WithAttributes(attribute.String("system", system)))
+}
+
+// ObserveWith decorates inner with observability, labelled with the backend's
+// system value. A nil observer disables observation.
+func ObserveWith(inner Locker, system string, obs Observer) Locker {
+	return &observedLocker{system: system, inner: inner, obs: obs}
+}
 
 type observedLocker struct {
 	system string
 	inner  Locker
-
-	// ins is the shared instrument set; the tracer is deliberately NOT held
-	// alongside it (see [componentName]).
-	ins *instrumentSet
+	obs    Observer
 }
 
-// startSpan opens the operation's client span.
-func (l *observedLocker) startSpan(ctx context.Context, op, key string) (context.Context, trace.Span) {
+// begin opens the span for one lock operation. Span handling is the STANDARD
+// OTel capability, not part of the metric seam.
+func (l *observedLocker) begin(ctx context.Context, op, key string) (context.Context, trace.Span) {
 	return otel.Tracer(componentName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
@@ -152,6 +174,19 @@ func (l *observedLocker) startSpan(ctx context.Context, op, key string) (context
 			attribute.String("lock.operation", op),
 			attribute.String("lock.key", key),
 		))
+}
+
+// end finishes the operation's span and reports its metric event. A nil
+// observer disables the metric.
+func (l *observedLocker) end(ctx context.Context, span trace.Span, op string, r OperationResult) {
+	span.SetAttributes(attribute.String("status", r.Status))
+	if r.Err != nil {
+		span.SetStatus(codes.Error, r.Err.Error())
+	}
+	span.End()
+	if l.obs != nil {
+		l.obs.Operation(ctx, l.system, op, r)
+	}
 }
 
 // statusOf maps an outcome to the status dimension every signal shares.
@@ -171,21 +206,12 @@ func statusOf(err error, acquired bool) string {
 	}
 }
 
-// record emits the duration metric and the access log for one finished
-// operation. One status value drives both, so the metric can never disagree
-// with the log. The log level carries the same outcome: an error or a lost
-// lease at Warn, a contended TryAcquire at Info, a plain success at Debug (lock
-// acquisition is frequent and uninteresting until it fails or misses).
+// record writes the access log for one finished operation. The log level
+// carries the same outcome: an error or a lost lease at Warn, a contended
+// TryAcquire at Info, a plain success at Debug (lock acquisition is frequent and
+// uninteresting until it fails or misses).
 func (l *observedLocker) record(ctx context.Context, op, key, status string, start time.Time, err error) {
 	elapsed := time.Since(start)
-	attrs := metric.WithAttributes(
-		attribute.String("system", l.system),
-		attribute.String("operation", op),
-		attribute.String("status", status),
-	)
-	l.ins.total.Add(ctx, 1, attrs)
-	l.ins.duration.Record(ctx, elapsed.Seconds(), attrs)
-
 	fields := func() []log.Field {
 		return []log.Field{
 			log.String("system", l.system),
@@ -206,14 +232,12 @@ func (l *observedLocker) record(ctx context.Context, op, key, status string, sta
 }
 
 func (l *observedLocker) Acquire(ctx context.Context, key string, opts ...Option) (Lock, error) {
+	ctx, span := l.begin(ctx, "acquire", key)
 	start := time.Now()
-	ctx, span := l.startSpan(ctx, "acquire", key)
 	held, err := l.inner.Acquire(ctx, key, opts...)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-	}
-	span.End()
-	l.record(ctx, "acquire", key, statusOf(err, err == nil), start, err)
+	status := statusOf(err, err == nil)
+	l.end(ctx, span, "acquire", OperationResult{Status: status, Duration: time.Since(start), Err: err})
+	l.record(ctx, "acquire", key, status, start, err)
 	if err != nil || held == nil {
 		return held, err
 	}
@@ -224,14 +248,12 @@ func (l *observedLocker) Acquire(ctx context.Context, key string, opts ...Option
 }
 
 func (l *observedLocker) TryAcquire(ctx context.Context, key string, opts ...Option) (Lock, bool, error) {
+	ctx, span := l.begin(ctx, "try_acquire", key)
 	start := time.Now()
-	ctx, span := l.startSpan(ctx, "try_acquire", key)
 	held, ok, err := l.inner.TryAcquire(ctx, key, opts...)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-	}
-	span.End()
-	l.record(ctx, "try_acquire", key, statusOf(err, err == nil && ok), start, err)
+	status := statusOf(err, err == nil && ok)
+	l.end(ctx, span, "try_acquire", OperationResult{Status: status, Duration: time.Since(start), Err: err})
+	l.record(ctx, "try_acquire", key, status, start, err)
 	if err != nil || !ok || held == nil {
 		return held, ok, err
 	}
@@ -243,17 +265,15 @@ func (l *observedLocker) Close() error { return l.inner.Close() }
 // observe wraps a held lock so its release and its loss are reported through
 // the same system the acquisition was.
 func (l *observedLocker) observe(ctx context.Context, inner Lock, key string) Lock {
-	l.ins.held.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("system", l.system),
-	))
+	if l.obs != nil {
+		l.obs.Held(ctx, l.system, 1)
+	}
 	// The loss is reported from a goroutine that outlives the call that
 	// acquired the lock, so the caller's context is long done by then. Carry
 	// the acquisition's span context forward so the loss lands in the same
 	// trace, but nothing else: rebuilding it on Background avoids pinning the
-	// caller's request-scoped values (or passing a cancelled ctx around) for
-	// as long as the lock is held.
-	// spanCtx is just the trace identity; lossCtx is the detached context the
-	// loss goroutine reports under — same trace, no request-scoped baggage.
+	// caller's request-scoped values (or passing a cancelled ctx around) for as
+	// long as the lock is held.
 	spanCtx := trace.SpanContextFromContext(ctx)
 	lossCtx := trace.ContextWithSpanContext(context.Background(), spanCtx)
 	h := &observedLock{
@@ -298,20 +318,16 @@ func (h *observedLock) Unlock(ctx context.Context) error {
 	// a silent loss. The Swap return halves the held gauge exactly once per
 	// handle — repeated Unlock calls must not under-count it.
 	firstUnlock := !h.released.Swap(true)
-	if firstUnlock {
-		h.locker.ins.held.Add(ctx, -1, metric.WithAttributes(
-			attribute.String("system", h.locker.system),
-		))
+	if firstUnlock && h.locker.obs != nil {
+		h.locker.obs.Held(ctx, h.locker.system, -1)
 	}
 
+	ctx, span := h.locker.begin(ctx, "unlock", h.key)
 	start := time.Now()
-	ctx, span := h.locker.startSpan(ctx, "unlock", h.key)
 	err := h.inner.Unlock(ctx)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-	}
-	span.End()
-	h.locker.record(ctx, "unlock", h.key, statusOf(err, err == nil), start, err)
+	status := statusOf(err, err == nil)
+	h.locker.end(ctx, span, "unlock", OperationResult{Status: status, Duration: time.Since(start), Err: err})
+	h.locker.record(ctx, "unlock", h.key, status, start, err)
 	return err
 }
 
@@ -336,12 +352,10 @@ func (h *observedLock) reportLost() {
 		return
 	}
 
-	h.locker.ins.held.Add(h.ctx, -1, metric.WithAttributes(
-		attribute.String("system", h.locker.system),
-	))
-	h.locker.ins.lost.Add(h.ctx, 1, metric.WithAttributes(
-		attribute.String("system", h.locker.system),
-	))
+	if h.locker.obs != nil {
+		h.locker.obs.Held(h.ctx, h.locker.system, -1)
+		h.locker.obs.Lost(h.ctx, h.locker.system)
+	}
 	log.Warn(h.ctx, lockTag, "lock lost while still held", append(fields(),
 		log.String("status", "lost"))...)
 }

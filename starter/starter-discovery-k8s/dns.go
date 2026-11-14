@@ -57,7 +57,7 @@ type dnsDiscovery struct {
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported sync and log line is labelled with, and its gauge
 	// callbacks are released by Close.
-	obs *discovery.Observer
+	obs discovery.Observer
 
 	mu      sync.Mutex // guards entries
 	entries map[string]*dnsEntry
@@ -73,7 +73,7 @@ type dnsEntry struct {
 
 // newDNSDiscovery builds a DNS-mode backend. A nil res selects
 // net.DefaultResolver; tests pass a fake.
-func newDNSDiscovery(cfg Config, res dnsResolver, obs *discovery.Observer) *dnsDiscovery {
+func newDNSDiscovery(cfg Config, res dnsResolver, obs discovery.Observer) *dnsDiscovery {
 	if res == nil {
 		res = net.DefaultResolver
 	}

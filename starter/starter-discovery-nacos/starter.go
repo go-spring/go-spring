@@ -117,8 +117,8 @@ type nacosBackend struct {
 	// obs and regObs are this block's two observability layers: the read-side
 	// sync observer (data plane) and the registration observer (control plane).
 	// They are independent by design and both are closed by the bean destructor.
-	obs    *discovery.Observer
-	regObs *registration.Observer
+	obs    discovery.Observer
+	regObs registration.Observer
 
 	// namespace/group scope the health probe's one-service listing the same
 	// way the startup probe scopes it.
@@ -130,7 +130,13 @@ type nacosBackend struct {
 // set) and both halves. The probe is the fail-fast: a misconfigured or
 // unreachable Nacos fails startup here, once per block; with Ping off (the
 // default) construction skips it.
-func newNacosBackend(c NacosConfig, name string) (*nacosBackend, error) {
+func newNacosBackend(c NacosConfig, name string, discFactory discovery.ObserverFactory, regFactory registration.ObserverFactory) (*nacosBackend, error) {
+	if discFactory == nil {
+		return nil, errutil.Explain(nil, "discovery: observer factory is required")
+	}
+	if regFactory == nil {
+		return nil, errutil.Explain(nil, "registration: observer factory is required")
+	}
 	if c.Server == "" {
 		return nil, errutil.Explain(nil, "discovery-nacos: server is required")
 	}
@@ -138,12 +144,12 @@ func newNacosBackend(c NacosConfig, name string) (*nacosBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	obs, err := discovery.NewObserver(obsSystem, name)
+	obs, err := discFactory.New(obsSystem, name)
 	if err != nil {
 		client.CloseClient()
 		return nil, err
 	}
-	regObs, err := registration.NewObserver(obsSystem, name)
+	regObs, err := regFactory.New(obsSystem, name)
 	if err != nil {
 		client.CloseClient()
 		return nil, err

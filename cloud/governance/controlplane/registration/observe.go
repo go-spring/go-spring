@@ -56,54 +56,13 @@ const (
 // obsNow reads the wall clock. A variable so tests can advance time.
 var obsNow = time.Now
 
-// instrumentSet is the registration instrument set: one per observer, resolved
-// when the observer is constructed. It holds no per-instance state — the value
-// the observable gauge reports lives in each Observer, not here.
-//
-// The gauge is created WITHOUT a callback on purpose; see [Observer.register]
-// for why a creation-time callback would report only the first block.
-type instrumentSet struct {
-	meter       metric.Meter
-	opDuration  metric.Float64Histogram
-	regAttempts metric.Int64Counter
-	registered  metric.Int64ObservableGauge
-}
-
-// buildInstruments resolves this package's instruments against the meter
-// provider the otel starter installs before any bean is constructed. The
-// observer owns the set, so a failed registration fails construction instead of
-// silently dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
-	m := otel.Meter(componentName)
-	in := &instrumentSet{meter: m}
-	var err error
-	in.opDuration, err = m.Float64Histogram("discovery.operation.duration",
-		metric.WithDescription("Duration of discovery-center registration operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	if err != nil {
-		return nil, errutil.Explain(err, "registration: register discovery.operation.duration")
-	}
-	in.regAttempts, err = m.Int64Counter("discovery.registration.attempts_total",
-		metric.WithDescription("Registration attempts against a discovery center, by reason and outcome"))
-	if err != nil {
-		return nil, errutil.Explain(err, "registration: register discovery.registration.attempts_total")
-	}
-	in.registered, err = m.Int64ObservableGauge("discovery.instance.registered",
-		metric.WithDescription("1 while this instance is published into the discovery center, 0 while it is not"))
-	if err != nil {
-		return nil, errutil.Explain(err, "registration: register discovery.instance.registered")
-	}
-	return in, nil
-}
-
 // Observer reports one configured registration block: the publish, deregister
 // and weight operations of that block and the "is this instance published"
 // gauge they feed. It is a layer the block owns — created by the block's
 // constructor, closed by its destructor — so the state it accumulates lives
 // exactly as long as the block that produced it, and two blocks in one process
 // cannot contaminate each other. Each observer resolves its own instrument set
-// at construction (see [buildInstruments]); only the state is per block.
+// at construction; only the state is per block.
 //
 // The two axes of that identity travel with every reading: system names the
 // backend implementation ("etcd", "nacos", ...), center names the configured
@@ -112,12 +71,105 @@ func buildInstruments() (*instrumentSet, error) {
 // centers at once (the discovery core drives every configured registry), so
 // without center the readings of two clusters would be one indistinguishable
 // series.
-type Observer struct {
+// Observer reports one configured registry block's WRITE side: publish,
+// deregister and weight-change operations, each wrapped in a span and counted
+// with its outcome, plus the gauge of currently registered instances. The read
+// side is the discovery package's observer; the two planes are independent.
+//
+// The two axes of the block's identity travel with every reading: system names
+// the backend implementation, center names the configured block. A nil Observer
+// reports nothing.
+type Observer interface {
+	// RegisterAttempt records one publish attempt, labelled with reason, and
+	// moves the published gauge to whether it succeeded.
+	RegisterAttempt(ctx context.Context, service, reason string, a Attempt)
+
+	// DeregisterAttempt records one deregister attempt. A failed deregister
+	// leaves the published gauge untouched.
+	DeregisterAttempt(ctx context.Context, service string, a Attempt)
+
+	// WeightChange records one weight-update attempt.
+	WeightChange(ctx context.Context, service string, a Attempt)
+
+	// System and Center report this block's identity.
+	System() string
+	Center() string
+
+	// Close releases the registered-instances gauge callback. It must be safe to
+	// call more than once.
+	Close() error
+}
+
+// Attempt is one registry operation's measured outcome.
+type Attempt struct {
+	// Status is ok | failed.
+	Status string
+	// Duration is the operation's measured duration.
+	Duration time.Duration
+}
+
+// ObserverFactory builds an [Observer] for one configured block. It is the
+// injection seam: a registry starter asks the factory for the block's observer.
+type ObserverFactory interface {
+	New(system, center string) (Observer, error)
+}
+
+// NewOTelObserverFactory returns the default OTel-backed [ObserverFactory].
+func NewOTelObserverFactory() (ObserverFactory, error) {
+	return otelObserverFactory{}, nil
+}
+
+// otelObserverFactory resolves no instruments itself: each block resolves its
+// own set.
+type otelObserverFactory struct{}
+
+// New implements [ObserverFactory].
+func (otelObserverFactory) New(system, center string) (Observer, error) {
+	if system == "" {
+		return nil, errutil.Explain(nil, "registration: observer system is required")
+	}
+	if center == "" {
+		return nil, errutil.Explain(nil, "registration: observer center is required")
+	}
+	m := otel.Meter(componentName)
+	o := &otelObserver{
+		system:    system,
+		center:    center,
+		meter:     m,
+		published: map[string]bool{},
+	}
+	var err error
+	o.opDuration, err = m.Float64Histogram("discovery.operation.duration",
+		metric.WithDescription("Duration of discovery-center registration operations"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
+	if err != nil {
+		return nil, errutil.Explain(err, "registration: register discovery.operation.duration")
+	}
+	o.regAttempts, err = m.Int64Counter("discovery.registration.attempts_total",
+		metric.WithDescription("Registration attempts against a discovery center, by reason and outcome"))
+	if err != nil {
+		return nil, errutil.Explain(err, "registration: register discovery.registration.attempts_total")
+	}
+	// The gauge is created WITHOUT a callback on purpose; see
+	// [Observer.register].
+	o.registered, err = m.Int64ObservableGauge("discovery.instance.registered",
+		metric.WithDescription("1 while this instance is published into the discovery center, 0 while it is not"))
+	if err != nil {
+		return nil, errutil.Explain(err, "registration: register discovery.instance.registered")
+	}
+	return o, nil
+}
+
+type otelObserver struct {
 	system string
 	center string
 
-	// ins is this block's instrument set, resolved at construction.
-	ins *instrumentSet
+	// meter and the instruments resolved against it at construction.
+	meter       metric.Meter
+	opDuration  metric.Float64Histogram
+	regAttempts metric.Int64Counter
+	registered  metric.Int64ObservableGauge
 
 	// regOnce registers this block's gauge callback on the set resolved at
 	// construction. It runs on first use so a block that never reports never
@@ -134,41 +186,23 @@ type Observer struct {
 	unregs    []metric.Registration
 }
 
-// NewObserver builds the observer for one configured block. system and center
-// are the values every instrument attribute and log field of that block carries,
-// so neither may be empty — an empty one would label the readings of this block
-// indistinguishably from another's, which is a defect that shows up only in a
-// dashboard, long after the config that caused it.
-func NewObserver(system, center string) (*Observer, error) {
-	if system == "" {
-		return nil, errutil.Explain(nil, "registration: observer system is required")
-	}
-	if center == "" {
-		return nil, errutil.Explain(nil, "registration: observer center is required")
-	}
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return &Observer{
-		system:    system,
-		center:    center,
-		ins:       ins,
-		published: map[string]bool{},
-	}, nil
+// NewObserver builds the default observer for one configured block. It is the
+// convenience entry for a backend that is not wired through the container.
+func NewObserver(system, center string) (Observer, error) {
+	return otelObserverFactory{}.New(system, center)
 }
 
 // System and Center report this block's identity — the values its instrument
 // attributes carry. A backend's log lines take them from here rather than from
 // its own copy, so a log line and a metric can never disagree about which block
 // they describe.
-func (o *Observer) System() string { return o.system }
+func (o *otelObserver) System() string { return o.system }
 
 // Center names the configured discovery block (see [NewObserver]).
-func (o *Observer) Center() string { return o.center }
+func (o *otelObserver) Center() string { return o.center }
 
 // attrs is the identity prefix every instrument of this block carries.
-func (o *Observer) attrs(extra ...attribute.KeyValue) []attribute.KeyValue {
+func (o *otelObserver) attrs(extra ...attribute.KeyValue) []attribute.KeyValue {
 	return append([]attribute.KeyValue{
 		attribute.String("system", o.system),
 		attribute.String("center", o.center),
@@ -182,7 +216,7 @@ func (o *Observer) attrs(extra ...attribute.KeyValue) []attribute.KeyValue {
 // pass-through as a nil injector in the direction's fault package: instrumentation is
 // declared by construction, and its absence must never decide whether an
 // operation runs.
-func (o *Observer) live() bool {
+func (o *otelObserver) live() bool {
 	if o == nil {
 		return false
 	}
@@ -202,10 +236,9 @@ func (o *Observer) live() bool {
 // creation-time callbacks would be silently dropped, so every block but the
 // first would report nothing. RegisterCallback is additive, and unlike creation
 // it is reversible.
-func (o *Observer) register() {
+func (o *otelObserver) register() {
 	o.regOnce.Do(func() {
-		in := o.ins
-		if reg, err := in.meter.RegisterCallback(o.observeRegistered, in.registered); err == nil {
+		if reg, err := o.meter.RegisterCallback(o.observeRegistered, o.registered); err == nil {
 			o.mu.Lock()
 			o.unregs = append(o.unregs, reg)
 			o.mu.Unlock()
@@ -216,17 +249,17 @@ func (o *Observer) register() {
 // ready registers this block's gauge callback. The instruments were resolved at
 // construction; calling this on every reporting path is cheap because [register]
 // is once-only.
-func (o *Observer) ready() {
+func (o *otelObserver) ready() {
 	o.register()
 }
 
 // observeRegistered reports this block's per-service publication state.
-func (o *Observer) observeRegistered(_ context.Context, ob metric.Observer) error {
+func (o *otelObserver) observeRegistered(_ context.Context, ob metric.Observer) error {
 	o.mu.Lock()
 	snapshot := make(map[string]bool, len(o.published))
 	maps.Copy(snapshot, o.published)
 	o.mu.Unlock()
-	registered := o.ins.registered
+	registered := o.registered
 	for service, ok := range snapshot {
 		var v int64
 		if ok {
@@ -241,7 +274,7 @@ func (o *Observer) observeRegistered(_ context.Context, ob metric.Observer) erro
 // It is the block destructor's obligation: a block that is torn down (and
 // rebuilt later, as a re-registered instance is) must not leave its callback
 // behind, or the same service would be reported twice.
-func (o *Observer) Close() error {
+func (o *otelObserver) Close() error {
 	if o == nil {
 		return nil
 	}
@@ -268,14 +301,14 @@ func StatusOf(err error) string {
 	return "ok"
 }
 
-// startOp opens the client span for one discovery-center operation. The span
-// attributes are namespaced (discovery.*) while the metric attributes are bare,
-// matching the other domain packages' instrumentation.
-func (o *Observer) startOp(ctx context.Context, op, service, reason string) (context.Context, trace.Span) {
-	o.ready()
+// startOp opens the standard OTel span for one discovery-center operation. Span
+// handling is the STANDARD OTel capability, not part of the metric seam. The
+// span attributes are namespaced (discovery.*) while the metric attributes are
+// bare, matching the other domain packages' instrumentation.
+func startOp(ctx context.Context, obs Observer, op, service, reason string) (context.Context, trace.Span) {
 	attrs := []attribute.KeyValue{
-		attribute.String("discovery.system", o.system),
-		attribute.String("discovery.center", o.center),
+		attribute.String("discovery.system", obs.System()),
+		attribute.String("discovery.center", obs.Center()),
 		attribute.String("discovery.operation", op),
 		attribute.String("discovery.service", service),
 	}
@@ -287,31 +320,21 @@ func (o *Observer) startOp(ctx context.Context, op, service, reason string) (con
 		trace.WithAttributes(attrs...))
 }
 
-// endOp closes the span and records the operation's duration.
-func (o *Observer) endOp(ctx context.Context, span trace.Span, op, service string, start time.Time, err error) {
-	o.ready()
+// endOp closes the standard span.
+func endOp(span trace.Span, err error) {
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 	}
 	span.End()
-	o.ins.opDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
-		o.attrs(
-			attribute.String("operation", op),
-			attribute.String("service", service),
-			attribute.String("status", StatusOf(err)),
-		)...))
 }
 
-// RegisterAttempt runs and reports one registration attempt against this
-// observer's discovery center: fn executes the attempt, and its error becomes the
-// attempt's outcome. It returns fn's error unchanged so the caller keeps its
-// normal error flow.
+// RegisterAttempt runs one publish attempt against this observer's discovery
+// center inside its standard span: fn executes the attempt, and its error
+// becomes the attempt's outcome. It returns fn's error unchanged so the caller
+// keeps its normal error flow.
 //
-// fn receives the context carrying the attempt's span: the span is created
-// here, so a backend that logs with its own context emits lines that join
-// nothing — a span and a log for the same event, unconnected. Taking fn's
-// context as a parameter (rather than returning it alongside a finisher) makes
-// threading it into the attempt the path of least resistance.
+// fn receives the context carrying the attempt's span, so a backend's log lines
+// join the attempt in the same trace.
 //
 // A backend reports at the seam BOTH its first publish and its background
 // re-registration funnel through, so a self-healing re-publish is covered too.
@@ -319,59 +342,98 @@ func (o *Observer) endOp(ctx context.Context, span trace.Span, op, service strin
 // re-publish; the distinction is what exposes an instance that is serving
 // while no longer discoverable.
 //
-// The gauge follows the outcome either way: a failed attempt means the instance
-// is not published (any more), which is exactly the state worth alerting on.
 // A panic inside fn is reported as a failed attempt before propagating, so an
 // aborted attempt never leaves the span and gauge dangling.
-func (o *Observer) RegisterAttempt(ctx context.Context, service, reason string, fn func(ctx context.Context) error) error {
-	if !o.live() {
+func RegisterAttempt(ctx context.Context, obs Observer, service, reason string, fn func(ctx context.Context) error) error {
+	if obs == nil {
 		return fn(ctx)
 	}
+	return runAttempt(ctx, obs, opRegister, service, reason, fn,
+		func(ctx context.Context, a Attempt) { obs.RegisterAttempt(ctx, service, reason, a) })
+}
+
+// DeregisterAttempt runs one deregistration attempt inside its standard span
+// and reports it through obs (see [RegisterAttempt] for the fn/context
+// contract). A FAILED deregister leaves the published state untouched — the
+// instance may well still be discoverable, and reporting it as gone would hide
+// a leak.
+func DeregisterAttempt(ctx context.Context, obs Observer, service string, fn func(ctx context.Context) error) error {
+	if obs == nil {
+		return fn(ctx)
+	}
+	return runAttempt(ctx, obs, opDeregister, service, "", fn,
+		func(ctx context.Context, a Attempt) { obs.DeregisterAttempt(ctx, service, a) })
+}
+
+// WeightChange runs one weight re-advertisement inside its standard span and
+// reports it through obs — the operation that keeps an instance discoverable
+// while it drains, and the one path the discovery core does not log (see
+// [RegisterAttempt] for the fn/context contract). It carries no reason: a
+// weight change is never a re-register.
+func WeightChange(ctx context.Context, obs Observer, service string, fn func(ctx context.Context) error) error {
+	if obs == nil {
+		return fn(ctx)
+	}
+	return runAttempt(ctx, obs, opUpdateWeight, service, "", fn,
+		func(ctx context.Context, a Attempt) { obs.WeightChange(ctx, service, a) })
+}
+
+// runAttempt measures fn inside its span and hands the outcome to record.
+func runAttempt(ctx context.Context, obs Observer, op, service, reason string, fn func(context.Context) error, record func(context.Context, Attempt)) error {
 	start := obsNow()
-	ctx, span := o.startOp(ctx, opRegister, service, reason)
+	ctx, span := startOp(ctx, obs, op, service, reason)
 	return finishAttempt(ctx, func(err error) {
-		o.endOp(ctx, span, opRegister, service, start, err)
-		o.ins.regAttempts.Add(ctx, 1, metric.WithAttributes(
-			o.attrs(
-				attribute.String("service", service),
-				attribute.String("reason", reason),
-				attribute.String("status", StatusOf(err)),
-			)...))
-		o.setPublished(service, err == nil)
+		endOp(span, err)
+		record(ctx, Attempt{Status: StatusOf(err), Duration: time.Since(start)})
 	}, fn)
 }
 
-// DeregisterAttempt runs and reports one deregistration attempt (see
-// [Observer.RegisterAttempt] for the fn/context contract). Unlike registration,
-// a FAILED deregister leaves the published state untouched — the instance may
-// well still be discoverable, and reporting it as gone would hide a leak.
-func (o *Observer) DeregisterAttempt(ctx context.Context, service string, fn func(ctx context.Context) error) error {
+// RegisterAttempt implements [Observer].
+func (o *otelObserver) RegisterAttempt(ctx context.Context, service, reason string, a Attempt) {
 	if !o.live() {
-		return fn(ctx)
+		return
 	}
-	start := obsNow()
-	ctx, span := o.startOp(ctx, opDeregister, service, "")
-	return finishAttempt(ctx, func(err error) {
-		o.endOp(ctx, span, opDeregister, service, start, err)
-		if err == nil {
-			o.setPublished(service, false)
-		}
-	}, fn)
+	o.ready()
+	o.recordDuration(ctx, opRegister, service, a)
+	o.regAttempts.Add(ctx, 1, metric.WithAttributes(
+		o.attrs(
+			attribute.String("service", service),
+			attribute.String("reason", reason),
+			attribute.String("status", a.Status),
+		)...))
+	o.setPublished(service, a.Status == "ok")
 }
 
-// WeightChange runs and reports one weight re-advertisement — the operation
-// that keeps an instance discoverable while it drains, and the one path the
-// discovery core does not log (see [Observer.RegisterAttempt] for the fn/context
-// contract). It carries no reason: a weight change is never a re-register.
-func (o *Observer) WeightChange(ctx context.Context, service string, fn func(ctx context.Context) error) error {
+// DeregisterAttempt implements [Observer].
+func (o *otelObserver) DeregisterAttempt(ctx context.Context, service string, a Attempt) {
 	if !o.live() {
-		return fn(ctx)
+		return
 	}
-	start := obsNow()
-	ctx, span := o.startOp(ctx, opUpdateWeight, service, "")
-	return finishAttempt(ctx, func(err error) {
-		o.endOp(ctx, span, opUpdateWeight, service, start, err)
-	}, fn)
+	o.ready()
+	o.recordDuration(ctx, opDeregister, service, a)
+	if a.Status == "ok" {
+		o.setPublished(service, false)
+	}
+}
+
+// WeightChange implements [Observer].
+func (o *otelObserver) WeightChange(ctx context.Context, service string, a Attempt) {
+	if !o.live() {
+		return
+	}
+	o.ready()
+	o.recordDuration(ctx, opUpdateWeight, service, a)
+}
+
+// recordDuration records one operation's duration with the operation/status
+// axes.
+func (o *otelObserver) recordDuration(ctx context.Context, op, service string, a Attempt) {
+	o.opDuration.Record(ctx, a.Duration.Seconds(), metric.WithAttributes(
+		o.attrs(
+			attribute.String("operation", op),
+			attribute.String("service", service),
+			attribute.String("status", a.Status),
+		)...))
 }
 
 // finishAttempt runs fn, reports the outcome through end, and returns fn's
@@ -394,7 +456,7 @@ func finishAttempt(ctx context.Context, end func(err error), fn func(ctx context
 //
 // The state is per service and lives as long as this observer: a discovery block
 // publishes exactly one service identity per process.
-func (o *Observer) setPublished(service string, ok bool) {
+func (o *otelObserver) setPublished(service string, ok bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.published[service] = ok

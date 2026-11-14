@@ -18,6 +18,7 @@ package StarterDubbo
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 
 	"dubbo.apache.org/dubbo-go/v3/filter"
@@ -78,10 +79,14 @@ func (f *dubboFaultFilter) Invoke(ctx context.Context, invoker base.Invoker, inv
 	if srv == nil {
 		return invoker.Invoke(ctx, inv)
 	}
-	if _, err := srv.Fire(ctx, faultTarget(inv)); err != nil {
+	if res, err := srv.Fire(ctx, faultTarget(inv)); err != nil {
 		// The call never reached the invoker: surface the injected failure (or
 		// the cancelled-latency context error) itself, so its kind survives into
-		// the result rather than collapsing to a generic one.
+		// the result rather than collapsing to a generic one. A declared body
+		// becomes the error message.
+		if res.Body != "" {
+			return &result.RPCResult{Err: errors.New(res.Body)}
+		}
 		return &result.RPCResult{Err: err}
 	}
 	return invoker.Invoke(ctx, inv)

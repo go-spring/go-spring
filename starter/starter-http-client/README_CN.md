@@ -36,7 +36,7 @@ go get go-spring.org/starter-http-client
 
 * [`discovery`](../../cloud/discovery) —— 设置了 `service-name` 时,`Resolver`
   持续维护最新的端点快照;
-* [`loadbalance`](../../cloud/governance/capability/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
+* [`loadbalance`](../../cloud/governance/dataplane/outbound/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
   (任意已注册策略,并可选离群剔除),传输层随即把请求主机改写为该端点;
 * [`resilience`](../../cloud/governance/dataplane/outbound/resilience) —— 可选的执行器包裹整条链路,使限流、
   熔断与重试保护每一次调用。由于它位于负载均衡器**之外**,重试会重新挑选一个
@@ -111,7 +111,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 韧性、故障注入与端点选择在这里**没有配置 key**:它们是按服务的策略,写在治理规则文档里(见
 cloud/governance/controlplane/source 的 USAGE_CN.md)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
 `http:<addr>`。单次请求超时来自 `spring.governance.client.resilience.timeout`;负载均衡策略与端点剔除来自
-命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
+命中该标签的规则上的 `balancer` / `request-failures` / `suspend-for`。
 
 本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按
 服务名路由(未配 `addr`)时 `discovery` 必填——均由 `starter-http-client/httpx` 施加。

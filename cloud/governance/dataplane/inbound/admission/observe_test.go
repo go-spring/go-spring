@@ -112,7 +112,11 @@ func TestGuardPublishesBulkhead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := New(id, Policy{MaxConcurrent: 1}, factories)
+	obs, err := NewOTelObserver()
+	if err != nil {
+		t.Fatalf("NewOTelObserver: %v", err)
+	}
+	g, err := New(id, Policy{MaxConcurrent: 1}, factories, WithObserver(obs))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -146,7 +150,11 @@ func TestGuardCloseStopsPublishing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := New(id, Policy{MaxConcurrent: 1}, factories)
+	obs, err := NewOTelObserver()
+	if err != nil {
+		t.Fatalf("NewOTelObserver: %v", err)
+	}
+	g, err := New(id, Policy{MaxConcurrent: 1}, factories, WithObserver(obs))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

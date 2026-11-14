@@ -1,30 +1,45 @@
 # fault
 
-`fault` 是进程内**故障注入**家族共享的、方向中立的内核：它持有规则文档、匹配词汇与注入序列。
-两个方向包包在它外面：[outbound/fault](../../dataplane/outbound/fault/) 在 resilience executor 的重试循环
-内部给一次出站尝试放火，[inbound/fault](../../dataplane/inbound/fault/) 在 handler 之前决定一次入站请求。
+`fault` 是进程内**故障注入**家族共享的、方向中立的**机制**：匹配词汇、两个方向共用的规则核心
+（RuleCore）、护栏状态模型与注入序列。两个方向包各自拥有**配置与效果**：
+[outbound/fault](../../dataplane/outbound/fault/) 定义 `ClientRule`/`ClientConfig`（错误类型 + class），
+在 resilience executor 的重试循环内部给一次出站尝试放火；
+[inbound/fault](../../dataplane/inbound/fault/) 定义 `ServerRule`/`ServerConfig`（服务端要返回的失败），
+在 handler 之前决定一次入站请求。一条规则无法表达其方向产生不了的效果。
 
 两个方向各持一份文档与内核、互不影响——给运行中的客户端或服务端"放火"，都能验证重试、
 熔断、per-attempt 超时、Fallback 真的会触发，而一侧的火碰不到另一侧。
+
+**目的与范围**：见 [SCOPE_CN.md](SCOPE_CN.md)。新增效果或注入接缝之前先读它。
 
 ## 能力
 
 - 两个接缝：`WrapClientExecutor`（client 侧 —— 包装 executor，让注入的故障落在重试/熔断循环**内部**）
   与 `Server.Fire`（server 侧 —— 在 handler 之前判断这次入站调用要不要点火）。两者都验证
   resilience，而非绕过它。
-- 配置集中、可热刷新。fault 随 resilience 共用同一个 `governance.Config`（也就是同一份
-  source 文档，见 [README 设计说明 §8](../../../../README.md)）；两个方向包各自持有**独立的职权对象**——
-  `*clientfault.Manager` 与 `*serverfault.Manager`，各自以 bean 形式注册——每个用自己的
-  `Refresh` 原地热更，运行时切换放火无需重启。
+- 配置集中、可热刷新。fault 有自己的控制面根（`controlplane/fault`，文档 `spring.fault.*`，
+  source 由部署方的 source starter 提供 `Source[controlplane/fault.Document]`），与 governance
+  平级、只共享传输；两个方向包各自持有**独立的职权对象**——`*clientfault.Manager` 与
+  `*serverfault.Manager`，各自以 bean 形式注册——每个用自己的 `Refresh` 原地热更，运行时
+  切换放火无需重启。
 - **一个方向一份配置**，一侧的火碰不到另一侧：`spring.fault.client.*` 烧出站调用，
   `spring.fault.server.*` 烧入站请求；每条**规则**各算自己的 MaxDuration/MaxAffected
   护栏——一场火自愈不会顺手关掉另一场。
 - 只有规则、没有顶层效果：每个方向就是一列规则，且每条规则必须**点名 service**，
   没有任何 catch-all。所有护栏计数都按规则身份各算各的——一场火自愈不会停掉另一场。
-- 四种注入类型：`generic`（可重试的注入错误）、`timeout`（`context.DeadlineExceeded`）、
-  `reset`（`syscall.ECONNRESET`）、`refused`（`syscall.ECONNREFUSED`）；另有纯延迟模式。
-  per-service 定向走 `Config.Rules`。
-- 注入错误同时实现 `resilience.Retryable` 与 `resilience.FailureClass`，重试与熔断的判定都严格按规则声明的 `class` 来，不受宿主自身谓词影响。
+- 四种注入类型：`generic`（可重试的注入错误）、`timeout`（`os.ErrDeadlineExceeded`，
+  即 I/O 读写超时，不是 context 截止）、`reset`（`syscall.ECONNRESET`）、
+  `refused`（`syscall.ECONNREFUSED`）；另有纯延迟模式。入站规则则声明响应 `status`
+  （400–599）。per-service 定向走各方向的 `ClientConfig`/`ServerConfig.Rules`。
+- 剂量与时间：`rate`（概率）或 `every`（确定性每 N 次）、`start-after` 延迟、`on`/`off`
+  间歇窗口；`max-affected`/`max-duration` 仍是护栏。这正是"坏 30 秒，然后恢复"的表达方式——
+  熔断 half-open 探针需要的形状。**所有剂量字段都按 ATTEMPT 计数**：出站调用重试 N 次就是
+  N 个真实下游请求，各自独立判定（与 Envoy/Istio 的 per-request 模型一致）；独立抽样下
+  调用级失败率为 `1-(1-rate)^N`，重试会掩盖一部分注入率，正如真实的不稳定下游。
+- 出站规则也可声明 `status`（400–599）：它挂在注入错误上，供有原生状态错误的适配器翻译。
+  `net/http` 不同——5xx 在那里是**响应**而不是错误，只有等响应替换落地后调用方才看得到。
+- 出站注入错误实现 `resilience.Retryable`，重试与熔断的判定都严格按规则声明的 `class` 来，
+  不受宿主自身谓词影响。不存在 business 类：出站链根本看不到业务应答。
 - 内核本身不 import cloud 的任何调用词汇——只依赖共享的 `capability/matcher`；`chain`
   只出现在方向适配器里（client 接缝的 `Executor` 与火写回的那条记录），不在本包。流量分类也不是依赖：
   构造 operation 的 seam 把它记成一条普通的 metadata（`traffic`），规则按通用维度匹配。
@@ -91,11 +106,16 @@ spring.fault.run-id=drill-2026-10-27
 spring.fault.client.rules[0].service=redis:cache
 spring.fault.client.rules[0].rate=0.5
 spring.fault.client.rules[0].error=generic        # 可选："generic"（默认）| "timeout" | "reset" | "refused"
-spring.fault.client.rules[0].class=transient      # 可选：transient | permanent | business
+spring.fault.client.rules[0].class=transient      # 可选：transient | permanent
 spring.fault.client.rules[0].latency=50ms         # 可选，每次 attempt 都施加
 spring.fault.client.rules[0].latency-jitter=20ms  # 可选，睡眠 latency ± U[0,20ms]
 spring.fault.client.rules[0].max-affected=100     # 可选，爆炸半径上限（按进程）
 spring.fault.client.rules[0].max-duration=5m      # 可选，自愈窗口（按进程）
+spring.fault.client.rules[0].status=503           # 可选，协议状态码（400–599），供适配器翻译
+spring.fault.client.rules[0].start-after=10s      # 可选：从规则首次匹配起延迟生效
+# spring.fault.client.rules[0].every=10           # 与 rate 二选一：每 10 次匹配触发一次
+spring.fault.client.rules[0].on=5s                # 可选间歇窗口（与 off 成对）
+spring.fault.client.rules[0].off=5s
 spring.fault.client.rules[0].match.traffic.exact=loadtest       # 可选："real" | "loadtest" | 任意自定义类别
 
 # 入站：Server.Fire 的判断（gin / echo / grpc / hertz / trpc / dubbo）。
@@ -103,10 +123,12 @@ spring.fault.client.rules[0].match.traffic.exact=loadtest       # 可选："real
 spring.fault.server.rules[0].service=grpc
 spring.fault.server.rules[0].action.exact=/demo.Service/Echo
 spring.fault.server.rules[0].rate=0.2
-spring.fault.server.rules[0].error=timeout
+spring.fault.server.rules[0].status=503           # rate > 0 时必填：400–599
+spring.fault.server.rules[0].body={"error":"injected"}       # 可选响应 body / RPC 消息
+spring.fault.server.rules[0].content-type=application/json   # 可选，仅 HTTP
 ```
 
-一个方向只有在至少一条规则带 `rate` 或 `latency` 时才武装；没有这样的规则就不注入。
+一个方向只有在至少一条规则带 `rate`/`every` 或 `latency` 时才武装；没有这样的规则就不注入。
 没有单独的 `enabled` 键，也**刻意没有任何顶层效果**：瞄准单个服务的操作员不可能误烧进程里
 的其他依赖，每一次放火都作为一条规则出现在配置 diff 里。
 
@@ -128,7 +150,7 @@ spring.fault.server.rules[0].error=timeout
 
 - **做**：包装一个 `chain.Executor`，让可配置比例的调用在真正进入 executor 之前就
   失败（或变慢）；用 atomic pointer 热持有配置；导出中立的 `InjectedError`（实现了
-  `resilience.Retryable`，并能表现为熟悉的 Go 错误 `context.DeadlineExceeded`、
+  `resilience.Retryable`，并能表现为熟悉的 Go 错误 `os.ErrDeadlineExceeded`、
   `syscall.ECONNRESET`）。
 - **不做**:
   - 领域代码不依赖 gs / spring：注入器是个普通对象，`WrapClientExecutor` /
@@ -177,15 +199,18 @@ Envoy/Istio 的 delay+abort 组合。
 observe 能在构造期挂上熔断 listener 的原因），fault 再从外层包住它。注入的故障依然抵达
 真实 executor 的重试循环，既被 resilience *处理*，又被 observe *记录*。
 
-**故障分类**。`InjectedError` 同时实现 `Retryable()` 与 `CountsAsFailure()`，由规则的
-`class` 驱动：`transient`（默认）可重试且计入熔断，`permanent` 不重试但仍计入，`business`
-既不重试也不计入——调用方错误的形状（等价 HTTP 4xx），不该把健康下游的熔断器打开。分类会
-覆盖宿主谓词，所以硬编码"可重试"注入到不了的路径（"这个错不该重试""这个错不该打开熔断"）
-现在可测。入站 adapter 把分类带到线上：`business` 映射为 400 / `codes.InvalidArgument`，
-其余为 503 / `codes.Unavailable`，于是客户端自己的重试和熔断会按规则声明的分类处理。带类型的
-kind 会包装一个
-真实错误，因此 `errors.Is(err, context.DeadlineExceeded)` 成立，下游分类器（observe 的
-outcome 映射）会把这次调用标记得和真实超时/复位一致。
+**出站故障分类**。`InjectedError` 实现 `Retryable()` 并携带规则的 `class`：`transient`
+（默认）可重试且计入熔断，`permanent` 不重试但仍计入。分类会覆盖宿主谓词，所以"这个错不该
+重试"的路径可测。不存在 business 类——出站链根本看不到业务应答（真实适配器用
+`resilience.Tolerate` 折成 nil）。带类型的 kind 会包装一个真实错误，因此
+`errors.Is(err, os.ErrDeadlineExceeded)` 成立，下游分类器（observe 的 outcome 映射）会把
+这次调用标记得和真实 I/O 超时/复位一致。
+
+**入站响应**。server 规则声明 `status`（400–599，`rate > 0` 时必填），可选 `body` +
+`content-type`。handler 不执行：adapter 用声明的响应作答——HTTP 写出状态码与 body
+（content-type 默认纯文本），gRPC/trpc/dubbo 按**状态族**翻译（4xx → InvalidArgument /
+校验错误码，5xx → Unavailable / 系统错误），并把 body 用作状态消息。这是"声明的响应"，
+不是"真实响应被改坏"：2xx/3xx 与 post-handler 修改暂不支持。
 
 **命名这次调用：`Target`。** 规则只按一个 `Target` 匹配——它能命名三个坐标：`Service`
 （调的是谁）、`Action`（调的是它的哪个接口）、`Metadata`（调用方自带的定位维度）。它是

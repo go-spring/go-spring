@@ -42,13 +42,13 @@ type nacosRegistry struct {
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported attempt and log line is labelled with.
-	obs *registration.Observer
+	obs registration.Observer
 }
 
 // newNacosRegistry returns a registry writing through client (the shared
 // center client; the server was already probed when client was built) with
 // c's group/cluster. It does NOT close client — the owner (nacosCenter) does.
-func newNacosRegistry(c NacosConfig, client naming_client.INamingClient, obs *registration.Observer) (*nacosRegistry, error) {
+func newNacosRegistry(c NacosConfig, client naming_client.INamingClient, obs registration.Observer) (*nacosRegistry, error) {
 	if client == nil {
 		return nil, errutil.Explain(nil, "discovery-nacos: nil naming client")
 	}
@@ -77,7 +77,7 @@ func (r *nacosRegistry) Register(ctx context.Context, reg discovery.Instance) er
 	// Nacos treats weight 0 as "receive no traffic", so an explicit 0 is the
 	// drain signal and passes through untouched.
 	weight := float64(normalizeWeight(reg.Weight))
-	return r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
+	return registration.RegisterAttempt(ctx, r.obs, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
 		ok, err := r.client.RegisterInstance(vo.RegisterInstanceParam{
 			Ip:          host,
 			Port:        port,
@@ -109,7 +109,7 @@ func (r *nacosRegistry) Deregister(ctx context.Context, reg discovery.Instance) 
 	if err != nil {
 		return errutil.Explain(err, "discovery-nacos: deregister %q", reg.ServiceName)
 	}
-	return r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(context.Context) error {
+	return registration.DeregisterAttempt(ctx, r.obs, reg.ServiceName, func(context.Context) error {
 		ok, err := r.client.DeregisterInstance(vo.DeregisterInstanceParam{
 			Ip:          host,
 			Port:        port,
@@ -145,7 +145,7 @@ func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance
 	// Weight 0 is the drain signal and passes through — Nacos natively treats
 	// 0 as "receive no traffic".
 	w := float64(normalizeWeight(weight))
-	return r.obs.WeightChange(ctx, reg.ServiceName, func(context.Context) error {
+	return registration.WeightChange(ctx, r.obs, reg.ServiceName, func(context.Context) error {
 		ok, err := r.client.UpdateInstance(vo.UpdateInstanceParam{
 			Ip:          host,
 			Port:        port,
@@ -167,10 +167,20 @@ func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance
 	})
 }
 
+// Nacos's own metadata keys: the SDK has no dedicated fields for these
+// attributes, so [Instance.Version], [Instance.Zone] and [Instance.Scheme]
+// ride the metadata map under these keys, and the discovery read side
+// restores Zone and Scheme to [discovery.Endpoint]'s fields.
+const (
+	metaKeyVersion = "version"
+	metaKeyZone    = "zone"
+	metaKeyScheme  = "scheme"
+)
+
 // instanceMetadata folds the instance's routing dimensions (version, zone,
 // scheme) into the metadata map handed to Nacos: the SDK has no dedicated
 // fields for them, and the discovery read side restores them from these
-// reserved keys.
+// keys.
 func instanceMetadata(reg discovery.Instance) map[string]string {
 	if reg.Version == "" && reg.Zone == "" && reg.Scheme == "" {
 		return reg.Metadata
@@ -180,13 +190,13 @@ func instanceMetadata(reg discovery.Instance) map[string]string {
 		md[k] = v
 	}
 	if reg.Version != "" {
-		md[discovery.MetaKeyVersion] = reg.Version
+		md[metaKeyVersion] = reg.Version
 	}
 	if reg.Zone != "" {
-		md[discovery.MetaKeyZone] = reg.Zone
+		md[metaKeyZone] = reg.Zone
 	}
 	if reg.Scheme != "" {
-		md[discovery.MetaKeyScheme] = reg.Scheme
+		md[metaKeyScheme] = reg.Scheme
 	}
 	return md
 }

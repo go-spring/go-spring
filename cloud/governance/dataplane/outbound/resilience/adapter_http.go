@@ -26,6 +26,8 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/log"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // httpStatusError wraps an HTTP 5xx the adapter treated as a failure. It
@@ -89,15 +91,35 @@ type roundTripper struct {
 	callFor func(*http.Request) chain.Operation
 }
 
-// call resolves the [chain.Operation] for a request: the adapter's callFor when it
-// supplied one, else a zero Operation — and always with the service label this
-// transport protects, so the call is identifiable even when the adapter declares
-// no operation of its own. An adapter that wants more of the call named (an
-// action, a scenario) supplies callFor.
+// call resolves the [chain.Operation] for a request: the adapter's callFor when
+// it supplied one, else a minimal declaration derived from the request itself —
+// the method as the bounded label, the full URL as detail. Every call declares
+// an identity; a transport that wants a more specific one supplies callFor.
 func (rt *roundTripper) call(req *http.Request) chain.Operation {
 	var op chain.Operation
 	if rt.callFor != nil {
 		op = rt.callFor(req)
+	} else {
+		op = chain.Operation{
+			Request: chain.Request{Action: req.Method + " " + req.URL.Path},
+			Observe: chain.Observe{
+				Metric: chain.Metric{
+					Name:  "http.client",
+					Attrs: []attribute.KeyValue{attribute.String("http.request.method", req.Method)},
+				},
+				Span: chain.Span{Attrs: []attribute.KeyValue{
+					attribute.String("http.request.method", req.Method),
+					attribute.String("url.full", req.URL.String()),
+				}},
+				Log: chain.Log{
+					QuietSuccess: true,
+					Fields: []log.Field{
+						log.String("http.request.method", req.Method),
+						log.String("url.full", req.URL.String()),
+					},
+				},
+			},
+		}
 	}
 	if op.Service == "" {
 		op.Service = rt.service
@@ -108,7 +130,7 @@ func (rt *roundTripper) call(req *http.Request) chain.Operation {
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Run is the shared "drive one operation through the executor" body; the
 	// closure supplies only what is HTTP-specific.
-	return Run(req.Context(), rt.exec, rt.call(req), func(ctx context.Context) (*http.Response, error) {
+	return Run(req.Context(), rt.exec, rt.call(req), func(ctx context.Context, peer chain.Peer) (*http.Response, error) {
 		// A shallow copy carrying the attempt's context: the transport must run
 		// under the deadline exec derived for this attempt, and a retry derives a
 		// fresh one. Nothing here mutates the headers, so they need no copy of

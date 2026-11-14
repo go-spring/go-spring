@@ -21,7 +21,6 @@
 package resilience
 
 import (
-	"errors"
 	"fmt"
 	"hash"
 	"hash/fnv"
@@ -280,36 +279,6 @@ func validateBreakerPolicy(p BreakerPolicy) error {
 	}
 	_, err := circuitbreaker.New(p.Spec())
 	return err
-}
-
-// FailureClass is implemented by an error that knows whether it is evidence
-// AGAINST the downstream — the breaker's question, which is independent of the
-// retry question. A caller mistake (an injected "business" fault, an HTTP
-// 4xx from an adapter) is neither retried nor counted; a deterministic failure
-// may be unretryable yet still count. The two questions are separate because
-// their answers are: [Retryable] alone would make "don't retry" and "don't open
-// the breaker" the same statement.
-//
-// This mirrors the mainstream in-process treatments (Hystrix's
-// HystrixBadRequestException is ignored by its breaker); an error that does not
-// implement it counts as a failure, as before.
-type FailureClass interface {
-	CountsAsFailure() bool
-}
-
-// CountsAsFailure reports whether err should be counted against the breaker. An
-// error implementing [FailureClass] answers for itself; every other error is a
-// failure. The executor calls this only for a non-nil error that is not a caller
-// abort.
-func CountsAsFailure(err error) bool {
-	if err == nil {
-		return false
-	}
-	var fc FailureClass
-	if errors.As(err, &fc) {
-		return fc.CountsAsFailure()
-	}
-	return true
 }
 
 // findRule answers the breaker half of the call plan ([Executor.planFor]). A

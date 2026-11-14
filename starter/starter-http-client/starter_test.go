@@ -25,13 +25,13 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/cloud/traffic"
@@ -47,7 +47,7 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 	disc := discovery.NewManager(map[string]discovery.Discovery{
 		"default": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}),
 	})
-	lb := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	lb := mustLbManager(t)
 	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 	center := &governance.Runtime{
 		Resilience:  res,
 		LoadBalance: lb,
-	Admission:   adm,
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -153,4 +153,14 @@ func TestEntriesInheritFamilyDefaults(t *testing.T) {
 	assert.That(t, c.Discovery).Equal("consul.main")  // inherited leaf
 	assert.That(t, c.TLS.Enabled).True()              // the entry's own leaf
 	assert.That(t, c.TLS.CAFile).Equal("/etc/ca.pem") // inherited sibling leaf
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

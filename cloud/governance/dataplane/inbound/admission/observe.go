@@ -14,134 +14,197 @@
  * limitations under the License.
  */
 
-// observe.go is the guard's OWN state plane. The stages this guard owns — the
-// rate budget and the bulkhead — are observed here, by the package that owns
-// them: the request-plane server observer in .../inbound/observe records what
-// happened to one request, never what state a governance stage is in.
-//
-// State is pulled, not pushed. Each instrument is observable, and one callback
-// per guard reports the current generation at collection time:
-//
-//   - bulkhead.usage_ratio and bulkhead.queued are the slot pool's saturation
-//     and the callers currently blocked waiting for a slot.
-//
-// Every series carries system and service, the guard's identity.
+// observe.go is the inbound admission guard's state-plane surface: the
+// bulkhead occupancy a guard publishes, the [Observer] seam, and the default
+// OTel-backed adapter.
+
 package admission
 
 import (
 	"context"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
+	"sync"
 
 	"go-spring.org/cloud/observability/instrument"
 	"go-spring.org/stdlib/errutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
-// stateInstrumentSet is the inbound state plane's instruments: one set per
-// manager (or per standalone guard), and the manager is one per process. It
-// holds no per-guard state.
-type stateInstrumentSet struct {
-	meter      metric.Meter
-	bulkUsage  metric.Float64ObservableGauge
-	bulkQueued metric.Int64ObservableGauge
+// BulkheadState is one guard's current bulkhead occupancy.
+type BulkheadState struct {
+	// UsageRatio is slots held / capacity.
+	UsageRatio float64
+	// Queued is the number of callers blocked waiting for a slot.
+	Queued int64
 }
 
-// buildStateInstruments resolves this package's state instruments against the
-// meter provider the otel starter installs before any bean is constructed. The
-// owner hands the set to every guard it builds, so a failed registration fails
-// construction: a declared metric family that is not a legal instrument name
-// would otherwise silently delete the whole state surface.
-func buildStateInstruments() (*stateInstrumentSet, error) {
+// Observer receives the admission layer's state-plane registrations. A nil
+// Observer disables the state metrics; the guard then simply never registers a
+// reader.
+//
+// The state is a pull, not a push: the adapter calls read on collection and must
+// not block, so a reader must not take a lock that a request path holds while
+// touching the metric backend.
+type Observer interface {
+	// ObserveBulkhead registers read as the source of one guard's occupancy,
+	// labelled with system and service. The returned off removes it; after off
+	// the reader is never called again.
+	ObserveBulkhead(system, service string, read func() (BulkheadState, bool)) (off func())
+
+	// Close releases the adapter's callback. It must be safe to call more than
+	// once.
+	Close() error
+}
+
+// NewOTelObserver resolves the state instruments and returns the default
+// OTel-backed [Observer]. It is registered as the process's default bean.
+func NewOTelObserver() (Observer, error) {
 	m := otel.Meter(instrument.Scope)
-	in := &stateInstrumentSet{meter: m}
-	var err error
-	in.bulkUsage, err = m.Float64ObservableGauge("resilience.server.bulkhead.usage_ratio",
+	usage, err := m.Float64ObservableGauge("resilience.server.bulkhead.usage_ratio",
 		metric.WithDescription("Bulkhead slots held / capacity"),
 		metric.WithUnit("1"))
 	if err != nil {
 		return nil, errutil.Explain(err, "admission: register resilience.server.bulkhead.usage_ratio")
 	}
-
-	in.bulkQueued, err = m.Int64ObservableGauge("resilience.server.bulkhead.queued",
+	queued, err := m.Int64ObservableGauge("resilience.server.bulkhead.queued",
 		metric.WithDescription("Callers blocked waiting for a bulkhead slot"),
 		metric.WithUnit("{caller}"))
 	if err != nil {
 		return nil, errutil.Explain(err, "admission: register resilience.server.bulkhead.queued")
 	}
-	return in, nil
+	o := &otelObserver{
+		usage:   usage,
+		queued:  queued,
+		readers: map[string]bulkheadReader{},
+	}
+	// One callback per adapter, not one per guard: a second creation-time
+	// callback on the same instrument descriptor would be dropped.
+	if reg, err := m.RegisterCallback(o.collect, usage, queued); err != nil {
+		instrument.ReportInstrumentError("resilience.server.bulkhead.usage_ratio", err)
+	} else {
+		o.reg = reg
+	}
+	return o, nil
 }
 
-// readyObserve registers this guard's state callback on the instrument set its
-// owner resolved at construction. It runs on the first Admit, not at
-// construction: the callback must exist before the first collection, and a
+// bulkheadReader is one registered guard.
+type bulkheadReader struct {
+	system  string
+	service string
+	read    func() (BulkheadState, bool)
+}
+
+// otelObserver is the default [Observer].
+type otelObserver struct {
+	usage   metric.Float64ObservableGauge
+	queued  metric.Int64ObservableGauge
+	mu      sync.Mutex
+	readers map[string]bulkheadReader
+	reg     metric.Registration
+}
+
+// ObserveBulkhead implements [Observer].
+func (o *otelObserver) ObserveBulkhead(system, service string, read func() (BulkheadState, bool)) func() {
+	key := system + "|" + service
+	o.mu.Lock()
+	o.readers[key] = bulkheadReader{system: system, service: service, read: read}
+	o.mu.Unlock()
+	return func() {
+		o.mu.Lock()
+		delete(o.readers, key)
+		o.mu.Unlock()
+	}
+}
+
+// collect reports every registered guard's current occupancy. The reader list is
+// snapshotted under the lock and read after it is released, so collection never
+// holds this lock while touching a guard or the OTel SDK.
+func (o *otelObserver) collect(_ context.Context, ob metric.Observer) error {
+	o.mu.Lock()
+	readers := make([]bulkheadReader, 0, len(o.readers))
+	for _, r := range o.readers {
+		readers = append(readers, r)
+	}
+	o.mu.Unlock()
+
+	for _, r := range readers {
+		state, ok := r.read()
+		if !ok {
+			continue
+		}
+		attrs := metric.WithAttributes(
+			attribute.String("system", r.system),
+			attribute.String("service", r.service),
+		)
+		ob.ObserveFloat64(o.usage, state.UsageRatio, attrs)
+		ob.ObserveInt64(o.queued, state.Queued, attrs)
+	}
+	return nil
+}
+
+// Close implements [Observer].
+func (o *otelObserver) Close() error {
+	if o == nil {
+		return nil
+	}
+	o.mu.Lock()
+	reg := o.reg
+	o.reg = nil
+	o.readers = map[string]bulkheadReader{}
+	o.mu.Unlock()
+	if reg != nil {
+		_ = reg.Unregister()
+	}
+	return nil
+}
+
+// readyObserve registers this guard's state reader on the observer its owner
+// resolved at construction. It runs on the first Admit, not at construction: a
 // guard that never admits never registers one.
 //
 // Registration and the closed check share s.mu so a Close racing the first
-// admit cannot leave a callback registered.
+// admit cannot leave a reader registered.
 func (s *server) readyObserve() {
 	s.observeOnce.Do(func() {
-		in := s.ins
+		if s.obs == nil {
+			return
+		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if s.closed {
 			return
 		}
-		reg, err := in.meter.RegisterCallback(s.observeState,
-			in.bulkUsage, in.bulkQueued)
-		if err != nil {
-			instrument.ReportInstrumentError("resilience.server.bulkhead.usage_ratio", err)
-			return
-		}
-		s.observeReg = reg
+		s.observeOff = s.obs.ObserveBulkhead(s.id.System, s.id.Service, s.bulkheadState)
 	})
 }
 
-// closeObserve marks the guard closed and unregisters its state callback. It is
-// idempotent and is shared by Close and the manager's own teardown, so the two
-// paths cannot diverge.
+// closeObserve marks the guard closed and removes its state reader. It is
+// idempotent and is shared by Close and the manager's own teardown.
 func (s *server) closeObserve() {
 	s.mu.Lock()
 	s.closed = true
-	reg := s.observeReg
-	s.observeReg = nil
+	off := s.observeOff
+	s.observeOff = nil
 	s.mu.Unlock()
-	if reg != nil {
-		_ = reg.Unregister()
+	if off != nil {
+		off()
 	}
 }
 
-// observeState reports the guard's current generation. The state pointer is
-// copied under s.mu and read after it is released, so the callback never holds
-// the guard lock while touching an organ or the OTel SDK; a generation swap
-// replaces s.st wholesale, and the copied pointer stays valid for this
-// collection.
-func (s *server) observeState(_ context.Context, o metric.Observer) error {
-	in := s.ins
-
+// bulkheadState snapshots this guard's current generation. The state pointer is
+// copied under s.mu and read after it is released, so a generation swap replaces
+// s.st wholesale and the copied pointer stays valid for this collection.
+func (s *server) bulkheadState() (BulkheadState, bool) {
 	s.mu.Lock()
 	st := s.st
 	s.mu.Unlock()
-	if st == nil {
-		return nil
+	if st == nil || st.bulk == nil {
+		return BulkheadState{}, false
 	}
-
-	// A nil bulkhead is the OFF stage: no occupancy series to publish.
-	if st.bulk != nil {
-		stats := st.bulk.Stats()
-		o.ObserveFloat64(in.bulkUsage, float64(stats.InUse)/float64(stats.Capacity), s.attrs())
-		o.ObserveInt64(in.bulkQueued, int64(stats.Queued), s.attrs())
-	}
-	return nil
-}
-
-// attrs is the guard's identity prefix, with extra attributes appended.
-func (s *server) attrs(extra ...attribute.KeyValue) metric.MeasurementOption {
-	attrs := make([]attribute.KeyValue, 0, 2+len(extra))
-	attrs = append(attrs,
-		attribute.String("system", s.id.System),
-		attribute.String("service", s.id.Service))
-	attrs = append(attrs, extra...)
-	return metric.WithAttributes(attrs...)
+	stats := st.bulk.Stats()
+	return BulkheadState{
+		UsageRatio: float64(stats.InUse) / float64(stats.Capacity),
+		Queued:     int64(stats.Queued),
+	}, true
 }

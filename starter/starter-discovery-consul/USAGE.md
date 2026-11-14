@@ -158,7 +158,7 @@ change. A failed poll keeps the stale snapshot and retries after 5s; an agent in
 (smaller `LastIndex`) drops the held index so the next query answers immediately. Later Resolves
 are in-memory reads. Weight-0 filtering is the consumer pool's: `excludeDrained` drops
 `Weight == 0` endpoints, falling back to the full set only when every endpoint is drained
-(`cloud/governance/capability/loadbalance/pool.go`).
+(`cloud/governance/dataplane/outbound/loadbalance/pool.go`).
 
 ### 2.3 DRAIN path — UpdateWeight(0)
 

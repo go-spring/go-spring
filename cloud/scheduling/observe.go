@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+// observe.go is the scheduling layer's observability surface: the events a fire
+// reports, the [Observer] seam, the default OTel-backed adapter, and the
+// per-fire access log (which stays on the log package).
+
 package scheduling
 
 import (
@@ -24,6 +28,7 @@ import (
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -37,24 +42,16 @@ const componentName = "go-spring.org/cloud/scheduling"
 
 // Observability contract.
 //
-// Every fire — whether it ran or was swallowed — is reported here, becoming a
-// metric and a log line. One status value drives both, so the metric can never
-// disagree with the log:
+// Every fire — whether it ran or was swallowed — is reported through [Observer],
+// and one status value drives the metric, the span and the log so they can never
+// disagree:
 //
 //	status     ok | error | panic | skipped_policy | skipped_lock
 //
-// The status answers "how did this fire end?" in a single dimension, the same
-// shape the lock package uses for its status. A skipped fire is one that a
-// concurrency policy dropped (policy) or one another replica was running (lock);
-// telling them apart matters because under multi-replica de-duplication lock
-// skips are routine, while a policy skip means a job is not keeping up.
-//
-// The job name is a metric dimension. Unlike a lock key — chosen by the caller,
-// with unbounded cardinality — a job name is fixed in code, so its cardinality
-// is the number of registered jobs.
-//
-// Runs also get a span on the global otel pipeline; a swallowed fire has no run
-// to trace, so it appears in metrics and logs only.
+// A skipped fire is one a concurrency policy dropped (policy) or another replica
+// was running (lock); telling them apart matters because under multi-replica
+// de-duplication lock skips are routine, while a policy skip means a job is not
+// keeping up.
 
 // lagBuckets are the wake-up-lag histogram boundaries (seconds). Lag is the
 // delay between a fire's scheduled instant and when its run actually started, so
@@ -65,27 +62,31 @@ var lagBuckets = []float64{0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0
 // accessTag is the static log tag for the per-fire log lines.
 var accessTag = log.RegisterAppTag("scheduler", "access")
 
-// instrumentSet bundles the metrics a fire records: one per job, resolved when
-// the job is constructed. It holds no per-fire state.
-type instrumentSet struct {
-	runs     metric.Int64Counter
-	duration metric.Float64Histogram
-	lag      metric.Float64Histogram
+// Observer receives the scheduling layer's METRIC events. It is the seam for
+// the metric plane only: spans and the access log are standard OTel/log calls
+// made by this package, not part of this contract. A nil Observer disables the
+// metrics; implementations must not block.
+type Observer interface {
+	// Run records one finished run. status is ok | error | panic.
+	Run(ctx context.Context, job, status string, duration, lag time.Duration)
+
+	// Skipped records a fire that did not run, with reason "policy" or "lock".
+	Skipped(ctx context.Context, job, reason string)
 }
 
-// buildInstruments resolves this package's instruments against the meter
-// provider the otel starter installs before any bean is constructed. The job
-// owns the set, so a failed registration fails construction instead of silently
-// dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
+// NewOTelObserver resolves the layer's instruments and returns the default
+// OTel-backed [Observer]. It is registered as the process's default bean.
+func NewOTelObserver() (Observer, error) {
 	m := otel.Meter(componentName)
-	runs, err := m.Int64Counter("scheduling.runs",
+	o := &otelObserver{}
+	var err error
+	o.runs, err = m.Int64Counter("scheduling.runs",
 		metric.WithDescription("Scheduled job fires by status"),
 		metric.WithUnit("{fire}"))
 	if err != nil {
 		return nil, errutil.Explain(err, "scheduling: register scheduling.runs")
 	}
-	duration, err := m.Float64Histogram("scheduling.run.duration",
+	o.duration, err = m.Float64Histogram("scheduling.run.duration",
 		metric.WithDescription("Duration of a job run"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
@@ -93,17 +94,72 @@ func buildInstruments() (*instrumentSet, error) {
 		return nil, errutil.Explain(err, "scheduling: register scheduling.run.duration")
 	}
 	// A rising lag is the scheduler's own health signal: the schedule is not
-	// drifting (the next fire stays anchored on the planned instant), but runs are
-	// starting later and later, which points at a process that is saturated or
-	// stalled.
-	lag, err := m.Float64Histogram("scheduling.lag",
+	// drifting, but runs are starting later and later, which points at a process
+	// that is saturated or stalled.
+	o.lag, err = m.Float64Histogram("scheduling.lag",
 		metric.WithDescription("Delay between a fire's scheduled instant and the start of its run"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(lagBuckets...))
 	if err != nil {
 		return nil, errutil.Explain(err, "scheduling: register scheduling.lag")
 	}
-	return &instrumentSet{runs: runs, duration: duration, lag: lag}, nil
+	return o, nil
+}
+
+// otelObserver adapts the layer's events to OTel metrics.
+type otelObserver struct {
+	runs     metric.Int64Counter
+	duration metric.Float64Histogram
+	lag      metric.Float64Histogram
+}
+
+// Run implements [Observer].
+func (o *otelObserver) Run(ctx context.Context, job, status string, duration, lag time.Duration) {
+	attrsOpt := metric.WithAttributes(
+		attribute.String("job", job),
+		attribute.String("status", status),
+	)
+	o.runs.Add(ctx, 1, attrsOpt)
+	o.duration.Record(ctx, duration.Seconds(), attrsOpt)
+	o.lag.Record(ctx, lag.Seconds(), metric.WithAttributes(attribute.String("job", job)))
+}
+
+// Skipped implements [Observer].
+func (o *otelObserver) Skipped(ctx context.Context, job, reason string) {
+	o.runs.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("job", job),
+		attribute.String("status", "skipped_"+reason),
+	))
+}
+
+// traceRun opens the span for one run. Span handling is the STANDARD OTel
+// capability, not part of the metric seam.
+func traceRun(ctx context.Context, name string) (context.Context, trace.Span) {
+	return otel.Tracer(componentName).Start(ctx, "scheduler.job "+name,
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(attribute.String("scheduler.job.name", name)),
+	)
+}
+
+// startRun opens the run's span. With no active tracer no span is produced, so
+// the run gets a synthetic trace_id on its context and the per-fire logs still
+// carry a correlation id.
+func startRun(ctx context.Context, name string) (context.Context, trace.Span) {
+	ctx, span := traceRun(ctx, name)
+	if !span.SpanContext().IsValid() {
+		ctx = log.WithFields(ctx, log.String("trace_id", randutil.Hex(16)))
+	}
+	return ctx, span
+}
+
+// endRun finishes the run's span with its outcome.
+func endRun(span trace.Span, err error) {
+	span.SetAttributes(attribute.String("status", statusOfRun(err)))
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	span.End()
 }
 
 // statusOfRun classifies a run's outcome.
@@ -119,9 +175,7 @@ func statusOfRun(err error) string {
 }
 
 // statusOf classifies one fire. A skipped fire is a whole status of its own,
-// and its reason is folded into the value rather than made a second dimension —
-// "skipped_" plus the event's Reason, so an unknown reason still reports
-// honestly instead of being folded into a known one.
+// with its reason folded into the value rather than made a second dimension.
 func statusOf(ev event) string {
 	if ev.Skipped {
 		return "skipped_" + ev.Reason
@@ -129,35 +183,12 @@ func statusOf(ev event) string {
 	return statusOfRun(ev.Err)
 }
 
-// record emits the metrics and the log line for one fire. The log level carries
-// the same status: a panic or a failed run at Error, an ordinary fire — and a
-// swallowed one, which is routine under multi-replica de-duplication — at Debug.
-func record(ev event) {
+// recordLog writes the per-fire access line. The status drives the level: a
+// panic or a failed run at Error, an ordinary fire — and a swallowed one, which
+// is routine under multi-replica de-duplication — at Debug.
+func recordLog(ev event) {
 	status := statusOf(ev)
 	ctx := context.Background()
-	ins := ev.ins
-
-	ins.runs.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("job", ev.Name),
-		attribute.String("status", status),
-	))
-
-	// A skipped fire has no run: no duration and no start, so neither histogram
-	// gets a meaningless zero recorded against it.
-	if !ev.Skipped {
-		ins.duration.Record(ctx, ev.Duration.Seconds(), metric.WithAttributes(
-			attribute.String("job", ev.Name),
-			attribute.String("status", status),
-		))
-		if !ev.Start.IsZero() {
-			ins.lag.Record(ctx, ev.Start.Sub(ev.Scheduled).Seconds(),
-				metric.WithAttributes(attribute.String("job", ev.Name)))
-		}
-	}
-
-	// The log line carries the same job and status the metrics above just
-	// recorded, under the same keys, so the line joins runs{job,status} and
-	// run.duration{job,status} instead of only describing them in prose.
 	fields := []log.Field{
 		log.String("job", ev.Name),
 		log.String("status", status),
@@ -183,28 +214,13 @@ func record(ev event) {
 }
 
 // recordSkip reports a fire that did not run, with reason "policy" or "lock".
-func recordSkip(scheduled time.Time, name, reason string, ins *instrumentSet) {
-	record(event{Name: name, Scheduled: scheduled, Skipped: true, Reason: reason, ins: ins})
-}
-
-// traceRun opens the span for one run of t's job and returns the run's
-// context. The tracer is the global one — the no-op implementation unless an
-// SDK-based provider has been installed — so without otel the span is free.
-func traceRun(ctx context.Context, name string) (context.Context, trace.Span) {
-	return otel.Tracer(componentName).Start(ctx, "scheduler.job "+name,
-		trace.WithAttributes(attribute.String("scheduler.job.name", name)),
-		trace.WithSpanKind(trace.SpanKindConsumer),
-	)
-}
-
-// endRun finishes the run's span with the outcome the metrics and log report.
-func endRun(span trace.Span, err error) {
-	span.SetAttributes(attribute.String("status", statusOfRun(err)))
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+// err is the failure that prevented the run (a lock acquisition error), nil
+// when the fire was simply dropped.
+func recordSkip(scheduled time.Time, name, reason string, err error, obs Observer) {
+	if obs != nil {
+		obs.Skipped(context.Background(), name, reason)
 	}
-	span.End()
+	recordLog(event{Name: name, Scheduled: scheduled, Skipped: true, Reason: reason, Err: err})
 }
 
 // ms renders a duration the way the other domain packages' access logs do, so

@@ -56,6 +56,62 @@ const (
 // package reports under.
 const componentName = "go-spring.org/cloud/cache"
 
+// Observer receives the cache layer's observability events. It is the seam: the
+// decorator reports what happened in the cache's own vocabulary, and an
+// implementation decides how to record it — the default is OTel (see
+// [NewOTelObserver]), and an application may replace it with its own bean.
+//
+// A nil Observer disables observation. Implementations must not block: events
+// are emitted synchronously from the cache call path.
+type Observer interface {
+	// Operation records one finished cache operation. operation is get|set|delete
+	// and status is hit|miss|ok|error; elapsed is the caller-visible duration.
+	Operation(ctx context.Context, operation, status string, elapsed time.Duration)
+}
+
+// NewOTelObserver resolves the layer's instruments and returns the default
+// OTel-backed [Observer]. It is registered as the process's default bean, so an
+// application that contributes its own Observer takes precedence.
+//
+// The cache owns the instruments, so a failed registration fails construction
+// instead of silently dropping the whole metric family.
+func NewOTelObserver() (Observer, error) {
+	m := otel.Meter(componentName)
+	o := &otelObserver{}
+	var err error
+	o.total, err = m.Int64Counter("cache.operation.total",
+		metric.WithDescription("Cache operations executed, by operation and status"),
+		metric.WithUnit("{operation}"))
+	if err != nil {
+		return nil, errutil.Explain(err, "cache: register cache.operation.total")
+	}
+	o.duration, err = m.Float64Histogram("cache.operation.duration",
+		metric.WithDescription("Duration of cache operations, by operation and status"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
+	if err != nil {
+		return nil, errutil.Explain(err, "cache: register cache.operation.duration")
+	}
+	return o, nil
+}
+
+// otelObserver adapts the layer's events to the OTel instruments. It holds no
+// per-cache state — the operation and status labels travel with each record.
+type otelObserver struct {
+	total    metric.Int64Counter
+	duration metric.Float64Histogram
+}
+
+// Operation implements [Observer].
+func (o *otelObserver) Operation(ctx context.Context, operation, status string, elapsed time.Duration) {
+	attrs := metric.WithAttributes(
+		attribute.String("operation", operation),
+		attribute.String("status", status),
+	)
+	o.total.Add(ctx, 1, attrs)
+	o.duration.Record(ctx, elapsed.Seconds(), attrs)
+}
+
 // observedCache is the [ByteCache] decorator [New] wraps every backend in. It
 // records the cache semantics — hit vs miss vs error — that no backend's own
 // instrumentation can see: a redis GET that returns nil is a successful command
@@ -80,54 +136,21 @@ const componentName = "go-spring.org/cloud/cache"
 //     is the reason the histogram is here: the backend's own client metric
 //     cannot split hit from miss, and those two have different latency profiles.
 //
-// The instrument set is resolved when the cache is constructed (see [New]):
-// cache calls are too frequent for a per-call meter lookup. Under the framework
+// The observer is resolved when the cache is constructed (see [New]): cache
+// calls are too frequent for a per-call lookup. Under the framework
 // construction happens after RefreshPrepare, where starter-otel installs the
-// provider.
+// provider. A nil observer still wraps the backend — the span-attribute carrier
+// below is not an observability-backend concern — it only skips the metric
+// event.
 type observedCache struct {
 	ByteCache
-	ins *instrumentSet
+	obs Observer
 }
 
-// instrumentSet is this package's metric set: one per cache, resolved when the
-// cache is constructed. It holds no per-cache state — the operation and status
-// labels travel with each record, not here.
-type instrumentSet struct {
-	total    metric.Int64Counter
-	duration metric.Float64Histogram
-}
-
-// buildInstruments resolves this package's instruments against the meter
-// provider the otel starter installs before any bean is constructed. The cache
-// owns the set, so a failed registration fails construction instead of silently
-// dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
-	m := otel.Meter(componentName)
-	in := &instrumentSet{}
-	var err error
-	in.total, err = m.Int64Counter("cache.operation.total",
-		metric.WithDescription("Cache operations executed, by operation and status"),
-		metric.WithUnit("{operation}"))
-	if err != nil {
-		return nil, errutil.Explain(err, "cache: register cache.operation.total")
-	}
-	in.duration, err = m.Float64Histogram("cache.operation.duration",
-		metric.WithDescription("Duration of cache operations, by operation and status"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	if err != nil {
-		return nil, errutil.Explain(err, "cache: register cache.operation.duration")
-	}
-	return in, nil
-}
-
-// newObservedCache wraps bc.
-func newObservedCache(bc ByteCache) (observedCache, error) {
-	ins, err := buildInstruments()
-	if err != nil {
-		return observedCache{}, err
-	}
-	return observedCache{ByteCache: bc, ins: ins}, nil
+// newObservedCache wraps bc. obs may be nil, which disables the metric event
+// while keeping the span-attribute contribution.
+func newObservedCache(bc ByteCache, obs Observer) observedCache {
+	return observedCache{ByteCache: bc, obs: obs}
 }
 
 func (o observedCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
@@ -193,15 +216,12 @@ func statusOf(op string, err error) string {
 	}
 }
 
-// record emits the counter and the duration for one finished operation, under
-// the status its outcome maps to. elapsed is what the caller measured: the
-// window belongs to whoever knows where the operation began.
+// record reports one finished operation with the status its outcome maps to.
+// elapsed is what the caller measured: the window belongs to whoever knows
+// where the operation began.
 func (o observedCache) record(ctx context.Context, op string, err error, elapsed time.Duration) {
-	attrs := metric.WithAttributes(
-		attribute.String("operation", op),
-		attribute.String("status", statusOf(op, err)),
-	)
-	in := o.ins
-	in.total.Add(ctx, 1, attrs)
-	in.duration.Record(ctx, elapsed.Seconds(), attrs)
+	if o.obs == nil {
+		return
+	}
+	o.obs.Operation(ctx, op, statusOf(op, err), elapsed)
 }

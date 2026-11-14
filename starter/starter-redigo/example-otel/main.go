@@ -225,7 +225,7 @@ func runTest(s *Service) {
 		os.Exit(1)
 	}
 	stats := s.Redis.Stats()
-	fmt.Println("Pool stats:", "active:", stats.ActiveCount, "idle:", stats.IdleCount)
+	fmt.Println("Pool stats:", "active:", stats.Active, "idle:", stats.Idle)
 
 	// Wait for collector to flush.
 	time.Sleep(3 * time.Second)

@@ -33,7 +33,7 @@ import (
 // newTestObserver builds the observation layer a test's backend block would own.
 // The identity is fixed (center "test"): what these tests exercise is the
 // reporting, not the labelling.
-func newTestObserver() *discovery.Observer {
+func newTestObserver() discovery.Observer {
 	o, err := discovery.NewObserver(obsSystem, "test")
 	if err != nil {
 		panic(err)
@@ -79,7 +79,7 @@ func TestKvsToEndpoints(t *testing.T) {
 	assert.That(t, eps[1].Weight).Equal(3)
 	assert.That(t, eps[1].Scheme).Equal("tls")
 	assert.That(t, eps[1].Metadata["version"]).Equal("v2")
-	assert.That(t, eps[1].Metadata["zone"]).Equal("b")
+	assert.That(t, eps[1].Zone).Equal("b")
 }
 
 func TestKvsToEndpointsScheme(t *testing.T) {
@@ -297,7 +297,7 @@ func TestDiscoveryReportsSuccessfulSeedSyncLive(t *testing.T) {
 
 // newTestRegObserver is the write-side counterpart: registration owns its own
 // observer so the two planes stay independent in tests too.
-func newTestRegObserver() *registration.Observer {
+func newTestRegObserver() registration.Observer {
 	o, err := registration.NewObserver(obsSystem, "test")
 	if err != nil {
 		panic(err)

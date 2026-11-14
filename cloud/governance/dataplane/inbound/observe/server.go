@@ -26,7 +26,6 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/cloud/observability/instrument"
-	"go-spring.org/stdlib/errutil"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -36,68 +35,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// serverInstrumentSet is the inbound REQUEST plane's always-on signals: the
-// per-request duration and status counter. One set per observer, resolved when
-// the observer is constructed, and immutable afterwards. It holds no per-route
-// state — the system and service labels travel with each observer, not here.
-//
-// Governance organs' own state (rate budget, bulkhead) is deliberately absent:
-// each organ publishes its own state from its own package, by pull.
-// This plane answers only what happened to one request.
-//
-// It is a separate set from the outbound (resilience.client.*) family rather
-// than one family with a direction attribute: the outcome sets genuinely differ
-// (inbound has no retry, so no retry_exceeded and no per-attempt timeout),
-// and keeping them apart leaves existing outbound dashboards untouched.
-type serverInstrumentSet struct {
-	duration      metric.Float64Histogram
-	calls         metric.Int64Counter
-	faultInjected metric.Int64Counter
-	faultDelayed  metric.Int64Counter
-}
-
-// buildServerInstruments resolves the inbound request-plane instruments against
-// the meter provider the otel starter installs before any bean is constructed.
-// The observer owns the set, so a failed registration fails construction instead
-// of silently dropping the whole metric family.
-func buildServerInstruments() (*serverInstrumentSet, error) {
-	m := otel.Meter(instrument.Scope)
-	in := &serverInstrumentSet{}
-	var err error
-	in.duration, err = m.Float64Histogram("resilience.server.duration",
-		metric.WithDescription("Duration of inbound requests under resilience governance"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
-	if err != nil {
-		return nil, errutil.Explain(err, "observe: register resilience.server.duration")
-	}
-	in.calls, err = m.Int64Counter("resilience.server.calls",
-		metric.WithDescription("Number of inbound requests by inbound status"),
-		metric.WithUnit("{request}"))
-	if err != nil {
-		return nil, errutil.Explain(err, "observe: register resilience.server.calls")
-	}
-	// Fault counters are the experiment's per-rule result signal. run_id stays on
-	// spans/logs — it is high-cardinality and must not become a metric label.
-	in.faultInjected, err = m.Int64Counter("resilience.server.fault.injected",
-		metric.WithDescription("Requests whose error was injected by a fault rule"),
-		metric.WithUnit("{request}"))
-	if err != nil {
-		return nil, errutil.Explain(err, "observe: register resilience.server.fault.injected")
-	}
-	in.faultDelayed, err = m.Int64Counter("resilience.server.fault.delayed",
-		metric.WithDescription("Requests delayed by a fault rule"),
-		metric.WithUnit("{request}"))
-	if err != nil {
-		return nil, errutil.Explain(err, "observe: register resilience.server.fault.delayed")
-	}
-	return in, nil
-}
-
 // ServerObserver emits the standard inbound signals for ONE route: the request
 // span, the request-level duration, the in-flight gauge, the always-on
-// resilience.server.* counter and one access log — plus, for a route that
-// declares an operation, that family's own request metrics.
+// resilience.server.* counter and one access log — plus the route family's own
+// request metrics.
 //
 // It is the inbound counterpart of [WrapClientExecutor], and it replaces BOTH the
 // old executor-wrapping path and the observe-only self-emission path with one
@@ -111,17 +52,14 @@ type ServerObserver struct {
 }
 
 // NewServerObserver builds the inbound observer for one route system/service.
-// system is the server's name ("gin", "grpc"); service is the route label.
-func NewServerObserver(system, service string) (*ServerObserver, error) {
-	ins, err := buildServerInstruments()
-	if err != nil {
-		return nil, err
-	}
+// system is the server's name ("gin", "grpc"); service is the route label. m may
+// be nil, which disables the metrics.
+func NewServerObserver(system, service string, m Metrics) *ServerObserver {
 	return &ServerObserver{serverEmitter: &serverEmitter{
 		system:  system,
 		service: service,
-		ins:     ins,
-	}}, nil
+		metrics: m,
+	}}
 }
 
 // Run is the PREFERRED form: it opens the span, hands fn the observed context and
@@ -140,27 +78,19 @@ func (o *ServerObserver) Run(ctx context.Context, op ServerOperation, fn func(co
 // a protocol whose request cannot be wrapped in one closure, mirroring
 // admission.Guard's Admit.
 func (o *ServerObserver) Begin(ctx context.Context, op ServerOperation) (context.Context, *Observation) {
-	// A described route carries a non-empty metric prefix; a route that declares
-	// no description (the zero Operation) takes the fallback path.
-	hasOp := op.Observe.Metric.Name != ""
-
-	ctx, span := otel.Tracer(instrument.ComponentName).Start(ctx, o.serverSpanName(op, hasOp),
+	ctx, span := otel.Tracer(instrument.ComponentName).Start(ctx, o.serverSpanName(op),
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithLinks(op.Observe.Span.Links...),
-		trace.WithAttributes(o.serverSpanAttrs(op, hasOp)...))
+		trace.WithAttributes(o.serverSpanAttrs(op)...))
 
-	var ins *opServerInstrumentSet
-	if hasOp {
-		ins = serverOperationInstruments(op.Observe.Metric.Name)
-		ins.active.Add(ctx, 1, metric.WithAttributes(o.serverLabels(op.Observe.Metric.Attrs, "", nil)...))
+	if o.metrics != nil {
+		o.metrics.Active(ctx, o.requestOf(op), 1)
 	}
 	return ctx, &Observation{
 		observer: o,
 		op:       op,
-		hasOp:    hasOp,
 		start:    time.Now(),
 		span:     span,
-		ins:      ins,
 		resp:     &Response{},
 	}
 }
@@ -181,10 +111,8 @@ func (o *ServerObserver) End(ob *Observation, err error) {
 type Observation struct {
 	observer *ServerObserver
 	op       ServerOperation
-	hasOp    bool
 	start    time.Time
 	span     trace.Span
-	ins      *opServerInstrumentSet
 	resp     *Response
 
 	// The admission/fault stage's result, recorded through [MarkInjected] so
@@ -237,7 +165,8 @@ func (ob *Observation) end(err error) {
 	// request, so the call-level and rule-level facts are the same scalars.
 	if ob.injected != nil {
 		attrs := []attribute.KeyValue{
-			attribute.String("resilience.injected", ob.injected.Error),
+			attribute.String("resilience.injected", "response"),
+			attribute.Int("resilience.injected.status", ob.injected.Status),
 			attribute.String("resilience.injected.rule", ob.injected.Name),
 			attribute.Float64("resilience.injected.delay_ms", float64(ob.injected.Delay)/float64(time.Millisecond)),
 		}
@@ -255,47 +184,28 @@ func (ob *Observation) end(err error) {
 	durMs := float64(dur.Nanoseconds()) / 1e6
 
 	// resilience.server.* is the inbound layer's own signal and keeps its shape
-	// whether or not the route declared an operation. The emission context is the
+	// independent of the route family's metrics. The emission context is the
 	// span's own, not a request context the caller owns.
 	emitCtx := context.Background()
-	labels := []attribute.KeyValue{
-		attribute.String("system", o.system),
-		attribute.String("service", o.service),
-		attribute.String("status", status),
-	}
-	if errorType := serverErrorType(err); errorType != "" {
-		labels = append(labels, attribute.String("resilience.error_type", errorType))
-	}
-	o.ins.duration.Record(emitCtx, dur.Seconds(), metric.WithAttributes(labels...))
-	o.ins.calls.Add(emitCtx, 1, metric.WithAttributes(labels...))
-
-	// The fault result, per rule: the experiment's outcome at request granularity.
-	if ob.injected != nil {
-		base := []attribute.KeyValue{
-			attribute.String("system", o.system),
-			attribute.String("service", o.service),
-			attribute.String("rule", ob.injected.Name),
+	if o.metrics != nil {
+		req := o.requestOf(op)
+		req.Attrs = op.Observe.Metric.Attrs
+		req.ResponseAttrs = respAttrs
+		req.Status = status
+		req.ErrorType = serverErrorType(err)
+		req.Duration = dur
+		o.metrics.Request(emitCtx, req)
+		if !op.Observe.Metric.Disabled {
+			o.metrics.Active(emitCtx, req, -1)
 		}
-		if ob.injected.Inject {
-			faultLabels := append(append([]attribute.KeyValue{}, base...),
-				attribute.String("kind", ob.injected.Error),
-				attribute.String("class", ob.injected.Class))
-			o.ins.faultInjected.Add(emitCtx, 1, metric.WithAttributes(faultLabels...))
+		if ob.injected != nil {
+			o.metrics.Fault(emitCtx, req, Fault{
+				Rule:   ob.injected.Name,
+				Status: ob.injected.Status,
+				Inject: ob.injected.Inject,
+				Delay:  ob.injected.Delay,
+			})
 		}
-		if ob.injected.Delay > 0 {
-			o.ins.faultDelayed.Add(emitCtx, 1, metric.WithAttributes(base...))
-		}
-	}
-
-	if ob.ins != nil {
-		// The declared family metrics: the route's own bounded vocabulary, the
-		// response half, and the shared status axis. The family names are the HTTP
-		// family's — `<prefix>.request.duration` / `<prefix>.active_requests` —
-		// because a server's signal is a request, and those are the names every
-		// dashboard already reads.
-		opLabels := o.serverLabels(op.Observe.Metric.Attrs, status, respAttrs)
-		ob.ins.duration.Record(emitCtx, dur.Seconds(), metric.WithAttributes(opLabels...))
-		ob.ins.active.Add(emitCtx, -1, metric.WithAttributes(o.serverLabels(op.Observe.Metric.Attrs, "", nil)...))
 	}
 
 	tag := instrument.Tag
@@ -303,20 +213,18 @@ func (ob *Observation) end(err error) {
 		log.String("system", o.system),
 		log.String("service", o.service),
 	}
-	if ob.hasOp {
-		if op.Observe.Log.Tag != nil {
-			tag = op.Observe.Log.Tag
-		}
-		fields = append(fields, op.Observe.Log.Fields...)
-		fields = append(fields, instrument.AttrsToLogFields(respAttrs)...)
+	if op.Observe.Log.Tag != nil {
+		tag = op.Observe.Log.Tag
 	}
+	fields = append(fields, op.Observe.Log.Fields...)
+	fields = append(fields, instrument.AttrsToLogFields(respAttrs)...)
 	fields = append(fields, log.String("status", status), log.Float("duration_ms", durMs))
 
 	if err != nil {
 		log.Warn(emitCtx, tag, "server call failed", append(fields, log.Err(err))...)
 		return
 	}
-	quiet := !ob.hasOp || op.Observe.Log.QuietSuccess
+	quiet := op.Observe.Log.QuietSuccess
 	if quiet {
 		log.Debug(emitCtx, tag, "server call succeeded", func() []log.Field { return fields })
 		return
@@ -330,9 +238,22 @@ type serverEmitter struct {
 	system  string
 	service string
 
-	// ins is the shared inbound instrument set; the tracer is looked up per use,
-	// so a captured otel.Tracer never goes stale.
-	ins *serverInstrumentSet
+	// metrics is the metric seam; nil disables the metrics. The tracer is looked
+	// up per use, so a captured otel.Tracer never goes stale.
+	metrics Metrics
+}
+
+// requestOf maps one server operation onto the metric seam's value.
+func (e *serverEmitter) requestOf(op ServerOperation) Request {
+	r := Request{
+		System:  e.system,
+		Service: e.service,
+		Attrs:   op.Observe.Metric.Attrs,
+	}
+	if !op.Observe.Metric.Disabled {
+		r.Operation = op.Observe.Metric.Name
+	}
+	return r
 }
 
 // opServerInstrumentSet is the INBOUND counterpart: the two signals a declared
@@ -380,7 +301,7 @@ func serverOperationInstruments(prefix string) *opServerInstrumentSet {
 }
 
 // serverErrorType names the class of a refusal in admission's vocabulary. It is the
-// server-side counterpart of chain.ClassifyErrorType; the two vocabularies are
+// server-side counterpart of chain.RoundErrorType; the two vocabularies are
 // deliberately separate, so the observer does not import the client's sentinels.
 func serverErrorType(err error) string {
 	switch {
@@ -395,46 +316,19 @@ func serverErrorType(err error) string {
 	}
 }
 
-// serverSpanName names an inbound span: the route's own word when it declared
-// one, the route service otherwise — which is what this layer's spans have
-// always been named in the undeclared case.
-func (e *serverEmitter) serverSpanName(op ServerOperation, hasOp bool) string {
-	if hasOp && op.Action != "" {
+// serverSpanName names an inbound span: the route's own action word, else the
+// route service the observer was built for.
+func (e *serverEmitter) serverSpanName(op ServerOperation) string {
+	if op.Action != "" {
 		return op.Action
 	}
 	return e.service
 }
 
 // serverSpanAttrs is what the route's span carries: its declared
-// [chain.Observe.Span.Attrs] when it declared an operation, else this layer's own
-// inbound labels.
-func (e *serverEmitter) serverSpanAttrs(op ServerOperation, hasOp bool) []attribute.KeyValue {
-	if hasOp {
-		return op.Observe.Span.Attrs
-	}
-	return []attribute.KeyValue{
-		attribute.String("resilience.system", e.system),
-		attribute.String("resilience.service", e.service),
-		attribute.String("resilience.direction", "inbound"),
-	}
-}
-
-// serverLabels builds an inbound family metric's labels: the declared bounded
-// attrs, then whatever the handler recorded as it answered, then the shared
-// status axis. Unlike the client side there is no service label — a server's
-// identity is its route, and adding one would change the label set every
-// existing HTTP dashboard groups by.
-//
-// A fresh slice, for the same reason the client side needs one: attrs comes off
-// the context and is shared.
-func (e *serverEmitter) serverLabels(attrs []attribute.KeyValue, status string, resp []attribute.KeyValue) []attribute.KeyValue {
-	out := make([]attribute.KeyValue, 0, len(attrs)+len(resp)+1)
-	out = append(out, attrs...)
-	out = append(out, resp...)
-	if status == "" {
-		return out
-	}
-	return append(out, attribute.String("status", status))
+// [ServerObserve.Span] attributes.
+func (e *serverEmitter) serverSpanAttrs(op ServerOperation) []attribute.KeyValue {
+	return op.Observe.Span.Attrs
 }
 
 // The response holder carries the half of a SERVER operation's identity that

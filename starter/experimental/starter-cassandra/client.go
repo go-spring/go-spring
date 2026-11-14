@@ -101,7 +101,7 @@ func NewClient(session *gocql.Session, cfg Config, center *governance.Runtime) *
 	serviceLabel := label.ServiceLabel("cassandra", host)
 	return &Client{
 		Session:      session,
-		exec:         center.ExecutorFor("cassandra", serviceLabel),
+		exec:         center.ExecutorFor("cassandra", serviceLabel, nil),
 		serviceLabel: serviceLabel,
 		prop:         center.Traffic,
 	}

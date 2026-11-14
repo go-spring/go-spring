@@ -85,7 +85,7 @@ func buildInstruments() (*instrumentSet, error) {
 // in-flight gauge — through the global MeterProvider that starter-otel installs.
 // When starter-otel is not imported the global MeterProvider is a no-op, so this
 // costs almost nothing. The middleware is on by default; importing starter-otel activates it.
-func metricsMiddleware() (app.HandlerFunc, error) {
+func (otelObserver) Metrics() (app.HandlerFunc, error) {
 	ins, err := buildInstruments()
 	if err != nil {
 		return nil, err

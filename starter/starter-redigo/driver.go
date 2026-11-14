@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/connpool"
 )
 
 // Driver interface defines how to create a Redis client (a connection pool) —
@@ -66,8 +67,11 @@ type Driver interface {
 	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Pool, error)
 }
 
-// DefaultDriver is the default implementation of the Driver interface.
-type DefaultDriver struct{}
+// DefaultDriver is the default implementation of the Driver interface. Observe
+// is the observability adapter the starter injects; nil uses the pool default.
+type DefaultDriver struct {
+	Observe connpool.Observer
+}
 
 // CreateClient creates a new Redis pool based on the provided configuration.
 //
@@ -90,6 +94,6 @@ type DefaultDriver struct{}
 //
 // center is passed straight through to [NewPool], which applies it during
 // assembly, so the returned Pool is complete.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Pool, error) {
-	return NewPool(ctx, c, center)
+func (d DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Pool, error) {
+	return NewPoolWithObserver(ctx, c, center, d.Observe)
 }

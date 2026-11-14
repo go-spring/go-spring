@@ -79,13 +79,13 @@ func TestRunGuardRecordNotFoundNeverTripsBreaker(t *testing.T) {
 	defer func() { _ = exec.Close() }()
 
 	for range 10 {
-		err := runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func() error {
+		err := runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func(context.Context) error {
 			return gorm.ErrRecordNotFound
 		})
 		assert.Error(t, err).Is(gorm.ErrRecordNotFound)
 	}
 	// A subsequent real op still runs (breaker never opened).
-	err := runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func() error { return nil })
+	err := runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Nil()
 }
 
@@ -115,7 +115,7 @@ func TestRunGuardConstraintNeverTripsBreaker(t *testing.T) {
 	calls := 0
 	call := func() error {
 		calls++
-		return runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, translator, func() error {
+		return runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, translator, func(context.Context) error {
 			return dupKey
 		})
 	}
@@ -144,10 +144,10 @@ func TestRunGuardRealErrorsTripBreaker(t *testing.T) {
 	defer func() { _ = exec.Close() }()
 
 	boom := errors.New("connection reset")
-	assert.Error(t, runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func() error { return boom })).Is(boom)
-	assert.Error(t, runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func() error { return boom })).Is(boom)
+	assert.Error(t, runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return boom })).Is(boom)
+	assert.Error(t, runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return boom })).Is(boom)
 	// Breaker now open: the next call is short-circuited before the stub runs.
-	assert.Error(t, runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func() error { return nil })).Is(chain.ErrCircuitOpen)
+	assert.Error(t, runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
 }
 
 // TestRunGuardRateLimitRejects confirms the flow-control path. Following
@@ -160,7 +160,7 @@ func TestRunGuardRateLimitRejects(t *testing.T) {
 	defer func() { _ = exec.Close() }()
 
 	var ran int
-	stub := func() error { ran++; return nil }
+	stub := func(context.Context) error { ran++; return nil }
 	assert.Error(t, runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, stub)).Nil()
 	err := runGuard(context.Background(), exec, chain.Operation{Service: "svc"}, nil, stub)
 	assert.Error(t, err).Is(chain.ErrRateLimited)

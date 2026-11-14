@@ -17,7 +17,7 @@
 package StarterGrpcClient
 
 // This file is the client-side load-balancing adapter that plugs the
-// framework-neutral [go-spring.org/cloud/governance/capability/loadbalance] chain into gRPC's own
+// framework-neutral [go-spring.org/cloud/governance/dataplane/outbound/loadbalance] chain into gRPC's own
 // resolver + balancer machinery: a per-connection resolver (scheme
 // "gsdiscovery") that turns a discovery backend into the stream of address
 // snapshots gRPC consumes, and a picker that selects among the READY SubConns
@@ -49,7 +49,9 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+	lb "go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"google.golang.org/grpc/attributes"
@@ -142,8 +144,8 @@ func newConnState(label string, mgr *loadbalance.Manager) (*connState, error) {
 // Pick selects one READY route through the chain's generation in force. The
 // result carries that generation, so gRPC's Done callback settles on it even if
 // a governance push swapped the chain in between.
-func (s *connState) Pick(info balancer.PickInfo) (loadbalance.PickResult, error) {
-	return s.chain.Pick(info.Ctx, pickInfoFrom(info))
+func (s *connState) Pick(info balancer.PickInfo) (chain.Peer, error) {
+	return s.chain.Pick(info.Ctx, pickInfoFrom(info), nil)
 }
 
 // publish installs eps as the live candidate snapshot. It is called from the
@@ -175,8 +177,8 @@ func WithZone(ctx context.Context, zone string) context.Context {
 	return context.WithValue(ctx, zoneCtxKey, zone)
 }
 
-func pickInfoFrom(info balancer.PickInfo) loadbalance.PickInfo {
-	var pi loadbalance.PickInfo
+func pickInfoFrom(info balancer.PickInfo) lb.PickInfo {
+	var pi lb.PickInfo
 	if info.Ctx != nil {
 		if v, ok := info.Ctx.Value(hashKeyCtxKey).(string); ok {
 			pi.HashKey = v
@@ -220,7 +222,7 @@ func addrFromEndpoint(ep discovery.Endpoint, sel *connState) resolver.Address {
 		Attributes: attributes.New(addrAttrKey{}, addrAttr{
 			weight:  ep.Weight,
 			healthy: ep.Healthy,
-			zone:    ep.Metadata[discovery.MetaKeyZone],
+			zone:    ep.Zone,
 			sel:     sel,
 		}),
 	}
@@ -231,9 +233,7 @@ func endpointFromAddr(a resolver.Address) discovery.Endpoint {
 	if v, ok := addrAttrOf(a); ok {
 		ep.Weight = v.weight
 		ep.Healthy = v.healthy
-		if v.zone != "" {
-			ep.Metadata = map[string]string{discovery.MetaKeyZone: v.zone}
-		}
+		ep.Zone = v.zone
 	}
 	return ep
 }

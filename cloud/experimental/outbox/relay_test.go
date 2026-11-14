@@ -95,8 +95,7 @@ func TestRelay_DeliversPending(t *testing.T) {
 	store.Add(Record{Destination: "orders", Payload: []byte("m1")}, time.Time{})
 	store.Add(Record{Destination: "orders", Payload: []byte("m2")}, time.Time{})
 
-	r, err := NewRelay(store, driver, Config{PollInterval: time.Hour})
-	require.NoError(t, err)
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour}, nil)
 	runOnce(t, r)
 
 	msgs := driver.delivered("orders")
@@ -113,8 +112,7 @@ func TestRelay_FetchHonorsNextRetry(t *testing.T) {
 	future := time.Now().Add(time.Hour)
 	store.Add(Record{Destination: "orders", Payload: []byte("later")}, future)
 
-	r, err := NewRelay(store, driver, Config{PollInterval: time.Hour})
-	require.NoError(t, err)
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour}, nil)
 	runOnce(t, r)
 
 	assert.Empty(t, driver.delivered("orders"))
@@ -131,8 +129,7 @@ func TestRelay_FailureRetriesWithBackoff(t *testing.T) {
 	obs := ObserverFunc{OnRetryFunc: func(rec *Record, err error, nextRetry time.Time) {
 		retries = append(retries, nextRetry)
 	}}
-	r, err := NewRelay(store, driver, Config{PollInterval: time.Hour, BackoffBase: time.Minute}, obs)
-	require.NoError(t, err)
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour, BackoffBase: time.Minute}, nil, obs)
 
 	runOnce(t, r) // attempt 1 fails
 	assert.Empty(t, driver.delivered("orders"))
@@ -172,10 +169,9 @@ func TestRelay_DeadLettersAfterMaxAttempts(t *testing.T) {
 		Headers: map[string]string{"h": "v"}}, time.Time{})
 
 	var dead []*Record
-	r, err := NewRelay(store, driver, Config{
+	r := NewRelay(store, driver, Config{
 		PollInterval: time.Hour, MaxAttempts: 3, BackoffBase: time.Millisecond, DLQSuffix: ".dlq",
-	}, ObserverFunc{OnDeadFunc: func(rec *Record, err error) { dead = append(dead, rec) }})
-	require.NoError(t, err)
+	}, nil, ObserverFunc{OnDeadFunc: func(rec *Record, err error) { dead = append(dead, rec) }})
 
 	for range 3 {
 		store.mu.Lock()
@@ -203,10 +199,9 @@ func TestRelay_DeadWithoutDLQSuffix(t *testing.T) {
 	driver := newMemDriver(map[string]int{"orders": 0})
 	store.Add(Record{Destination: "orders", Payload: []byte("m1")}, time.Time{})
 
-	r, err := NewRelay(store, driver, Config{
+	r := NewRelay(store, driver, Config{
 		PollInterval: time.Hour, MaxAttempts: 1, DLQSuffix: "",
-	})
-	require.NoError(t, err)
+	}, nil)
 	runOnce(t, r)
 
 	assert.Empty(t, driver.delivered("orders"))
@@ -220,10 +215,9 @@ func TestRelay_DeadLetterPublishFailureKeepsPending(t *testing.T) {
 	driver := newMemDriver(map[string]int{"orders": 0, "orders.dlq": 0})
 	store.Add(Record{Destination: "orders", Payload: []byte("m1")}, time.Time{})
 
-	r, err := NewRelay(store, driver, Config{
+	r := NewRelay(store, driver, Config{
 		PollInterval: time.Hour, MaxAttempts: 1, BackoffBase: time.Millisecond, DLQSuffix: ".dlq",
-	})
-	require.NoError(t, err)
+	}, nil)
 	runOnce(t, r)
 
 	assert.Empty(t, driver.delivered("orders.dlq"))
@@ -236,8 +230,7 @@ func TestRelay_PublishOrderingPerKeyPassedThrough(t *testing.T) {
 	driver := newMemDriver(nil)
 	store.Add(Record{Destination: "orders", Key: "user-1", Payload: []byte("m1")}, time.Time{})
 
-	r, err := NewRelay(store, driver, Config{PollInterval: time.Hour})
-	require.NoError(t, err)
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour}, nil)
 	runOnce(t, r)
 
 	msgs := driver.delivered("orders")
@@ -248,8 +241,7 @@ func TestRelay_PublishOrderingPerKeyPassedThrough(t *testing.T) {
 func TestRelay_RunStopsOnCancel(t *testing.T) {
 	store := &MemoryStore{}
 	driver := newMemDriver(nil)
-	r, err := NewRelay(store, driver, Config{PollInterval: time.Millisecond})
-	require.NoError(t, err)
+	r := NewRelay(store, driver, Config{PollInterval: time.Millisecond}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -271,8 +263,7 @@ func TestRelay_BatchSurvivesPoisonRecord(t *testing.T) {
 	store.Add(Record{Destination: "poison", Payload: []byte("bad")}, time.Time{})
 	store.Add(Record{Destination: "healthy", Payload: []byte("good")}, time.Time{})
 
-	r, err := NewRelay(store, driver, Config{PollInterval: time.Hour, MaxAttempts: 1, BackoffBase: time.Millisecond, DLQSuffix: ".dlq"})
-	require.NoError(t, err)
+	r := NewRelay(store, driver, Config{PollInterval: time.Hour, MaxAttempts: 1, BackoffBase: time.Millisecond, DLQSuffix: ".dlq"}, nil)
 	runOnce(t, r)
 
 	assert.Len(t, driver.delivered("healthy"), 1)
@@ -297,4 +288,25 @@ func TestConfig_Defaults(t *testing.T) {
 	assert.Equal(t, time.Second, c.BackoffBase)
 	assert.Equal(t, time.Minute, c.BackoffMax)
 	assert.Equal(t, "", c.DLQSuffix)
+}
+
+// recordingMetrics captures the relay's per-record metric events so the seam is
+// tested without OTel.
+type recordingMetrics struct {
+	statuses []string
+}
+
+func (m *recordingMetrics) Record(_ context.Context, status string) {
+	m.statuses = append(m.statuses, status)
+}
+
+func TestMetricsObserverSeam(t *testing.T) {
+	store := &MemoryStore{}
+	driver := newMemDriver(nil)
+	store.Add(Record{Destination: "orders", Payload: []byte("m")}, time.Time{})
+
+	metrics := &recordingMetrics{}
+	runOnce(t, NewRelay(store, driver, Config{PollInterval: time.Hour}, metrics))
+
+	assert.Equal(t, []string{"published"}, metrics.statuses)
 }

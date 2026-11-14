@@ -30,6 +30,7 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2/rlog"
 	"go-spring.org/cloud/governance"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -60,7 +61,9 @@ type Driver interface {
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
-type DefaultDriver struct{}
+type DefaultDriver struct {
+	Observe observability.Metrics
+}
 
 // CreateClient creates a new RocketMQ Client from the provided configuration.
 // It owns full client assembly — the rlog bridge into go-spring's log, the
@@ -68,13 +71,13 @@ type DefaultDriver struct{}
 // the result to [NewClient], which fixes its identity and applies the governance
 // bundle. It does NOT own the startup name server probe (Ping), which is the
 // starter's lifecycle concern (see newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
+func (d DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	// Bridge rocketmq-client-go's internal logs into go-spring's log so
 	// connection and rebalance events show up alongside application logs.
 	// rlog.SetLogger is process-global, so install the bridge exactly once.
 	installLogBridge()
 
-	return NewClient(c.NameServers, c, center.Traffic), nil
+	return NewClient(c.NameServers, c, center.Traffic, d.Observe), nil
 }
 
 // -----------------------------------------------------------------------------

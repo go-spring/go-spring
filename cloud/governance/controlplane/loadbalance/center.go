@@ -27,8 +27,8 @@ package loadbalance
 import (
 	"context"
 
-	kloadbalance "go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/source"
+	kloadbalance "go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/log"
 )
 

@@ -105,7 +105,7 @@ func findFloatGauge(t *testing.T, rdr sdkmetric.Reader, name string, want map[st
 }
 
 // newObserver builds the observer for one scenario.
-func newObserver(t *testing.T, system, center string) *Observer {
+func newObserver(t *testing.T, system, center string) Observer {
 	t.Helper()
 	o, err := NewObserver(system, center)
 	require.NoError(t, err)

@@ -234,7 +234,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
 - **A client starter whose component reaches out gets governance from its own imports.** No
   governance import is needed: each authority is registered by the package that
   **owns it** — `cloud/governance/dataplane/outbound/resilience` registers `*resilience.Manager`,
-  `cloud/governance/capability/loadbalance` registers `*loadbalance.Manager`,
+  `cloud/governance/dataplane/outbound/loadbalance` registers `*loadbalance.Manager`,
   `cloud/governance/dataplane/{outbound,inbound}/fault` registers `*clientfault.Manager` and
   `*serverfault.Manager`, and `cloud/discovery` registers
   `*discovery.Manager` — and a starter that injects one has necessarily imported
@@ -307,7 +307,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     suspension `Tracker`, `Pick` paired with `Complete` at the dial site, and
     `lbMgr.Chain(resolver, entry label)` with the injected
     `*loadbalance.Manager` — so the entry's
-    governance rule rebuilds the chain for `balancer` / `outlier-threshold` / `outlier-suspend-for`,
+    governance rule rebuilds the chain for `balancer` / `dial-failures` / `request-failures` / `suspend-for`,
     through the `loadbalance` manager rather than by importing the policy roots.
   - `client.go` — the assembled client and the resilience side of it: the
     executor the constructor pins on the client, the per-call routing into it,
@@ -839,9 +839,9 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     shared axis is `status`, the detail is `http.response.status_code`.
     The client emitter follows the same rule: `status` is `ok`/`error` like
     everywhere else, and **`resilience.error_type`** carries the call's one
-    outcome word — a gate the protection stages applied (`rate_limited`,
-    `circuit_open`, `bulkhead_full`, `retry_exceeded`, `timeout`), or
-    `downstream` / `canceled`. It is absent only on success, so a failed call is
+    outcome word — a verdict the chain made (`rate_limited`,
+    `circuit_open`, `bulkhead_full`, `retry_exceeded`, `no_endpoints`, `call_timeout`), or
+    `connect_failed` / `resource_exhausted` / `context_canceled` / `unknown`. It is absent only on success, so a failed call is
     always attributable. Putting those words in `status` would have made the one
     key two vocabularies, which is exactly the failure this tier exists to
     prevent.
@@ -1073,7 +1073,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    and `lbMgr.Chain(resolver, <entry label>)` with the injected
    `*loadbalance.Manager` under the
    *same* `label.ServiceLabel` the entry's executor uses. That is what makes
-   `balancer` / `outlier-threshold` / `outlier-suspend-for` configurable through the
+   `balancer` / `dial-failures` / `request-failures` / `suspend-for` configurable through the
    governance rule instead of hardcoded — no `balancer` key of your own, and no import of
    the policy roots. A client that cannot re-pick (one-shot resolution, or a
    library that owns its own selector) stays out of this on purpose; say so in its

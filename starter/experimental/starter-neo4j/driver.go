@@ -32,7 +32,6 @@ import (
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/security"
 	"go-spring.org/stdlib/errutil"
 )
@@ -74,26 +73,53 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new Neo4j client based on the provided configuration.
 //
-// When in-process discovery applies (a service name is set and the process is not in mesh mode), the discovery backend the
-// entry's ${discovery} label names is resolved from center.Directory and one
-// endpoint is picked, its address spliced into the URI host (the seed); the
-// same resolver feeds the driver's AddressResolver hook so a routing client can
-// re-find the cluster. An entry routed by service-name that cites no existing
-// backend fails here, at construction.
+// When in-process discovery applies (a service name is set and the process is
+// not in mesh mode), the discovery backend the entry's ${discovery} label names
+// is resolved from center.Directory and ONE eligible endpoint is picked as the
+// routing driver's SEED address and spliced into the URI host. This is seed
+// resolution, not load balancing: the pool is built over that address for the
+// driver's lifetime, and every later address decision belongs to the driver's
+// routing table. The same resolver feeds the driver's AddressResolver hook —
+// the fallback the routing driver consults after both its last-known routers
+// and the seeded router failed — so a client can re-find the cluster. An entry
+// routed by service-name that cites no existing backend fails here, at
+// construction. [Config.Validate] has already rejected a service name paired
+// with a direct (bolt) scheme.
 func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
+	// A hand-built config bypasses the binder, so the same scheme × service-name
+	// rule is enforced here too; the normal path has already passed it.
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+
 	// Seed the URI host from the discovery backend this entry cites. The label
 	// rides on the config (c.Discovery, already carrying the family default);
-	// resolveURI fails loudly when it names no bean.
+	// a missing backend fails loudly.
 	useDiscovery := center.UsesDiscovery(c.ServiceName)
-	var backend discovery.Discovery
+	var resolve discovery.Resolver
 	if useDiscovery {
-		backend, _ = center.Directory.Get(c.Discovery)
-		uri, err := resolveURI(ctx, c, backend)
+		backend, _ := center.Directory.Get(c.Discovery)
+		if backend == nil {
+			if c.Discovery == "" {
+				return nil, errutil.Explain(nil, "neo4j: instance routes by service-name but sets no discovery backend (set spring.neo4j.instances.<name>.discovery to the name of a discovery backend bean)")
+			}
+			return nil, errutil.Explain(nil, "neo4j: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
+		}
+		var err error
+		resolve, err = discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
+		if err != nil {
+			return nil, errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
+		}
+		seed, err := resolveSeed(ctx, resolve, c.ServiceName)
 		if err != nil {
 			return nil, err
 		}
-		c.URI = uri
+		c.URI, err = withHost(c.URI, seed)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	auth := neo4j.NoAuth()
 	if c.Username != "" {
 		auth = neo4j.BasicAuth(c.Username, c.Password, c.Realm)
@@ -107,16 +133,12 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 		conf.MaxTransactionRetryTime = c.MaxTransactionRetryTime
 		tlsErr = applyTLS(c.TLS, conf)
 		// Discovery in effect: hand the routing driver a live router set to retry
-		// with, so a client whose boot-time host disappears can find the cluster
+		// with, so a client whose seeded host disappears can find the cluster
 		// again instead of staying broken until the process restarts. The driver
-		// only consults this hook in routing mode (neo4j:// schemes) — a direct
-		// bolt:// client has no routing table to rebuild and is unchanged.
-		if useDiscovery {
-			if resolve, rerr := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme); rerr != nil {
-				tlsErr = errutil.Explain(rerr, "neo4j: resolve service %s", c.ServiceName)
-			} else {
-				conf.AddressResolver = liveRouterAddresses(resolve)
-			}
+		// consults this hook only after both its last-known routers and the
+		// seeded root router failed.
+		if resolve != nil {
+			conf.AddressResolver = liveRouterAddresses(resolve)
 		}
 	})
 	if err != nil {
@@ -131,32 +153,94 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	return NewClient(client, c, center), nil
 }
 
+// resolveSeed returns the one address the routing driver is dialed with. It is
+// seed resolution, not load balancing: the driver builds its pool over this
+// address and owns every later address decision through its routing table.
+// Choosing among instances once, at construction, would be balancing in name
+// only — the choice is never revisited.
+//
+// The eligibility order follows the endpoint model: a disabled instance never
+// receives traffic; healthy instances are preferred, degrading to all
+// non-disabled when none is healthy; a zero weight is the naming service's
+// drain signal and is skipped unless every eligible candidate is draining.
+func resolveSeed(ctx context.Context, resolve discovery.Resolver, service string) (string, error) {
+	eps, err := resolve(ctx)
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: resolve service %s", service)
+	}
+	if ep, ok := seedEndpoint(eps); ok {
+		return ep.Addr, nil
+	}
+	return "", errutil.Explain(nil, "neo4j: service %s resolved no eligible endpoint", service)
+}
+
+// seedEndpoint picks the seed from eps in the eligibility order resolveSeed
+// documents. It returns false when every endpoint is disabled (or eps is
+// empty) — there is no address that may receive traffic.
+func seedEndpoint(eps []discovery.Endpoint) (discovery.Endpoint, bool) {
+	first := func(accept func(discovery.Endpoint) bool) (discovery.Endpoint, bool) {
+		for _, ep := range eps {
+			if !ep.Disabled && accept(ep) {
+				return ep, true
+			}
+		}
+		return discovery.Endpoint{}, false
+	}
+	if ep, ok := first(func(ep discovery.Endpoint) bool { return ep.Healthy && ep.Weight != 0 }); ok {
+		return ep, true
+	}
+	if ep, ok := first(func(ep discovery.Endpoint) bool { return ep.Healthy }); ok {
+		return ep, true
+	}
+	if ep, ok := first(func(ep discovery.Endpoint) bool { return ep.Weight != 0 }); ok {
+		return ep, true
+	}
+	return first(func(discovery.Endpoint) bool { return true })
+}
+
+// withHost rewrites the URI's host to addr, preserving scheme, credentials and
+// query. It is how the resolved seed replaces the entry's placeholder host.
+func withHost(uri, addr string) (string, error) {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: parse uri %s", uri)
+	}
+	u.Host = addr
+	return u.String(), nil
+}
+
 // liveRouterAddresses adapts a discovery [discovery.Resolver] into the driver's
 // [neo4j.ServerAddressResolver] hook: the router set the routing driver retries
-// with after it failed to build a routing table from the address it was dialed
-// with. That is exactly the recovery a discovery-backed client wants — the
-// instance baked into the URI is gone, ask the naming service where the cluster
-// is now — and it is the driver's ONLY resolver seam, so it is what a bolt://
-// direct client (no routing table) cannot use.
+// with after both its last-known routers and the seeded root router failed to
+// yield a routing table. That is exactly the recovery a discovery-backed client
+// wants — the instance baked into the URI is gone, ask the naming service where
+// the cluster is now — and it is the driver's ONLY resolver seam, so it is what
+// a direct client cannot use.
 //
-// On a read error or an empty snapshot it returns the address the driver already
-// had, so a registry hiccup leaves the driver exactly as it was rather than
-// handing it an empty router list to fail on.
+// On a read error or an empty (or entirely disabled) snapshot it returns the
+// address the driver already had, so a registry hiccup leaves the driver
+// exactly as it was rather than handing it an empty router list to fail on.
 func liveRouterAddresses(resolve discovery.Resolver) neo4j.ServerAddressResolver {
 	// The driver's address-resolver hook carries no context, so this is one of
 	// the adapter boundaries that supplies context.Background() itself.
 	return func(current neo4j.ServerAddress) []neo4j.ServerAddress {
 		eps, err := resolve(context.Background())
-		if err != nil || len(eps) == 0 {
+		if err != nil {
 			return []neo4j.ServerAddress{current}
 		}
 		routers := make([]neo4j.ServerAddress, 0, len(eps))
 		for _, ep := range eps {
+			if ep.Disabled {
+				continue
+			}
 			host, port, err := net.SplitHostPort(ep.Addr)
 			if err != nil {
-				return []neo4j.ServerAddress{current}
+				continue
 			}
 			routers = append(routers, neo4j.NewServerAddress(host, port))
+		}
+		if len(routers) == 0 {
+			return []neo4j.ServerAddress{current}
 		}
 		return routers
 	}
@@ -199,52 +283,4 @@ func applyTLS(t security.TLSConfig, conf *neo4j.Config) error {
 		conf.ClientCertificateProvider = provider
 	}
 	return nil
-}
-
-// resolveURI resolves c.ServiceName through the discovery backend the driver
-// resolved from c.Discovery, picks one live endpoint via the shared loadbalance
-// machinery, and rewrites the URI's host to that address. It must only be
-// called when service discovery is in effect (the caller has already gated on
-// service-name being set and mesh mode being off); it fails loudly when backend
-// is nil (no backend bean cited by the ${discovery} label).
-func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (string, error) {
-	if backend == nil {
-		if c.Discovery == "" {
-			return "", errutil.Explain(nil, "neo4j: instance routes by service-name but sets no discovery backend (set spring.neo4j.instances.<name>.discovery to the name of a discovery backend bean)")
-		}
-		return "", errutil.Explain(nil, "neo4j: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
-	}
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
-	}
-	eps, err := resolver(ctx)
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
-	}
-	factories := loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})
-	bal, err := factories.Create(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: build balancer")
-	}
-	tracker, err := loadbalance.NewTracker(loadbalance.TrackerConfig{})
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: build tracker")
-	}
-	pool, err := loadbalance.NewPool(func(context.Context) ([]discovery.Endpoint, error) {
-		return eps, nil
-	}, bal, tracker, loadbalance.Selection{})
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: build pool")
-	}
-	pick, err := pool.Pick(ctx, loadbalance.PickInfo{})
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
-	}
-	u, err := url.Parse(c.URI)
-	if err != nil {
-		return "", errutil.Explain(err, "neo4j: parse uri %s", c.URI)
-	}
-	u.Host = pick.Endpoint.Addr
-	return u.String(), nil
 }

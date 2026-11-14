@@ -19,8 +19,9 @@ For TCC and AT patterns see the subpackages
   starter-supplied bean.
 - `Recover(ctx, s)` — backward recovery: replays compensation for whatever the
   crashed process might have effected.
-- `Observer` seam; bundled otel observers (`SagaObserver` / `TccObserver` /
-  `AtObserver`) in the parent package, model subpackages stay otel-free.
+- Standard OTel spans: `BeginSagaSpan` / `BeginTccSpan` / `BeginAtSpan` in the
+  parent package, model subpackages stay otel-free. Metrics go through the
+  `MetricsObserver` seam.
 - `StepRegistry` + `GlobalTransactional(coord, reg)` — the decorator-level
   `@GlobalTransactional` equivalent, keyed by method name.
 - Step-level `RetryPolicy` (aliased to `resilience.Policy`) reuses the same

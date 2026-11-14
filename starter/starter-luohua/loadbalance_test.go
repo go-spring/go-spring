@@ -20,7 +20,8 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	balancer "go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 )
 
 // TestLoadBalanceCompanyRegisteredAndZoneAffine locks the luohua loadbalance
@@ -50,7 +51,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 		{Addr: "10.0.0.1:8080", Weight: 100, Metadata: map[string]string{"zone": "cn-other"}},
 		{Addr: "10.0.0.2:8080", Weight: 100, Metadata: map[string]string{"zone": "cn-other-2"}},
 	}
-	if got, err := other.Pick(zoned, loadbalance.PickInfo{}); err != nil || got.Addr != "10.0.0.2:8080" {
+	if got, err := other.Pick(zoned, balancer.PickInfo{}); err != nil || got.Addr != "10.0.0.2:8080" {
 		t.Fatalf("Pick with zone=cn-other-2: got %s err=%v, want 10.0.0.2", got.Addr, err)
 	}
 
@@ -63,7 +64,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 		{Addr: "10.0.0.1:8080", Weight: 100, Metadata: map[string]string{"zone": "cn-other"}},
 		{Addr: "10.0.0.2:8080", Weight: 100, Metadata: map[string]string{"zone": LuohuaZone}},
 	}
-	got, err := b.Pick(eps, loadbalance.PickInfo{})
+	got, err := b.Pick(eps, balancer.PickInfo{})
 	if err != nil {
 		t.Fatalf("Pick: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 
 	// No in-region replica: fall back to a healthy endpoint, never an error.
 	only := []discovery.Endpoint{{Addr: "10.0.0.3:8080", Weight: 100, Metadata: map[string]string{"zone": "cn-other"}}}
-	got, err = b.Pick(only, loadbalance.PickInfo{})
+	got, err = b.Pick(only, balancer.PickInfo{})
 	if err != nil || got.Addr != "10.0.0.3:8080" {
 		t.Fatalf("Pick without a cn-luohua replica: got %s err=%v, want healthy 10.0.0.3", got.Addr, err)
 	}
@@ -83,7 +84,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 		{Addr: "10.0.0.4:8080", Weight: 0, Metadata: map[string]string{"zone": LuohuaZone}},
 		{Addr: "10.0.0.5:8080", Weight: 100, Metadata: map[string]string{"zone": "cn-other"}},
 	}
-	got, err = b.Pick(dis, loadbalance.PickInfo{})
+	got, err = b.Pick(dis, balancer.PickInfo{})
 	if err != nil || got.Addr != "10.0.0.5:8080" {
 		t.Fatalf("Pick skipping a drained in-zone replica: got %s err=%v, want 10.0.0.5", got.Addr, err)
 	}

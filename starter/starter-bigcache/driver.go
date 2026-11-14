@@ -71,8 +71,11 @@ type Driver interface {
 	CreateClient(ctx context.Context, name string, c Config) (*Cache, error)
 }
 
-// DefaultDriver is the default implementation of the Driver interface.
-type DefaultDriver struct{}
+// DefaultDriver is the default implementation of the Driver interface. Observe
+// is the observability adapter the starter injects; nil uses the package default.
+type DefaultDriver struct {
+	Observe Observer
+}
 
 // CreateClient creates a new BigCache instance based on the provided configuration.
 //
@@ -80,7 +83,7 @@ type DefaultDriver struct{}
 // its identity and its observability: the returned cache is complete in one step.
 // If the wrapping fails the raw cache is closed before returning, so a failed
 // construction never leaves the eviction goroutine behind.
-func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config) (*Cache, error) {
+func (d DefaultDriver) CreateClient(ctx context.Context, name string, c Config) (*Cache, error) {
 	conf := bigcache.DefaultConfig(c.LifeWindow)
 	conf.Shards = c.Shards
 	conf.CleanWindow = c.CleanWindow
@@ -95,7 +98,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config) (*
 	// NewCache is the only way to build a Cache: identity and observation are
 	// both applied here (see [Driver]), so the driver returns a cache that is
 	// complete.
-	cache, err := NewCache(client, name)
+	cache, err := NewCacheWithObserver(client, name, d.Observe)
 	if err != nil {
 		// The raw cache was built and is running - with its background eviction
 		// goroutine. Nothing else holds it, so it is this branch's to close.

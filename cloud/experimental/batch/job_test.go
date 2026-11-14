@@ -19,6 +19,7 @@ package batch_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"go-spring.org/cloud/experimental/batch"
 	"go-spring.org/stdlib/errutil"
@@ -87,4 +88,33 @@ func TestJob_RestartSkipsCompletedSteps(t *testing.T) {
 func TestFunc_PanicsOnBadInput(t *testing.T) {
 	assert.Panic(t, func() { batch.Func("", func(context.Context) error { return nil }) }, "name must not be empty")
 	assert.Panic(t, func() { batch.Func("x", nil) }, "function must not be nil")
+}
+
+// recordingObserver captures the batch layer's events so the seam is tested
+// without OTel.
+type recordingObserver struct {
+	events []string
+}
+
+func (o *recordingObserver) JobRun(_ context.Context, job, status string, _ time.Duration) {
+	o.events = append(o.events, job+":"+status)
+}
+
+func TestJobObserverSeam(t *testing.T) {
+	obs := &recordingObserver{}
+	job := (&batch.Job{Name: "j", Steps: []batch.Step{
+		batch.Func("s", func(context.Context) error { return nil }),
+	}}).WithObserver(obs)
+
+	_, err := job.Run(context.Background(), batch.NewMemoryRepository(), nil)
+	assert.Error(t, err).Nil()
+	assert.Slice(t, obs.events).Equal([]string{"j:completed"})
+}
+
+func TestJobNilObserverDisablesEvents(t *testing.T) {
+	job := (&batch.Job{Name: "j", Steps: []batch.Step{
+		batch.Func("s", func(context.Context) error { return nil }),
+	}}).WithObserver(nil)
+	_, err := job.Run(context.Background(), batch.NewMemoryRepository(), nil)
+	assert.Error(t, err).Nil()
 }

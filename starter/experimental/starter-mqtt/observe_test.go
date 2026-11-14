@@ -36,7 +36,11 @@ var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 // cannot be joined to it. record returns both together for exactly that
 // reason; this pins the field side.
 func TestConnStateRecordCarriesTheMetricKeys(t *testing.T) {
-	fields := newConnStateCounter().record(context.Background(), "probe")
+	c, err := newConnStateCounterWith(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := c.record(context.Background(), "probe")
 
 	keys := make([]string, 0, len(fields))
 	for _, f := range fields {

@@ -23,7 +23,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+	lb "go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
@@ -56,19 +57,19 @@ func TestOneBalancerNameIsRegistered(t *testing.T) {
 // attribute bridge: weight, zone and health survive the trip, and the
 // connection's selection rides along with them.
 func TestAddrEndpointRoundTrip(t *testing.T) {
-	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})))
+	sel := mustConnState(t, "grpc:svc", mustLbManager(t))
 	in := discovery.Endpoint{
-		Addr:     "10.0.0.1:8080",
-		Weight:   7,
-		Healthy:  true,
-		Metadata: map[string]string{discovery.MetaKeyZone: "az1"},
+		Addr:    "10.0.0.1:8080",
+		Weight:  7,
+		Healthy: true,
+		Zone:    "az1",
 	}
 	a := addrFromEndpoint(in, sel)
 	out := endpointFromAddr(a)
 	assert.That(t, out.Addr).Equal(in.Addr)
 	assert.That(t, out.Weight).Equal(7)
 	assert.That(t, out.Healthy).True()
-	assert.That(t, out.Metadata[discovery.MetaKeyZone]).Equal("az1")
+	assert.That(t, out.Zone).Equal("az1")
 
 	// The selection the picker will read back is the connection's OWN.
 	assert.That(t, selectionFromAddr(a)).Same(sel)
@@ -82,7 +83,7 @@ func TestAddrEndpointRoundTrip(t *testing.T) {
 
 // TestPickInfoFrom_HashKeyAndZone verifies the per-request routing hints:
 // WithHashKey / WithZone attach to the caller context and surface on the
-// loadbalance.PickInfo the strategy consumes.
+// gs loadbalance.PickInfo the strategy consumes.
 func TestPickInfoFrom_HashKeyAndZone(t *testing.T) {
 	ctx := WithZone(WithHashKey(context.Background(), "user-42"), "az1")
 	pi := pickInfoFrom(balancer.PickInfo{Ctx: ctx, FullMethodName: "/svc/M"})
@@ -100,22 +101,22 @@ func TestPickInfoFrom_HashKeyAndZone(t *testing.T) {
 // change REBUILDS the chain's generation — the record in force moves whole, so
 // nothing of the replaced selection keeps deciding traffic.
 func TestSelectionKeepsBaseStrategyAndRebuilds(t *testing.T) {
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 	sel := mustConnState(t, "grpc:svc", mgr)
-	assert.That(t, sel.chain.Selection().Balancer).Equal(loadbalance.RoundRobin) // base, stated
+	assert.That(t, sel.chain.Selection().Balancer).Equal(lb.RoundRobin) // base, stated
 
 	// A rule that only sets thresholds states the base strategy and replaces the
 	// generation, so the new thresholds are the whole state.
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin, OutlierThreshold: 4, OutlierSuspendFor: time.Minute}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: lb.RoundRobin, RequestFailures: 4, SuspendDuration: time.Minute}},
 	}})
-	assert.Number(t, sel.chain.Selection().OutlierThreshold).Equal(4)
+	assert.Number(t, sel.chain.Selection().RequestFailures).Equal(4)
 
 	// A named rule replaces the strategy too.
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 4}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: lb.Weighted, RequestFailures: 4}},
 	}})
-	assert.That(t, sel.chain.Selection().Balancer).Equal(loadbalance.Weighted)
+	assert.That(t, sel.chain.Selection().Balancer).Equal(lb.Weighted)
 }
 
 // TestSelectionUnknownStrategyKeepsLastGood pins degrade-don't-fail: a rule
@@ -123,7 +124,7 @@ func TestSelectionKeepsBaseStrategyAndRebuilds(t *testing.T) {
 // force instead of taking the connection down (the governance source has no
 // error channel, so the log line IS the report).
 func TestSelectionUnknownStrategyKeepsLastGood(t *testing.T) {
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 	sel := mustConnState(t, "grpc:svc", mgr)
 
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
@@ -131,7 +132,7 @@ func TestSelectionUnknownStrategyKeepsLastGood(t *testing.T) {
 	}})
 	// The refused rebuild built nothing: the base generation still serves, and
 	// the record in force still says so.
-	assert.That(t, sel.chain.Selection().Balancer).Equal(loadbalance.RoundRobin)
+	assert.That(t, sel.chain.Selection().Balancer).Equal(lb.RoundRobin)
 }
 
 // TestSelectionSubscribesPerConnection pins the wiring [Client.Dial] performs:
@@ -139,18 +140,18 @@ func TestSelectionUnknownStrategyKeepsLastGood(t *testing.T) {
 // reaches it — and nothing process-wide is touched, which is why two connections
 // (or two containers) never share a policy.
 func TestSelectionSubscribesPerConnection(t *testing.T) {
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 
 	one := mustConnState(t, "grpc:one", mgr)
 	two := mustConnState(t, "grpc:two", mgr)
 
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:one", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin, OutlierThreshold: 7}},
+		{Service: "grpc:one", Selection: loadbalance.Selection{Balancer: lb.RoundRobin, RequestFailures: 7}},
 	}})
 
-	assert.Number(t, one.chain.Selection().OutlierThreshold).Equal(7)
+	assert.Number(t, one.chain.Selection().RequestFailures).Equal(7)
 	// The other connection's label was not moved: policies are per connection.
-	assert.Number(t, two.chain.Selection().OutlierThreshold).Equal(0)
+	assert.Number(t, two.chain.Selection().RequestFailures).Equal(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -205,10 +206,10 @@ func TestPickerBuild_RefusesAddressesWithoutSelection(t *testing.T) {
 // the failing instance is evicted from eligibility — leaving the healthy one to
 // serve every pick.
 func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 	sel := mustConnState(t, "grpc:svc", mgr)
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin, OutlierThreshold: 5, OutlierSuspendFor: 30 * time.Second}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: lb.RoundRobin, RequestFailures: 5, SuspendDuration: 30 * time.Second}},
 	}})
 
 	good, bad := "10.0.0.1:8080", "10.0.0.2:8080"
@@ -272,7 +273,7 @@ func countPicks(t *testing.T, picker balancer.Picker, n int) map[string]int {
 // over on the very next pick with no re-dial and no picker rebuild, and a rule
 // that stops naming a strategy returns it to the base.
 func TestPicker_FollowsTheSelectionOnTheNextPick(t *testing.T) {
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 	sel := mustConnState(t, "grpc:svc", mgr)
 
 	// 9:1 weights: round-robin splits evenly, weighted strongly favors the first.
@@ -286,7 +287,7 @@ func TestPicker_FollowsTheSelectionOnTheNextPick(t *testing.T) {
 
 	// A pushed rule swaps the strategy: the picker reads the new generation.
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.Weighted}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: lb.Weighted}},
 	}})
 	counts = countPicks(t, picker, 100)
 	assert.That(t, counts["10.0.0.1:80"] > 80).True()
@@ -294,7 +295,7 @@ func TestPicker_FollowsTheSelectionOnTheNextPick(t *testing.T) {
 	// Back to the base strategy, stated explicitly (an empty name would be
 	// rejected and leave the weighted generation in force).
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: lb.RoundRobin}},
 	}})
 	counts = countPicks(t, picker, 40)
 	assert.Number(t, counts["10.0.0.1:80"]).Equal(20)
@@ -346,7 +347,7 @@ func TestPollLoop_PushesChanges(t *testing.T) {
 		{{Addr: "10.0.0.1:80"}, {Addr: "10.0.0.2:80"}}, // scale up: pushed
 	}}
 	cc := &fakeClientConn{states: make(chan resolver.State, 4)}
-	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})))
+	sel := mustConnState(t, "grpc:svc", mustLbManager(t))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &discoveryResolver{
@@ -386,4 +387,14 @@ func mustConnState(t *testing.T, label string, mgr *loadbalance.Manager) *connSt
 		t.Fatalf("conn state for %q: %v", label, err)
 	}
 	return s
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

@@ -203,10 +203,11 @@ var clientGuards sync.Map // sarama.Client -> *clientGuard
 // site. A kafka-sarama client has no seam for the resilience executor, so there
 // is no governance: the observer emits the span, metrics and access log, and
 // nothing throttles or retries.
-func AttachObserver(client sarama.Client, brokers string) {
+func AttachObserver(client sarama.Client, brokers string, obsFactory observability.Metrics) {
+
 	serviceLabel := label.ServiceLabel(kafkaSystem, brokers)
 	clientGuards.Store(client, &clientObserver{
-		obs:          observability.NewOperationObserver(kafkaSystem, serviceLabel),
+		obs:          observability.NewOperationObserver(kafkaSystem, serviceLabel, obsFactory),
 		serviceLabel: serviceLabel,
 	})
 }

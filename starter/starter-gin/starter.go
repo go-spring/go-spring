@@ -103,7 +103,7 @@ type SimpleGinServer struct {
 // application's load-test convention bean (nullable - nil when none is
 // provided), which the inbound LoadTest middleware tags the request context
 // with.
-func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Runtime, prop traffic.Propagator) (*SimpleGinServer, error) {
+func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Runtime, prop traffic.Propagator, obs Observer) (*SimpleGinServer, error) {
 	e := gin.New()
 
 	// Run the application-supplied outer hook first, so it wraps the built-in
@@ -114,7 +114,7 @@ func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Con
 	}
 
 	if cfg.Middleware.Enabled {
-		if err := ApplyMiddlewares(e, cfg, center, prop); err != nil {
+		if err := ApplyMiddlewares(e, cfg, center, prop, obs); err != nil {
 			return nil, err
 		}
 	}

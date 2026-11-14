@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go-spring.org/log"
 	"go-spring.org/stdlib/testing/assert"
@@ -39,7 +40,7 @@ func withReader(t *testing.T) *metric.ManualReader {
 	// The instrument set is process-wide and resolved once, so a test running
 	// after one that already resolved it would keep reporting into the earlier
 	// provider.
-	resetInstruments()
+	resetObservers()
 	t.Cleanup(func() {
 		_ = rdr.Shutdown(context.Background())
 		otel.SetMeterProvider(prev)
@@ -102,4 +103,25 @@ func TestRefreshHandsFnTheTriggerContext(t *testing.T) {
 	assert.Number(t, len(fields)).Equal(2)
 	assert.String(t, fields[0].Key).Equal("data_id")
 	assert.String(t, fields[1].Key).Equal("trace_id")
+}
+
+// recordingObserver captures the funnel's events so the seam is tested without
+// OTel.
+type recordingObserver struct {
+	events []string
+}
+
+func (o *recordingObserver) Refresh(_ context.Context, status string, _ time.Duration) {
+	o.events = append(o.events, status)
+}
+
+func TestObserverSeam(t *testing.T) {
+	obs := &recordingObserver{}
+	err := RefreshWith(context.Background(), func(context.Context) error { return nil }, obs)
+	assert.Error(t, err).Nil()
+	assert.Slice(t, obs.events).Equal([]string{"ok"})
+
+	err = RefreshWith(context.Background(), func(context.Context) error { return errors.New("boom") }, obs)
+	assert.Error(t, err).NotNil()
+	assert.Slice(t, obs.events).Equal([]string{"ok", "error"})
 }

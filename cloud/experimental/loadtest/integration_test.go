@@ -65,13 +65,16 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 
 	// Fault wraps the executor: every call returns an injected error.
 	inj := clientfault.NewManager()
-	inj.Refresh(fault.Config{Rules: []fault.Rule{{Name: "all", Service: "svc", Rate: 1, Class: fault.ClassTransient, Error: "generic"}}})
+	inj.Refresh(clientfault.ClientConfig{Rules: []clientfault.ClientRule{{
+		RuleCore: fault.RuleCore{Name: "all", Service: "svc", Rate: 1},
+		Class:    fault.ClassTransient, Error: "generic",
+	}}})
 	fexec := inj.WrapClientExecutor(exec)
 
 	// The op routes through the faulted executor; its inner fn would succeed,
 	// so any failure is fault/resilience, not the op itself.
 	op := func(ctx context.Context) error {
-		return fexec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
+		return fexec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })
 	}
 
 	r := New().
@@ -106,9 +109,12 @@ func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 
 	inj := clientfault.NewManager()
 	// match.traffic.exact=real: skip load-test traffic.
-	inj.Refresh(fault.Config{Rules: []fault.Rule{{
-		Name: "real-only", Service: "svc", Rate: 1, Class: fault.ClassTransient, Error: "generic",
-		MetadataMatch: map[string]matcher.StringMatch{"traffic": {Exact: "real"}},
+	inj.Refresh(clientfault.ClientConfig{Rules: []clientfault.ClientRule{{
+		RuleCore: fault.RuleCore{
+			Name: "real-only", Service: "svc", Rate: 1,
+			MetadataMatch: map[string]matcher.StringMatch{"traffic": {Exact: "real"}},
+		},
+		Class: fault.ClassTransient, Error: "generic",
 	}}})
 	fexec := inj.WrapClientExecutor(exec)
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
@@ -119,7 +125,7 @@ func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 			Service: "svc",
 			Request: chain.Request{Metadata: map[string]string{"traffic": prop.Kind(ctx).Label()}},
 		}
-		return fexec.Execute(ctx, o, new(chain.Recorder), func(context.Context) error { return nil })
+		return fexec.Execute(ctx, o, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })
 	}
 
 	r := New().Driver(ClosedLoop{Concurrency: 4}).Duration(150*time.Millisecond).

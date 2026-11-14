@@ -33,9 +33,21 @@ import (
 // (rate limit / bulkhead / fault) before the handler, and one
 // completion after it. It is registered by the starter as "governance" and
 // included in the server's default filter chain.
+// serverOperation declares an inbound tRPC call: this starter owns its own
+// rpc.server.* metrics, span and access log, so the governance layer keeps only
+// its admission signals and stays out of the request family.
+func serverOperation(ctx context.Context, prop traffic.Propagator, action string) observability.ServerOperation {
+	op := observability.NewServerOperation(ctx, prop, action)
+	op.Observe = observability.ServerObserve{
+		Metric: observability.ServerMetric{Disabled: true},
+		Log:    observability.ServerLog{QuietSuccess: true},
+	}
+	return op
+}
+
 func GuardServerFilter(in *inbound.Inbound, prop traffic.Propagator) filter.ServerFilter {
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
-		op := observability.NewServerOperation(ctx, prop, actionName(ctx))
+		op := serverOperation(ctx, prop, actionName(ctx))
 		var resp interface{}
 		err := in.Run(ctx, op, func(ctx context.Context) error {
 			var e error
@@ -66,13 +78,17 @@ func refusalError(ref *inbound.Refusal) error {
 	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return errs.New(errs.RetServerThrottled, ref.Error())
 	case admission.VerdictFaultInjected:
-		// The fault's class decides the code: a caller-mistake failure maps to
-		// the validation code, everything else to a system error, so the client's
+		// The declared status family decides the code: a 4xx answer maps to the
+		// validation code, everything else to a system error, so the client's
 		// retry/breaker policy sees the classification the rule declared.
-		if ref.Fault().Business() {
-			return errs.New(errs.RetServerValidateFail, ref.Error())
+		msg := ref.Error()
+		if ref.Fault().Body != "" {
+			msg = ref.Fault().Body
 		}
-		return errs.New(errs.RetServerSystemErr, ref.Error())
+		if s := ref.Fault().Status; s >= 400 && s < 500 {
+			return errs.New(errs.RetServerValidateFail, msg)
+		}
+		return errs.New(errs.RetServerSystemErr, msg)
 	default:
 		return ref
 	}

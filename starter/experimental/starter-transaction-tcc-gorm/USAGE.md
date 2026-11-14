@@ -138,7 +138,6 @@ spring.transaction.tcc.store=gorm
 spring.transaction.tcc.enabled=true
 # Default true, shown for discoverability. One otel child span per phase:
 # tcc.try <participant> / tcc.confirm <participant> / tcc.cancel <participant>.
-spring.transaction.tcc.tracing=true
 # Startup recovery Runner: scan Pending() and cancel crashed transactions.
 spring.transaction.tcc.recover-on-start=true
 
@@ -276,7 +275,7 @@ row is *deleted* (coordinator.go), so an empty table after successes is correct,
 
 ### 4.3 Observing recovery in traces
 
-With `tracing=true` + starter-otel, restart-time cancellation emits per-phase child spans
+With 引入 starter-otel, restart-time cancellation emits per-phase child spans
 tagged with the transaction id / participant / phase — check your collector after the §4.2
 restart.
 

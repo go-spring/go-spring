@@ -31,12 +31,14 @@ type stubExecutor struct {
 	err     error
 }
 
-func (s stubExecutor) Execute(ctx context.Context, _ Operation, _ *Recorder, fn func(context.Context) error) error {
+func (s stubExecutor) Execute(ctx context.Context, _ Operation, rec *Recorder, fn RoundFunc) error {
 	*s.reached = true
 	if s.err != nil {
 		return s.err
 	}
-	return fn(ctx)
+	// No loop above in this stub, so no round is open: open one, the way the
+	// terminal's owner would, so the fn it calls runs in a round.
+	return fn(ctx, rec.NewRound())
 }
 
 func (stubExecutor) Close() error { return nil }
@@ -44,7 +46,9 @@ func (stubExecutor) Close() error { return nil }
 func TestNextNilCallsFn(t *testing.T) {
 	boom := errors.New("boom")
 	called := false
-	err := Next(nil, context.Background(), Operation{}, new(Recorder), func(context.Context) error {
+	rec := new(Recorder)
+	rec.NewRound() // the loop opens the round the terminal hands to fn
+	err := Next(nil, context.Background(), Operation{}, rec, func(context.Context, *Round) error {
 		called = true
 		return boom
 	})
@@ -57,7 +61,7 @@ func TestNextDelegatesToNext(t *testing.T) {
 	called := false
 	rec := &Recorder{}
 	err := Next(stubExecutor{reached: &reached}, context.Background(), Operation{}, rec,
-		func(context.Context) error {
+		func(context.Context, *Round) error {
 			called = true
 			return nil
 		})
@@ -71,7 +75,7 @@ func TestNextReturnsNextErrorWithoutCallingFn(t *testing.T) {
 	refused := errors.New("refused")
 	called := false
 	err := Next(stubExecutor{reached: &reached, err: refused}, context.Background(), Operation{}, new(Recorder),
-		func(context.Context) error {
+		func(context.Context, *Round) error {
 			called = true
 			return nil
 		})

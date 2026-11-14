@@ -34,6 +34,8 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -96,18 +98,50 @@ const (
 // throttling the publisher, was visible in text and invisible to every
 // dashboard — and they are the signal that precedes publishes starting to
 // fail.
-type connStateCounter struct {
+// Observer receives the starter's connection-state events. A nil Observer
+// disables the counter; implementations must not block.
+type Observer interface {
+	// ConnectionStateChanged records one connection-state transition.
+	ConnectionStateChanged(ctx context.Context, state string)
+}
+
+// NewOTelObserver resolves the connection-state counter and returns the default
+// OTel-backed [Observer].
+func NewOTelObserver() (Observer, error) {
+	changes, err := otel.Meter(componentName).Int64Counter("messaging.client.connection.state_changes",
+		metric.WithDescription("Connection-state transitions reported by the messaging client"),
+		metric.WithUnit("{event}"))
+	if err != nil {
+		return nil, errutil.Explain(err, "messaging: register messaging.client.connection.state_changes")
+	}
+	return &otelObserver{changes: changes}, nil
+}
+
+// otelObserver is the default [Observer].
+type otelObserver struct {
 	changes metric.Int64Counter
 }
 
-// newConnStateCounter builds the counter from whatever meter provider is
-// current — invoked at wiring time, not at package init, so an SDK installed
-// later still receives the records.
-func newConnStateCounter() *connStateCounter {
-	changes, _ := otel.Meter(componentName).Int64Counter("messaging.client.connection.state_changes",
-		metric.WithDescription("Connection-state transitions reported by the messaging client"),
-		metric.WithUnit("{event}"))
-	return &connStateCounter{changes: changes}
+// ConnectionStateChanged implements [Observer].
+func (o *otelObserver) ConnectionStateChanged(ctx context.Context, state string) {
+	o.changes.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("messaging.system", rabbitmqSystem),
+		attribute.String("state", state),
+	))
+}
+
+// connStateCounter counts the connection-state transitions the client reports,
+// next to the handlers it counts for.
+type connStateCounter struct {
+	obs Observer
+}
+
+// newConnStateCounter resolves the default observer — invoked at wiring time,
+// so a registration failure fails client construction.
+// newConnStateCounterWith is the injection point: a nil observer disables the
+// metric.
+func newConnStateCounterWith(obs Observer) (*connStateCounter, error) {
+	return &connStateCounter{obs: obs}, nil
 }
 
 // record counts one transition and returns the fields its log line carries.
@@ -115,12 +149,17 @@ func newConnStateCounter() *connStateCounter {
 // being spelled twice — the drift this pairing exists to prevent, and a
 // drifted key is silent: the line still looks right and joins nothing.
 func (c *connStateCounter) record(ctx context.Context, state string) []log.Field {
-	c.changes.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("messaging.system", rabbitmqSystem),
-		attribute.String("state", state),
-	))
+	if c.obs != nil {
+		c.obs.ConnectionStateChanged(ctx, state)
+	}
 	return []log.Field{
 		log.String("messaging.system", rabbitmqSystem),
 		log.String("state", state),
 	}
+}
+
+// The package's default [Observer] bean: an application that contributes its
+// own observer takes precedence.
+func init() {
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 }

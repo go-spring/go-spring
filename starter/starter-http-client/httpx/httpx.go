@@ -52,6 +52,7 @@ package httpx
 
 import (
 	"context"
+	"net"
 	"net/http"
 
 	"go-spring.org/cloud/governance"
@@ -59,8 +60,8 @@ import (
 	"go-spring.org/cloud/governance/capability/label"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/propagate"
@@ -175,6 +176,21 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 			t.TLSClientConfig = tlsCfg
 			base = t
 		}
+		// The governed default transport honors the governance connection
+		// budget: a blackholed endpoint fails at connect-timeout instead of the
+		// 30s default dial cap (which still applies when no budget is staged).
+		// An explicit Base owns its dialer and is left untouched.
+		if t, ok := base.(*http.Transport); ok && t.DialContext != nil {
+			inner := t.DialContext
+			t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				if rd, has := chain.RoundFrom(ctx); has && rd.ConnectTimeout > 0 {
+					var cancel context.CancelFunc
+					ctx, cancel = context.WithTimeout(ctx, rd.ConnectTimeout)
+					defer cancel()
+				}
+				return inner(ctx, network, addr)
+			}
+		}
 	}
 	// Trace: wrap the raw base with otelhttp so every call carries a client
 	// span and propagates trace context. A no-op (and effectively free) when no
@@ -182,6 +198,11 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 	base = otelhttp.NewTransport(base)
 
 	closeFns := []func() error{}
+
+	var (
+		picker    *loadbalance.Chain // the addressing chain, armed below when discovery applies
+		fixedAddr string             // direct mode's pinned address, empty when discovery applies
+	)
 
 	// Discovery + load balancing. Mesh mode wins over a configured service-name:
 	// the sidecar owns discovery+LB, so requests flow to whatever host the caller
@@ -215,14 +236,18 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 		if cerr != nil {
 			return nil, nil, cerr
 		}
-		base = &balancedTransport{base: base, chain: chain}
+		picker = chain
 	} else if cfg.Addr != "" {
-		// Direct mode: pin every request to the configured address so callers
-		// need not set a Target on the generated client.
-		base = &fixedHostTransport{base: base, addr: cfg.Addr}
+		fixedAddr = cfg.Addr
 	}
+	// One routing transport serves both modes: with addressing in the chain,
+	// every ROUND stages its picked peer on the request context and the
+	// transport rewrites onto it — a retry re-picks and lands elsewhere. Direct
+	// mode stages no peer, so the configured address pins every request and
+	// callers need not set a Target on the generated client.
+	base = &routedTransport{base: base, fixedAddr: fixedAddr}
 
-	// Resilience wraps the (possibly balanced) transport so a retry re-enters
+	// Resilience wraps the routing transport so a retry re-picks
 	// the balancer and picks a fresh endpoint, and the breaker keys on
 	// cfg.service() — the same label the policy is resolved under, so limiter/
 	// breaker state and rule names agree with the governance rule that armed
@@ -251,15 +276,28 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 	// manager-owned path relies on otelhttp for its client span, so it adds no
 	// observe layer; a caller's executor is observed here. WrapExec replaces the
 	// stack entirely and receives the raw executor either way.
+	// Addressing rides the chain, inside the retry loop: every round picks its
+	// endpoint and settles the outcome with the picker's tracker. The default
+	// path composes it between resilience and fault (a retry re-picks, a failed
+	// peer is excluded); a caller-supplied executor owns its own retry loop, so
+	// there the picker wraps it from OUTSIDE — one pick and one settlement per
+	// call, not per round, which is the most a foreign stack permits.
+	if picker != nil && (cfg.WrapExec != nil || cfg.Executor != nil) {
+		raw = loadbalance.Wrap(picker, raw)
+	}
 	var exec chain.Executor
 	switch {
 	case cfg.WrapExec != nil:
 		exec = cfg.WrapExec(raw)
 	case cfg.Executor != nil:
 		exec = observability.WrapClientExecutor(
-			center.ClientFault.WrapClientExecutor(raw), "http", cfg.service())
+			center.ClientFault.WrapClientExecutor(raw), "http", cfg.service(), center.ClientMetrics)
 	default:
-		exec = center.Resilience.Wrap(cfg.service(), center.ClientFault.WrapClientExecutor(nil))
+		inner := center.ClientFault.WrapClientExecutor(nil)
+		if picker != nil {
+			inner = loadbalance.Wrap(picker, inner)
+		}
+		exec = center.Resilience.Wrap(cfg.service(), inner)
 	}
 	base = resilience.NewRoundTripper(base, exec, cfg.service(), func(req *http.Request) chain.Operation {
 		return callFor(req, prop)
@@ -298,9 +336,8 @@ type trafficTransport struct {
 
 // callFor declares each outbound HTTP call so the client stack names it: the
 // system ("http") and the action ("METHOD path") a governance or fault rule
-// matches on. Without it the call is undeclared — the emitter falls back to its
-// generic signals — and, more to the point, no rule could target one endpoint of
-// this client. The path is the concrete request path (a client has no route
+// matches on. Without it no rule could target one endpoint of this client. The
+// path is the concrete request path (a client has no route
 // template); a rule that must cover a family of paths uses [matcher.ActionMatch]
 // with a Prefix.
 func callFor(req *http.Request, prop traffic.Propagator) chain.Operation {
@@ -318,43 +355,31 @@ func (t *trafficTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	return t.base.RoundTrip(req)
 }
 
-// balancedTransport rewrites each request to a live endpoint chosen by the pool
-// and reports the outcome back so least-conn accounting and outlier suspension see
-// every call. It sits below the resilience layer, so retries pick afresh.
-type balancedTransport struct {
-	base  http.RoundTripper
-	chain *loadbalance.Chain
+// routedTransport rewrites each request onto the endpoint the chain's
+// addressing stage picked for the round (staged on the request context, see
+// chain.RoundFrom): a retry re-picks, so it can land on another endpoint. With
+// no peer staged — direct mode, or a stack without addressing — the fixed
+// address pins every request, and an empty fixed address leaves the request's
+// own host untouched.
+type routedTransport struct {
+	base      http.RoundTripper
+	fixedAddr string
 }
 
-func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	pick, err := t.chain.Pick(req.Context(), loadbalance.PickInfo{})
-	if err != nil {
-		return nil, err
+func (t *routedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	addr := t.fixedAddr
+	if rd, ok := chain.RoundFrom(req.Context()); ok && rd.Peer.Addr != "" {
+		addr = rd.Peer.Addr
+	}
+	if addr == "" {
+		return t.base.RoundTrip(req)
 	}
 
 	// Clone before mutating: net/http may retry and the resilience layer above
 	// reuses the original request across attempts.
 	r := req.Clone(req.Context())
-	r.URL.Host = pick.Endpoint.Addr
-	r.Host = pick.Endpoint.Addr
-
-	resp, err := t.base.RoundTrip(r)
-	pick.Complete(req.Context(), err)
-	return resp, err
-}
-
-// fixedHostTransport pins every request to a single address (direct mode). It
-// sits in the same spot as balancedTransport so the resilience layer above and
-// the generated call sites below behave identically in both addressing modes.
-type fixedHostTransport struct {
-	base http.RoundTripper
-	addr string
-}
-
-func (t *fixedHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	r := req.Clone(req.Context())
-	r.URL.Host = t.addr
-	r.Host = t.addr
+	r.URL.Host = addr
+	r.Host = addr
 	return t.base.RoundTrip(r)
 }
 

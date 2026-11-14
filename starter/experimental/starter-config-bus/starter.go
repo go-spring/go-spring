@@ -132,8 +132,10 @@ type ConfigBus struct {
 	sub      *nats.Subscription
 	origin   string
 
-	// ins is this bus's instrument set, resolved by Init.
-	ins *instrumentSet
+	// Observe is the observability adapter the container injects; nil falls back
+	// to the package's OTel default. obs is the resolved one Init stores.
+	Observe Observer `autowire:"?"`
+	obs     Observer
 
 	// refresh is the property-refresh entry point, held as a field so tests can
 	// drive onMessage without a running application. The metrics come from the
@@ -146,11 +148,7 @@ type ConfigBus struct {
 // identity and subscribes. It runs as the bean's init hook, after the NATS
 // connection has been injected.
 func (b *ConfigBus) Init() error {
-	ins, err := buildInstruments()
-	if err != nil {
-		return err
-	}
-	b.ins = ins
+	b.obs = b.Observe
 	b.refresh = gs.RefreshProperties
 	b.origin = b.Config.Origin
 	if b.origin == "" {

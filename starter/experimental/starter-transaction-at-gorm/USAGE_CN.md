@@ -155,7 +155,6 @@ spring.transaction.at.enabled=true
 # 每个 branch 二阶段操作发一个 otel 子 span（at.commit <branch> /
 # at.rollback <branch>），挂在 starter-otel 安装的全局上。没有 starter-otel 时
 # 几乎零开销（全局 tracer 是 no-op）。
-spring.transaction.at.tracing=true
 
 # 启动崩溃恢复：扫描每个已接入库的 at_undo_log，回放（回滚）上次运行崩溃遗留的
 # undo log。仅当数据库被多进程共享、恢复由外部处理时才设 false。
@@ -197,7 +196,7 @@ gs.Run()
   ├─ lock bean: 进程内 MemoryGlobalLock；容器里出现 durable-lock bean 时
   │  它让位（OnMissingBean）                              (starter.go:77-79)
   ├─ coordinator bean: at.NewCoordinator(WithGlobalLock(lock)
-  │  [tracing=true 时再加 WithObserver(AtObserver{})])   (starter.go:91-98)
+  │  [引入 starter-otel 时使用标准 otel span])   (starter.go:91-98)
   ├─ 你的 bean 构造函数执行: 每库 Migrate(db) + db.Use(NewPlugin(resource, coord, lock))
   │  —— 接入是代码接线，配置里看不见；plugin 同时把句柄登记给恢复扫描
   │  （plugin.go Initialize）
@@ -205,7 +204,7 @@ gs.Run()
      孤儿（§4.3）；无 server、无端口
 ```
 
-构造期日志：`at coordinator created tracing=true`（tag `AppDef`）。
+构造期日志：`at coordinator created metrics=true`（tag `AppDef`）。
 
 ### 2.2 一次带失败的全局事务 —— 逐层走读
 
@@ -257,7 +256,6 @@ gs.Run()
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `spring.transaction.at.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()`（starter.go:70）。`false` 不装配任何 bean——只引入模块。 | `false` → 容器装配时注入 `at.Coordinator`/`at.GlobalLock` 失败（无此 bean）；运行期写入不被捕获、静默退化为非 AT。 |
-| `spring.transaction.at.tracing` | bool | `true` | coordinator 构造时追加 `at.WithObserver(transaction.AtObserver{})`（starter.go:93-94）。每个 branch 阶段一个 span：`at.commit <branch>` / `at.rollback <branch>`，属性 `at.xid` / `at.branch` / `at.phase`（cloud/experimental/transaction/observe.go）。 | `false`（或 `true` 但没引 starter-otel）：静默——无 span、无告警。 |
 | `spring.transaction.at.recover-on-start` | bool | `true` | 注册崩溃恢复 gs.Runner（starter.go:95-99、recovery.go）。启动时扫描每个已接入库的 `at_undo_log`，逐个回滚孤儿 XID（见 §4.3）。 | `false` → 崩溃遗留的孤儿 undo log 不被回放：`at_undo_log` 持续增长，一阶段的业务变更保持已应用，需人工对账。 |
 
 无枚举 key；无联动 key。注意"接入"旋钮（resource id、哪些库加入）是**代码不是配置**——

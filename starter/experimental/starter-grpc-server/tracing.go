@@ -39,7 +39,7 @@ import (
 // The interceptor rides the OTel globals — when starter-otel is not imported the
 // global TracerProvider and TextMapPropagator are no-ops. Importing starter-otel
 // is the opt-in.
-func TracingUnaryInterceptor() grpc.UnaryServerInterceptor {
+func tracingUnary() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		ctx = extractTraceContext(ctx)
 		ctx, span := otel.Tracer(componentName).Start(ctx, info.FullMethod,
@@ -68,7 +68,7 @@ func TracingUnaryInterceptor() grpc.UnaryServerInterceptor {
 // The span wraps the entire stream lifecycle; individual messages do not get
 // their own spans (that level of granularity is better served by dedicated
 // instrumentation libraries).
-func TracingStreamInterceptor() grpc.StreamServerInterceptor {
+func tracingStream() grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		ctx := extractTraceContext(ss.Context())
 		ctx, span := otel.Tracer(componentName).Start(ctx, info.FullMethod,

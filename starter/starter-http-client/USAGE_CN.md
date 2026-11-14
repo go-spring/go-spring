@@ -117,7 +117,7 @@ lb     := &proto.Client{Target: "greet-svc"}          // 发现模式
 spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) 服务发现 + 负载均衡:按逻辑服务名路由。
-# LB 策略与端点剔除是该 entry 的治理规则(spring.governance.client.loadbalance.services[N].balancer / .outlier-threshold),
+# LB 策略与端点剔除是该 entry 的治理规则(spring.governance.client.loadbalance.services[N].balancer / .request-failures),
 # 不是这里的 key —— 见下文。
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
@@ -363,8 +363,8 @@ spring.fault.client.error=timeout    # 或 generic / reset
   `resilience.client.calls` 计数器,属性 `resilience.system="http"`、
   `resilience.service="http:greet-svc"`、`status` ∈ {ok, error},以及完备的
   `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, retry_exceeded,
-  timeout, downstream, canceled}。下游失败率为
-  `rate(resilience.client.calls{status="error", resilience.error_type="downstream"})`。
+  call_timeout, no_endpoints, connect_failed, resource_exhausted, context_canceled, unknown}。非门禁(未分类)失败率为
+  `rate(resilience.client.calls{status="error", resilience.error_type="unknown"})`。
 - 访问日志:由 `observability.level` 门控(默认 brief = 开),tag
   `_app_http_resilience`(`log.RegisterAppTag("http", "resilience")`)。
 - trace:httpx 内置的 otelhttp 层每请求一个 client span(命名遵循

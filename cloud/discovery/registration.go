@@ -32,10 +32,10 @@ import "context"
 // several centers, not several publications).
 //
 // Version, Zone and Scheme mirror the routing dimensions consumers read:
-// Scheme lands in the endpoint's Scheme, while version and zone surface through
-// the endpoint's Metadata under the reserved keys. Backends whose protocol has
-// only a metadata map (Nacos, Consul) store these three fields under the
-// reserved keys at write time.
+// Zone and Scheme land in the endpoint's matching fields, while version
+// surfaces through the endpoint's Metadata. Backends whose protocol has only
+// a metadata map (Nacos, Consul) store these three fields under their own
+// metadata key convention at write time.
 type Instance struct {
 	// ServiceName is the service this instance belongs to; consumers resolve
 	// endpoints by this name.
@@ -48,6 +48,12 @@ type Instance struct {
 	// Addr is the instance's host:port as consumers dial it.
 	Addr string
 
+	// Scheme selects the transport consumers should dial: "" or "tcp" for a
+	// plain TCP connection (the default), "tls"/"https" when it requires TLS,
+	// "http"/"https" for HTTP-level routing. It is advisory, and mirrors
+	// the endpoint's Scheme.
+	Scheme string
+
 	// Weight is the load-balancing weight handed to consumers; 0 means
 	// "drained" under the repo-wide Weight=0 drain semantics.
 	Weight int
@@ -57,14 +63,9 @@ type Instance struct {
 	Version string
 
 	// Zone is the availability zone / unit this instance sits in; empty means
-	// not advertised. Consumers may prefer same-zone instances.
+	// not advertised. Consumers may prefer same-zone instances. Backends that
+	// restore endpoints surface it as the endpoint's Zone field.
 	Zone string
-
-	// Scheme selects the transport consumers should dial: "" or "tcp" for a
-	// plain TCP connection (the default), "tls"/"https" when it requires TLS,
-	// "http"/"https" for HTTP-level routing. It is advisory, and mirrors
-	// the endpoint's Scheme.
-	Scheme string
 
 	// Metadata carries additional backend-agnostic attributes. Each registry
 	// backend stores it the way its protocol allows and hands it back through

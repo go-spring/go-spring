@@ -70,7 +70,7 @@ func main() {
 	// One Manager, one store: the middleware is the single seam where session
 	// transport lives; handlers only ever see the request context.
 	gs.Provide(func(store session.SessionStore) (*gs.HttpServeMux, error) {
-		mgr, err := session.NewManager(store, session.Options{IdleTimeout: idleTimeout})
+		mgr, err := session.NewManager(store, session.Options{IdleTimeout: idleTimeout}, nil)
 		if err != nil {
 			return nil, err
 		}

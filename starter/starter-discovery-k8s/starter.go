@@ -68,11 +68,11 @@ const obsSystem = "k8s"
 
 // newBackendBean builds the discovery backend for c. It runs at injection
 // time, so an invalid mode or an unreachable API server fails startup.
-func newBackendBean(ctx *gs.ContextProvider, c Config, name string) (discovery.Discovery, error) {
+func newBackendBean(ctx *gs.ContextProvider, c Config, name string, discFactory discovery.ObserverFactory) (discovery.Discovery, error) {
 	log.Debug(ctx.Context, starterTag, "creating k8s discovery backend", func() []log.Field {
 		return []log.Field{log.String("mode", c.Mode), log.String("namespace", c.Namespace)}
 	})
-	b, err := newBackend(ctx, c, name)
+	b, err := newBackend(ctx, c, name, discFactory)
 	if err != nil {
 		return nil, errutil.Explain(err, "discovery-k8s: build backend")
 	}

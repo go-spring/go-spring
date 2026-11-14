@@ -180,11 +180,10 @@ type MetricsConfig struct {
 // cloud/governance/dataplane/outbound/resilience), which is also why the signals are one set rather than three
 // independently switchable ones.
 //
-// Turning it off does not silence the server: the inbound middleware stops
-// DECLARING, and the request falls back to what the resilience layer reports
-// about every admitted call regardless — `resilience.server.*` and one log line
-// under the resilience tag. That is the same fallback an undeclared route has
-// always taken.
+// Turning it off does not silence the server: governance still runs, but the
+// middleware stops observing entirely — no declaration is handed to the
+// observer, so no span, family metric or access line is produced for the
+// request.
 type ObservabilityConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }

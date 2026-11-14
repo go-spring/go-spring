@@ -268,7 +268,7 @@ Rationale (from the source comments, verified):
   StarterGrpc.LoadBalancingConfig(strategy))`. Balancer names are `gs_round_robin`, `gs_least_conn`,
   `gs_consistent_hash`, `gs_weighted`, `gs_zone_aware`. They are pre-registered in init and
   start with suspension DISABLED; configure it once for all of them with a governance rule —
-  `spring.governance.client.loadbalance.outlier-threshold` / `.outlier-suspend-for` (they resolve under the
+  `spring.governance.client.loadbalance.request-failures` / `.suspend-for` (they resolve under the
   process-wide default; `spring.governance.client.loadbalance.services[N].service=grpc:client` targets them explicitly).
   A rule's `balancer` **overrides** that service-config choice for every built-in `gs_*` name — the
   pickers re-read it per pick, so a pushed strategy lands on the next RPC with no re-dial. Empty

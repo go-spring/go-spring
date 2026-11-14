@@ -26,14 +26,15 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -53,7 +54,7 @@ func testCenter(t *testing.T, resClient *resilience.Manager, lb *loadbalance.Man
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
 		LoadBalance: lb,
-	Admission:   adm,
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -107,7 +108,7 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	// The manager is applied to the bundle the driver receives; a chain built
 	// against an unarmed manager is rebuilt when the manager goes live — standing
 	// in for a center that pushes later.
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 	cfg := Config{Addr: "10.0.0.1:6379"}
 	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
@@ -126,18 +127,18 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
 		Service: serviceLabel(cfg),
 		Selection: loadbalance.Selection{
-			Balancer:               loadbalance.ConsistentHash,
+			Balancer:               balancer.ConsistentHash,
 			ConsistentHashReplicas: 100,
-			OutlierThreshold:       3,
-			OutlierSuspendFor:      time.Second,
+			RequestFailures:        3,
+			SuspendDuration:        time.Second,
 		},
 	}}})
 
 	// The rule landed on the chain the driver returned, as a rebuild — a fresh
 	// generation, not the base one retuned.
 	assert.That(t, drv.returned).NotNil()
-	assert.That(t, drv.returned.Selection().Balancer).Equal(loadbalance.ConsistentHash)
-	assert.Number(t, drv.returned.Selection().OutlierThreshold).Equal(3)
+	assert.That(t, drv.returned.Selection().Balancer).Equal(balancer.ConsistentHash)
+	assert.Number(t, drv.returned.Selection().RequestFailures).Equal(3)
 	// Destroy still releases the client.
 	assert.Error(t, w.Destroy()).Nil()
 }
@@ -146,7 +147,7 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 // pick chain passes nil and NewClient stores nothing — no nil dereference, no
 // forced governance awareness.
 func TestDriverChainNilIsFine(t *testing.T) {
-	lb := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	lb := mustLbManager(t)
 	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		t.Fatal(err)
@@ -159,4 +160,14 @@ func TestDriverChainNilIsFine(t *testing.T) {
 		testCenter(t, resMgr, lb))
 	assert.Error(t, err).Nil()
 	assert.That(t, w.lbChain).Nil()
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

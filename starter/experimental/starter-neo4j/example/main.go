@@ -200,10 +200,11 @@ func runTest(s *Service) {
 
 	fmt.Println("Response from server: age:", age, "knows:", count)
 
-	// Feature 4: the discovery-backed client. Its URI host was spliced in from
-	// the registered discovery backend (service-name=neo4j-cluster) at startup,
-	// not taken from conf's dummy host, so a successful query proves discovery is
-	// wired.
+	// Feature 4: the discovery-backed client. Its routing seed was spliced in
+	// from the registered discovery backend (service-name=neo4j-cluster) at
+	// startup, not taken from conf's dummy host, so a successful query proves
+	// discovery is wired. The driver then owns server selection via its routing
+	// table; discovery only remains as the router-refresh fallback.
 	discRes, err := neo4j.ExecuteQuery(ctx, s.DiscNeo4j,
 		"RETURN 1 AS ok", nil, neo4j.EagerResultTransformer)
 	if err != nil || len(discRes.Records) == 0 {

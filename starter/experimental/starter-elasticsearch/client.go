@@ -126,7 +126,7 @@ func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Co
 		first = cfg.Addresses[0]
 	}
 	c.serviceLabel = label.ServiceLabel("elasticsearch", cfg.ServiceName, cfg.CloudID, first)
-	c.exec = center.ExecutorFor("elasticsearch", c.serviceLabel)
+	c.exec = center.ExecutorFor("elasticsearch", c.serviceLabel, nil)
 	c.prop = center.Traffic
 	c.installTransport()
 	return c

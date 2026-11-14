@@ -22,7 +22,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -47,42 +48,42 @@ func pickChain(t *testing.T, mgr *loadbalance.Manager) (*loadbalance.Chain, Conf
 // moves the label's selection REBUILDS the chain — a new pool, not the old one
 // retuned.
 func TestNewPickChainRebuildsFromScratch(t *testing.T) {
-	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	mgr := mustLbManager(t)
 	chain, c := pickChain(t, mgr)
 
 	// The base generation: round-robin, suspension disabled, live instance picked.
-	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
-	pick, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: balancer.RoundRobin})
+	pick, err := chain.Pick(context.Background(), balancer.PickInfo{}, nil)
 	assert.Error(t, err).Nil()
 	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:27017")
 
 	// A push that targets THIS service's governance label moves the chain...
-	moved := loadbalance.Selection{Balancer: loadbalance.LeastConn, OutlierThreshold: 3, OutlierSuspendFor: time.Minute}
+	moved := loadbalance.Selection{Balancer: balancer.LeastConn, RequestFailures: 3, SuspendDuration: time.Minute}
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
 		{Service: serviceLabel(c), Selection: moved},
 	}})
 
-	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
-	assert.Number(t, chain.Selection().OutlierThreshold).Equal(3)
+	assert.That(t, chain.Selection().Balancer).Equal(balancer.LeastConn)
+	assert.Number(t, chain.Selection().RequestFailures).Equal(3)
 
 	// ...while a push for another label leaves it alone, even though the document
 	// as a whole changed.
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
 		{Service: serviceLabel(c), Selection: moved},
-		{Service: "mongodb:other", Selection: loadbalance.Selection{Balancer: loadbalance.Weighted}},
+		{Service: "mongodb:other", Selection: loadbalance.Selection{Balancer: balancer.Weighted}},
 	}})
-	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
+	assert.That(t, chain.Selection().Balancer).Equal(balancer.LeastConn)
 }
 
 // TestNewPickChainUnarmedManagerIsPassThrough pins the "governance off" case: an
 // unarmed manager (no rules in the process) leaves the chain on its base
 // configuration, and it still serves.
 func TestNewPickChainUnarmedManagerIsPassThrough(t *testing.T) {
-	chain, _ := pickChain(t, loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})))
+	chain, _ := pickChain(t, mustLbManager(t))
 
-	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
+	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: balancer.RoundRobin})
 
-	pick, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	pick, err := chain.Pick(context.Background(), balancer.PickInfo{}, nil)
 	assert.Error(t, err).Nil()
 	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:27017")
 }
@@ -94,4 +95,14 @@ func TestNewPickChainMissingBackendFails(t *testing.T) {
 	c := Config{Addressing: discovery.Addressing{ServiceName: "orders"}}
 	_, err := newPickChain(context.Background(), c, nil, nil)
 	assert.Error(t, err).NotNil()
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

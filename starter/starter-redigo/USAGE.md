@@ -72,7 +72,7 @@ import (
 )
 
 type Service struct {
-    // Always the wrapper *StarterRedigo.Pool; it embeds the raw *redis.Pool,
+    // Always the governed *StarterRedigo.Pool; Get() hands out a virtual Conn,
     // so Get/GetContext/Stats/... are promoted unchanged.
     // Connections it hands out are instrumented Conns.
     Main      *StarterRedigo.Pool `autowire:"main"`
@@ -166,30 +166,30 @@ import starter-redigo
 
 gs.Run()
   ├─ ctor createPool [starter.go]: RequireAny(addr|service-name) → driver lookup
-  │   → d.CreateClient(ctx, c, center) (= NewPool): TLS build → discovery resolver → raw pool
-  │     → governance applied in the constructor: resilience executor + endpoint-selection binding
-  │     → declaration layer installed → setupDial (instrumented Dial wrap)
+  │   → d.CreateClient(ctx, c, center) (= NewPool): TLS build → discovery resolver →
+  │     loadbalance chain (its Picker feeds the executor's addressing) → connpool.Pool
+  │     → governance applied in the constructor: resilience executor with per-round addressing
   │   → HealthCheck ping (ONLY if ping=true), AFTER assembly [starter.go]
   │   NOTE: there is NO separate InitMethod and nothing patches the pool afterwards [pool.go]
-  ├─ your bean Inits may call UseCommandInterceptor (affects conns dialed from then on)
-  └─ SIGTERM → destroyPool → Pool.Close: exec.Close → resolver.Stop → pool.Close [pool.go]
+  ├─ your bean Inits may call UseCommandInterceptor (affects commands issued from then on)
+  └─ SIGTERM → destroyPool → Pool.Close: connpool.Close → exec.Close [pool.go]
 ```
 
-`Pool.Close` overrides the promoted `(*redis.Pool).Close`,
-so a plain Close tears down the binding, the executor and the pool together and cannot leak
-the discovery-resolver watch [pool.go].
+A plain `Pool.Close` tears down the connection pool and the executor together; freshness lives
+inside the discovery backend, so there is no per-pool watch to leak [pool.go].
 
-### 2.2 The command onion — folded at connection construction
+### 2.2 The command onion — folded per command
 
-Every connection the pool dials is wrapped ONCE, at dial time, by `Pool.wrapConn`
-[pool.go:212-222]. The layers are folded into a single composed `CommandInterceptor`
-(`NewConn` folds from the innermost, so the FIRST layer ends up OUTERMOST [conn.go:93-106]):
+`Pool.Get()` hands out a VIRTUAL `*Conn`: it holds no connection of its own. Every command
+runs the chain composed from the pool at that moment (`NewConn` folds from the innermost, so
+the FIRST layer ends up OUTERMOST [conn.go]):
 
 ```
 user interceptors (first-registered outermost)
   → declaration layer (puts the command's identity on the ctx)
     → resilience executor (breaker / limiter / retry / timeout + emission)
-      → the inner Do call → Redis
+      → addressing per round (pick endpoint, exclude failed peers)  [inside the retry loop]
+        → acquire a pooled connection for the picked peer → the inner Do → Redis
 ```
 
 Rationale (source comments [pool.go:205-211], [conn.go:44-53]):
@@ -201,11 +201,13 @@ Rationale (source comments [pool.go:205-211], [conn.go:44-53]):
   one point that sees a whole call — so one Execute, including any retries the policy drives,
   shares a single span and one access-log line.
 - **Executor innermost**: it derives the per-attempt context and gates the actual wire call.
+  Its addressing stage picks the endpoint each round addresses — a retry re-picks, excluding
+  the peers this call already failed against — and settles the round's outcome with the
+  balancer's tracker exactly once.
 
-Because the fold happens per dial, interceptors registered via `UseCommandInterceptor` **after**
-some connections were already dialed apply only to connections dialed later; already-dialed
-connections keep the chain they were built with [pool.go:151-157]. Register them from a bean's
-Init, before traffic.
+Because the chain is read from the pool's live state per command, interceptors registered via
+`UseCommandInterceptor` apply to commands issued after registration — no dialed-connection
+carryover to reason about.
 
 ### 2.3 One command through the onion: `DoContext(ctx, "GET", "key")` on a hit
 
@@ -231,17 +233,19 @@ interrupt them — prefer `DoContext` when either matters [conn.go:74-79]. `Send
 ### 2.4 One pooled connection's lifecycle
 
 ```
-pool.Get() (your code)
-  ├─ idle conn available? → reuse (MaxConnLifetime=conn-max-lifetime bounds reuse)
-  └─ else Dial: credentials/TLS/SELECT db → the round-robin loadbalance pool picks a
-     endpoint when service-name is set [pool.go:104-120] → wrapConn folds the onion
-  ├→ you Do/DoContext commands (each flows user → declaration → resilience → wire)
-  └→ conn.Close(): returns to the idle pool (redigo semantics)
-shutdown: Pool.Close() — executor, resolver watch, then the pool itself
+pool.Get() (your code) — a virtual conn, holds nothing
+  └→ each command: chain → addressing picks the peer for this round
+       └→ connpool.Acquire(peer.Addr): idle conn for that endpoint? reuse
+            └─ else Dial it (credentials/TLS/SELECT db); failure is ConnectError-marked
+       └→ run the command → release (park) or discard (failed)
+  └→ conn.Close(): a no-op — nothing is held between commands
+shutdown: Pool.Close() — connection pool, then the executor
 ```
 
-`Wait: true` is hardcoded [pool.go:86]: when the pool is exhausted, borrowers block instead of
-erroring — size `pool-size` accordingly.
+`pool-size` is the per-ENDPOINT MaxActive (a pool serving N endpoints holds up to
+N×pool-size connections); when an endpoint's budget is exhausted the acquirer waits
+bounded by its context — size accordingly. `Send`/`Flush`/`Receive` (pipelining) return
+[ErrPipelineUnsupported]: the per-command acquire model has nothing to queue on.
 
 ---
 
@@ -309,10 +313,10 @@ endpoint within 30s — no restart, no client rebuild.
 The pool's strategy is governed, not hardcoded: it is built with a suspension tracker and registered
 under `redigo:<service-name|addr>` as `lbMgr.Chain(resolver, label)` is called (the
 injected `*loadbalance.Manager` bean), so
-`spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label
+`spring.governance.client.loadbalance.services[N].balancer` / `request-failures` / `suspend-for` for that label
 **rebuild the chain from scratch** — the next dial runs the new strategy on a fresh balancer and
 suspension tracker. The dialer feeds `Complete` with the dial
-outcome, so `outlier-threshold` evicts instances that keep refusing *connections*; per-command
+outcome, so `request-failures` evicts instances that keep refusing *connections*; per-command
 failures belong to the resilience executor. Direct (`addr`-only) pools have no candidate set, so
 these keys are inert for them. See `cloud/governance/README.md` §3.1.
 

@@ -110,7 +110,7 @@ type Client struct {
 func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, center *governance.Runtime) *Client {
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = label.ServiceLabel("influxdb", cfg.ServerURL)
-	o.exec = center.ExecutorFor("influxdb", o.serviceLabel)
+	o.exec = center.ExecutorFor("influxdb", o.serviceLabel, nil)
 	o.prop = center.Traffic
 	// Only the driver's own indirection is swappable; anything else leaves the
 	// resilience transport uninstalled, so the client keeps the
@@ -149,7 +149,9 @@ func (o *Client) WritePoints(ctx context.Context, points ...*write.Point) error 
 	op := chain.NewOperation(ctx, o.prop)
 	op.Service = o.serviceLabel
 	_, err := resilience.Run(ctx, o.exec, op,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, w.WritePoint(ctx, points...) },
+		func(ctx context.Context, _ chain.Peer) (struct{}, error) {
+			return struct{}{}, w.WritePoint(ctx, points...)
+		},
 		resilience.TolerateFunc(isClientWriteError))
 	return err
 }

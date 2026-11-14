@@ -34,7 +34,7 @@ import (
 //
 // Create one with [Manager.NewServer] at wiring time and capture it.
 type Server struct {
-	mgr *kfault.Manager
+	mgr *Manager
 }
 
 // Fire decides whether an inbound request should be set on fire, and applies the

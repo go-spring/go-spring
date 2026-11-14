@@ -37,4 +37,8 @@ func init() {
 		Name("discoveryServer").
 		Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.discovery.service-name"))
+
+	// The package's default ObserverFactory bean: an application that
+	// contributes its own factory takes precedence.
+	gs.Provide(NewOTelObserverFactory).Condition(gs.OnMissingBean[ObserverFactory]()).Caller(1)
 }

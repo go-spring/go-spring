@@ -31,7 +31,7 @@ import (
 // newTestObserver builds the observation layer a test's backend block would own.
 // The identity is fixed (center "test"): what these tests exercise is the
 // reporting, not the labelling.
-func newTestObserver() *discovery.Observer {
+func newTestObserver() discovery.Observer {
 	o, err := discovery.NewObserver(obsSystem, "test")
 	if err != nil {
 		panic(err)

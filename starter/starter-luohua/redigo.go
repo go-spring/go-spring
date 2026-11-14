@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	StarterRedigo "go-spring.org/starter-redigo"
 )
@@ -62,11 +63,11 @@ func (d RedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, c
 // ctx/cmd/args, or short-circuit without reaching redis).
 func luohuaCommandInterceptor(tag string) StarterRedigo.CommandInterceptor {
 	return func(next StarterRedigo.CommandHandler) StarterRedigo.CommandHandler {
-		return func(ctx context.Context, cmd string, args []any) (any, error) {
+		return func(ctx context.Context, peer chain.Peer, cmd string, args []any) (any, error) {
 			log.Debug(ctx, log.TagAppDef, "luohua/redis", func() []log.Field {
 				return []log.Field{log.String("tag", tag), log.String("cmd", cmd)}
 			})
-			return next(ctx, cmd, args)
+			return next(ctx, peer, cmd, args)
 		}
 	}
 }

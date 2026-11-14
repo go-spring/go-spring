@@ -1,0 +1,397 @@
+# loadbalance
+
+[English](README.md) | [中文](README_CN.md)
+
+`loadbalance` is the client-side load-balancing layer on top of
+`go-spring.org/cloud/discovery`. Discovery answers "which instances exist
+right now?"; this package answers "given that live set, which one do I send
+this request to?" — and suspends instances that keep failing.
+
+## Installation
+
+```
+go get go-spring.org/cloud
+```
+
+## Quick start
+
+```go
+import (
+    "context"
+    "time"
+
+    "go-spring.org/cloud/discovery"
+    "go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+)
+
+backend := discovery.NewStaticDiscovery(
+    discovery.Endpoint{Addr: "10.0.0.1:8080", Scheme: "tcp"},
+    discovery.Endpoint{Addr: "10.0.0.2:8080", Scheme: "tcp"},
+)
+resolver, err := discovery.NewResolver(ctx, backend, "orders", "")
+if err != nil { return err }
+
+bal := loadbalance.NewRoundRobin(loadbalance.Selection{})
+obs, err := loadbalance.NewOTelObserver() // any Observer; the manager installs a no-op when metrics are off
+if err != nil { return err }
+tracker, err := loadbalance.NewTracker("orders", loadbalance.TrackerConfig{
+    RequestThreshold: 3,               // consecutive failures before suspension
+    SuspendDuration:  5 * time.Second, // back in rotation after this cool-down
+}, obs)
+if err != nil { return err }
+pool := loadbalance.NewPool(resolver, bal, tracker, loadbalance.Selection{})
+
+for {
+    pick, err := pool.Pick(ctx, loadbalance.PickInfo{})
+    if err != nil { return err }
+    err = call(pick.Endpoint.Addr) // your RPC/HTTP call
+    pick.Complete(ctx, err)        // must be paired: settles on the picking generation + feeds the tracker
+}
+```
+
+## Pool: assembly and filtering
+
+`Pool` glues three things into a runtime: an endpoint source, a strategy, and a
+`Tracker` — all three built by the caller, so the pool creates nothing. A
+tracker from a zero `TrackerConfig` (the stated "no suspension") is fully
+transparent; an explicit threshold makes it governable without any extra
+wiring.
+
+```go
+pool := loadbalance.NewPool(resolver, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{})
+```
+
+- **The endpoint source** is a `discovery.Resolver` —
+  `func(ctx context.Context) ([]discovery.Endpoint, error)`. Freshness lives entirely inside the
+  discovery backend, so each `Pick` re-reads the latest snapshot.
+- Each `Pick` filters in order: **metadata match** (dynamic governance
+  narrowing) → **zero-weight drain** (instances the naming service marks out of
+  rotation) → **disabled exclusion** (operator decree) → the **tracker's
+  servable decision**: healthy endpoints are preferred, suspended ones are
+  skipped, and when the servable share of the pool falls below
+  `min-healthy-percent` the floor panics and the whole pool is served — the
+  Envoy/Istio healthy-threshold behaviour. Drain runs before the health
+  decision because it is an operator decree: an undrained unhealthy instance is
+  a better candidate than a drained healthy one. The survivors go to the
+  strategy. The metadata match and disabled are HARD filters: a set they empty
+  surfaces as `ErrNoEndpoints` with no fallback (a canary rule must not be
+  silently widened); drain and the tracker's decision are skipped when they
+  would empty the set, falling back to the pre-filter set — traffic is never
+  black-holed.
+- **Mesh mode**: no pool is built at all — the client's entry asks
+  `Runtime.UsesDiscovery`, gets "no", and dials its configured stable address
+  directly, letting the sidecar balance. `loadbalance` itself holds zero mesh
+  references.
+
+## Balancer: strategies
+
+The strategy decides "which survivor wins". Six are built in; a governance rule
+names one by name, and any strategy a linked package registered can be named the
+same way. A `zone-aware` switch is separate: it takes no strategy name and
+overlays whatever strategy the rule names.
+
+| Scenario | Strategy | Why |
+|---|---|---|
+| Homogeneous instances, no special need | `round_robin` | simplest, zero state |
+| Uneven instance performance (slow disk, GC pressure) | `least_conn` or `p2c` | adapts by in-flight count / measured latency |
+| Widely varying request durations (e.g. export endpoints) | `p2c` | in-flight is a lagging signal; p2c's EWMA tells busy from slow |
+| Session / cache affinity needed | `consistent_hash` | same key lands on the same instance; scaling moves few keys |
+| Mixed instance classes (4C8G vs 8C16G) | `weighted` | splits by capacity, interleaved smoothly |
+| Multi-AZ / multi-region deployment | `zone-aware` switch | piggybacks on any chosen strategy: local first, level-by-level fallback, saves cross-zone latency and egress |
+| Very high concurrency, stateless is fine | `random` | no shared cursor, no atomic hotspot |
+
+Strategies come in two kinds: **no per-request state** (`round_robin` keeps
+only an atomic cursor, `random` is fully stateless — both have a no-op
+`Complete`) and **stateful** (`weighted` keeps per-address current weights;
+`least_conn` keeps an in-flight table; `p2c` keeps a latency model;
+`consistent_hash` caches its ring). All state is keyed by endpoint address, so
+instances coming and going — or a reordered snapshot — never disturbs the state
+of the survivors.
+
+A custom strategy implements `Balancer` (Pick/Complete, concurrency-safe;
+`Complete` receives the context of the request it settles) and provides a
+`Provider` — the registered name is the strategy name a rule cites, and the
+strategy's own parameters arrive in the loose `Selection.Params` map:
+
+```go
+func newMyStrategy(sel loadbalance.Selection) (loadbalance.Balancer, error) {
+    window := time.Second // the strategy's own parameter, defaulted here
+    if v, ok := sel.Params["window"]; ok {
+        w, err := time.ParseDuration(v)
+        if err != nil {
+            return nil, err
+        }
+        window = w
+    }
+    for k := range sel.Params { // reject keys this strategy does not own
+        if k != "window" {
+            return nil, fmt.Errorf("my_strategy: unknown parameter %q", k)
+        }
+    }
+    return &myBalancer{window: window}, nil
+}
+
+// in the contributing package's starter:
+gs.Provide(func() loadbalance.Provider {
+    return myStrategyProvider{} // Strategies() = []string{"my_strategy"}
+}).Name("my_strategy")
+```
+
+A strategy contributes a `loadbalance.Provider` bean. The manager collects every
+Provider bean — the built-in set plus each contribution — into one
+`Factory`, so no global registry or `init()` side effect is involved.
+
+Built-in strategy parameters are flat selection keys prefixed with the strategy
+name (e.g. `consistent-hash-replicas`); other strategies ignore them, and a wrong
+type or an out-of-range value rejects the document whole — a parameter aimed at
+the wrong place is never silently dropped. `zone-aware` is not a strategy but an
+overlay filter: `zone-aware: true` enables it, reading locality from
+the endpoint's Zone field, and it applies to whatever strategy the same rule
+names, so the strategy is stated once. A contributed strategy's parameters go through `Selection.Params`
+(`balancer-params` in a rule): the strategy owns, interprets and rejects its own
+keys. Adding a contributed strategy with parameters changes nothing in this
+package.
+
+Under retry, simply `Pick` again per attempt — the candidate set is re-filtered
+each time, so there is no (and needs no) failed-endpoint blacklist API;
+persistent failures are removed by the `Tracker` automatically.
+
+## PickInfo: routing hints
+
+`Pick`'s second argument carries what this request may route on. All fields
+are optional; a strategy that does not understand one ignores it:
+
+```go
+// Hash-key affinity (consumed by consistent_hash).
+pick, _ := pool.Pick(ctx, loadbalance.PickInfo{HashKey: userID})
+pick.Complete(ctx, err)
+
+// Zone locality (consumed by the zone-aware filter); accepts an ordered fallback
+// list, tried level by level, spilling over only when every level is empty.
+pick, _ = pool.Pick(ctx, loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
+```
+
+## Tracker: outlier suspension
+
+The `Tracker` covers the failure mode discovery cannot see: an instance that
+is still registered and passes health checks but keeps failing real requests
+(a zombie). It learns only from the `err` passed to `Complete` — no extra calls:
+
+```
+healthy --consecutive failures reach RequestThreshold--> ejected
+      (base SuspendDuration × ejection count, capped; at most MaxEjectionPercent
+       of the pool is out at once)
+                        |
+          ejection time elapses → back in rotation with a clean streak
+```
+
+The streak is CONSECUTIVE, matching Envoy: only a success clears it, and the
+count is not bounded by a time window. The ejection count survives readmission,
+so a repeatedly failing instance stays out longer each time (base × count,
+capped); while it stays in rotation the count decays by one per `interval`
+(Envoy's sweep-time decay), and it resets when the instance leaves discovery.
+`max-ejection-percent` is the ejection cap, with Envoy's at-least-one carve-out
+off by default — raise it for a small pool. When the servable share falls below
+`min-healthy-percent` — or every instance is ejected — the filter panics and
+serves the whole pool (Envoy's healthy-panic threshold; the floor does not gate
+ejections).
+Re-admission is timer-based: no result decides recovery, and outcomes arriving
+during the ejection (from requests admitted before it) are ignored. A negative
+`RequestThreshold` / `DialThreshold` disables that arm; a zero `TrackerConfig`
+adopts the Envoy-shaped defaults.
+
+## Managed selection (governance)
+
+A chain's strategy and suspension thresholds can be driven from outside the
+process, by service rather than by construction-time argument. The caller
+injects the `*loadbalance.Manager` bean (see [Manager](manager.go)) and builds its
+chain under it:
+
+```go
+// mgr is the injected *loadbalance.Manager; nil means no governance is present.
+var pick loadbalance.PickResult
+if mgr != nil {
+	chain, err := mgr.Chain(ctx, resolver, "http:user-svc") // follows the service
+	if err != nil {
+		return err
+	}
+	pick, err = chain.Pick(ctx, loadbalance.PickInfo{})
+	if err != nil {
+		return err
+	}
+} else {
+	bal := loadbalance.NewRoundRobin(loadbalance.Selection{})
+	pool := loadbalance.NewPool(resolver, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{}) // standalone
+	pick, err = pool.Pick(ctx, loadbalance.PickInfo{})
+	if err != nil {
+		return err
+	}
+}
+err := call(pick.Endpoint.Addr)
+pick.Complete(ctx, err) // settles on the generation that picked
+```
+
+- `mgr.Chain(resolver, service)` builds the chain under that service, so the
+  service's current `Selection` applies to the generation it builds
+  **immediately**, and a later change **rebuilds the chain from scratch** — a new
+  balancer, a new tracker, a new pool, sharing nothing with the generation it
+  replaces. The rebuild happens ON the push, never on the request path:
+  `Manager.Apply` walks the registered chains on the governance source's single
+  loop, compares each service's resolved `Selection` BY VALUE, and swaps a new
+  generation in when it moved. All a request path sees of a refresh is one atomic
+  load. `Chain` is the ONLY outward surface: a request path calls `chain.Pick`
+  and settles with the returned `pick.Complete`; the inner `Pool` is not exposed.
+  A service maps to exactly one chain per process: a second `Chain` registration
+  for the same service returns an error (two clients on one governance label
+  would fork the selection state, and only the first source would ever be
+  consulted). Registration happens at wiring (before the source loop starts),
+  there is no detach, and everything is released by `Manager.Close` at the end of
+  the manager's life.
+- Building under an **unarmed** manager is safe and is the normal case for a
+  chain built during container wiring: the base generation is built, and the
+  push that delivers the document replaces it right there. With no manager at all
+  (a container with no policy-root bean, or a standalone caller) the chain is
+  built once and never rebuilt — a transparent pass-through.
+- A resolved `Selection` must name a strategy: when it does not, the WHOLE
+  selection is replaced by the base one (`round_robin`), so thresholds, metadata
+  match and every other field on that selection stop applying too. The base strategy is
+  stated by whoever produces the settings (the manager's base document, the
+  governance translation). An **unknown** name rejects the whole document and the
+  last good configuration stays in force — there is no "current strategy" a
+  rebuild could inherit. The suspension thresholds always apply.
+- The suspension half only has an effect on a pool whose `Pick` is paired with
+  `Complete` — the tracker is always there, but unpaired calls leave it nothing
+  to count, so the thresholds are set on nothing.
+
+`Manager.Apply(Settings{...})` is the single entry point the governance center
+calls — once at startup with the source's snapshot, then on every push. The
+center only PUSHES the rules; this package does the matching — a default
+`Selection` (embedded at the document root) plus a `Rules` list, the first Rule
+whose `Service` equals the service wins, the same shape `fault` already has. Apply
+publishes the document as a new generation and rebuilds the chains it moved,
+right there on the push. The change test is BY VALUE: a push that changes nothing
+for a service costs its chains nothing, and re-applying an identical document is
+not a change; each push that really moves a service rebuilds that service's chain
+immediately.
+
+A rule names the strategy; the built-ins carry their parameters as flat,
+strategy-prefixed selection keys (`<strategy>-<param>`), and the
+`balancer-params` map is the extension seam reserved for contributed strategies:
+
+```yaml
+balancer: consistent_hash
+consistent-hash-replicas: 200
+request-failures: 5
+match:                    # endpoint narrowing, applied before the strategy picks
+  version:
+    prefix: v2.
+```
+
+The metadata match is the dynamic half of endpoint narrowing: `Pool.Pick` applies it
+with `discovery.FilterByMetadata` as the first filter stage, after reading the
+source and before the drain and the tracker's decision — it does not wrap the source, which stays the
+chain's stable target across generations. It composes with the static narrowing
+of the resolver's construction-time scheme (both must hold), and a pushed change
+moves the service's generation like any other selection change.
+There is no implicit fallback — a metadata match that matches no endpoint surfaces as
+`ErrNoEndpoints`, because falling back silently would widen a canary rule to
+every instance.
+
+`Factory.Create` is where a strategy name becomes a strategy: the manager calls it
+when building every new generation, so a pool never holds the factory table.
+`Chain.Selection()` reads back the selection the chain's generation in force was
+built from — an inspection helper, not a request-path concern.
+
+## Coverage: what is governed, and the re-pick test
+
+Selection is driven **only** through the governance channel — the `balancer`
+name plus its prefixed parameters (`consistent-hash-replicas`), the `zone-aware`
+switch, or the contributed seam's `balancer-params`, via
+`Manager.Apply` → a rebuilt `Chain` generation (hot, but from scratch).
+Locality is a filter rather than a strategy: `zone-aware: true` wraps whatever
+`balancer` the rule names, so the strategy is stated once. A starter invents no local static `balancer` key of its own; each
+chain's base generation is round-robin, stated by the manager's base document
+and by the governance translation rather than implied by an empty name. The
+`Provider` parameterization is kept, to carry parameters on the governance
+channel.
+
+Covered clients: every discovery-mode `loadbalance.Pool` consumer —
+`httpx`/`gateway`, all four gorm dialects, `redigo`, `go-redis`, `mongodb`,
+`grpc`.
+
+> Self-check: **does this client pick an endpoint again on every request /
+> every connect?** Yes → its service can carry a `balancer`. No → don't expect
+> `spring.governance.client.loadbalance.services[N].balancer` to affect it.
+
+The "no" cases, each deliberate:
+
+- **Direct connect** (a fixed addr/host): no candidate set to choose from.
+- **Pick-once** (`neo4j`): the host is frozen into the startup URI; there is no
+  per-request pick left to govern (its governance stops at the protection policy).
+- **Mature library owns the choice** (`elasticsearch` / `memcached` / the MQ
+  family / `s3`): the selection lives inside the library (ES's node selector,
+  memcached's per-key consistent hash). The rule: don't build a second selector
+  when the library already has a good one — feed it the live addresses instead.
+
+**Eviction granularity for a DB/cache client is the connection, not the query.**
+For gorm / redigo / go-redis / mongodb the pick happens at connect time, so the
+only success/failure signal the `Tracker` can see is the dial result; a failed
+single query is handled by that client's own resilience executor and does not
+feed the tracker.
+
+**`grpc` picks under a process-level service.** Its selection is keyed by the
+process-wide `grpc:client`, so setting `balancer=` on it also retunes every
+builtin `gs_*` balancer; to isolate per service, register a custom name via
+`RegisterBalancer` (a custom name keeps its own strategy, exempt from the
+process-level override by design).
+
+**Building a pool** takes three parts: a `Tracker` + a paired `Pick` / `Complete`
+at the connect site + subscribing to the governance-pushed `Selection`. New
+clients copy this (it is written into `starter/DESIGN.md` §4 as a checklist). A
+service maps to exactly one chain per process: a second `Manager.Chain` for the
+same name returns an error, so a client must build a chain once per governance
+label instead of letting several pools register the same name.
+
+## Weight semantics
+
+- `Endpoint.Weight == 0` means **drain**. (2026-08-27)
+- The `weighted` strategy caps a single endpoint's weight at `1<<20`: weights
+  arrive from discovery backends without an upper bound, and two extreme values
+  would overflow the smooth-WRR accumulator and starve the other instances.
+- Every consumer-side LB strategy uniformly filters out `Weight == 0` endpoints
+  (after health/tracker filtering); when all are zero it falls back to the
+  pre-filter set (never black-holes), and **negative** weights stay in rotation.
+- On the write side, registrar `Register` normalizes `weight <= 0` to 1 ("unset"
+  never lands at 0); `UpdateWeight(0)` is an explicit drain and is allowed to
+  land at 0. Do not normalize 0 back to 1 — that is `Register`'s job.
+- **Drain and deregister (`Disabled`) are two different things**: the former
+  rotates with zero loss, the latter removes immediately.
+
+## Address freshness: a separate axis
+
+Who picks a node is independent of whether the address set follows the naming
+service. The covered clients re-read on every connect/request; the
+library-owned ones attach their own live set: ES installs a
+`ConnectionPoolFunc`, memcached installs a `ServerSelector` (keeping its
+CRC32-of-key hash plus address ordering), and neo4j installs the driver's
+`AddressResolver` (only in `neo4j://` routing mode). On a read failure each
+keeps the last usable set and **never returns an empty set**.
+
+## The Pick/Complete contract
+
+`Pick` returns a `PickResult` — the endpoint plus the generation that chose it —
+and the request must be settled with `pick.Complete(ctx, err)`. The outcome is
+recorded on **the generation that picked**, so a governance rebuild landing
+between Pick and Complete cannot move it to a new generation; a replaced
+generation drops its in-flight outcomes.
+
+The two calls must be paired **exactly once**. Skipping `Complete`:
+`least_conn`'s in-flight count leaks (that instance starves), `p2c`'s in-flight
+record is never released (and pruning skips addresses with requests in flight),
+and the `Tracker` goes blind (suspension stops working).
+
+`Complete` takes the context of the request it settles, which is what lets a
+strategy's own telemetry and logging attach to the request that caused the
+state change — the tracker's suspension and recovery lines are traced to it.
+What it does is in-memory bookkeeping: it must not perform I/O, and it must
+not depend on the context still being live.

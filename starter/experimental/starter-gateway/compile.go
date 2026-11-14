@@ -28,9 +28,9 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -66,7 +66,7 @@ type TracingConfig struct {
 // happens when the underlying Dync map is swapped by a config refresh.
 type RouteTable struct {
 	ctx context.Context
-	obs *observer
+	obs Observer
 
 	// Cfg is bound from ${spring.gateway} by field injection after construction.
 	// Its Routes field is a gs.Dync map, so a config refresh swaps the underlying
@@ -160,14 +160,16 @@ type chainEntry struct {
 // The error is the load-balancing authority's: with no factory bean contributed
 // to the fallback there is nothing to reject, but it is reported at startup
 // rather than swallowed.
-func newRouteTable(ctx *gs.ContextProvider, o *observer,
+func newRouteTable(ctx *gs.ContextProvider, o Observer,
 	center *governance.Runtime, factories *ratelimit.Factory) (*RouteTable, error) {
 	if factories == nil {
 		return nil, errutil.Explain(nil, "gateway: route table requires a non-nil ratelimit.Factory")
 	}
 	lbMgr := center.LoadBalance
 	if lbMgr == nil {
-		lbMgr = loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+		// Zero config keeps suspension metrics off, so the manager never reads
+		// the observer: nil is deliberate here.
+		lbMgr = loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), nil, loadbalance.ManagerConfig{})
 	}
 	return &RouteTable{
 		ctx:       ctx.Context,
@@ -230,7 +232,7 @@ func (t *RouteTable) current() []*Route {
 		if err := t.recompile(raw); err != nil {
 			// Keep serving the previous table: a bad hot edit must never take the
 			// gateway down. Surface it loudly via log + metric.
-			t.obs.reloadError(t.ctx)
+			t.obs.ReloadError(t.ctx)
 			log.Error(t.ctx, log.TagAppDef, err, "gateway: route reload failed, keeping previous table")
 			// Adopt the pointer so we do not retry the same broken map every request.
 			atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())
@@ -320,7 +322,7 @@ func (t *RouteTable) buildExecutors() (map[string]chain.Executor, error) {
 		// so trips/rejects/retries emit span + counter + histogram + access log.
 		// The center composes the observe wrapper (and fault); this package names
 		// neither.
-		out[name] = t.ctr.ExecutorFor(gatewayLabel(name), gatewayLabel(name))
+		out[name] = t.ctr.ExecutorFor(gatewayLabel(name), gatewayLabel(name), nil)
 	}
 	return out, nil
 }

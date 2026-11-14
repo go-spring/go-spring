@@ -21,42 +21,23 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/stdlib/errutil"
 )
 
-// rule.go is the CONFIGURATION vocabulary: what an operator writes. A rule
-// states its target ([Rule]: service, metadata, action — the call's traffic
-// class being one metadata dimension) and its effect/dose (rate, latency, error,
-// max-affected, max-duration); [Config] is just one direction's list of them.
-//
-// Everything a rule itself computes lives here too, next to the fields it reads:
-// whether it governs a call ([Rule.Matches]), what dose it draws for one
-// attempt ([Rule.roll]) and the [Result] that roll produces. Both
-// computations are local to the rule — they take a [Target] and draw randomness,
-// nothing else. What they do NOT do is sequence anything: the kernel, the
-// guardrails and the sleep live in manager.go, and the call's [Target] is built at
-// call time, not configured.
+// rule.go is the SHARED rule vocabulary: the targeting axes and dose knobs every
+// fault rule carries, whichever direction it governs. The direction packages
+// embed [RuleCore] in their own rule type and add their effect — an outbound
+// error kind and class, an inbound response status — so a configuration can
+// never express an effect its direction cannot produce.
 
-// Rule is one fault rule: it names one service (optionally one interface
-// and one traffic slice of it) and the dose to apply. See [Config.Rules].
-//
-// There is deliberately NO per-replica (instance/host/pod) selector. Targeting
-// one replica is a DELIVERY decision, not a property of the rule: mainstream
-// chaos platforms select the target in their control plane and act only there
-// (Chaos Mesh's daemon on the target node, ChaosBlade's per-host agent), and
-// config centers gray-publish per instance (Nacos beta by IP, Apollo by
-// IP/label). A rule-level field would instead ship the selector to EVERY process
-// and make each re-decide, which (a) duplicates selection the platform already
-// does, (b) can only ever work inbound — an outbound call cannot know which peer
-// the balancer will pick — and (c) makes the document non-portable: the same file
-// could no longer be replayed anywhere with the same result. If per-replica
-// drills are needed, put that identity in the SOURCE layer (the adapter names
-// this process when it fetches its document), never here. This axis was removed
-// once; do not reintroduce it.
-type Rule struct {
+// RuleCore is the direction-neutral half of a rule: whom it targets and how much
+// it applies. A direction's rule type embeds it and adds the effect; the shared
+// kernel ([Kernel]) reads only this part for matching, guardrails and dose.
+type RuleCore struct {
 	// Name identifies the rule; the expr tag requires it non-empty. Together
-	// with [Config.RunID] it forms the identity a config push reconciles against
-	// — (run id, name) — so a rule keeps its MaxDuration/MaxAffected counters as
-	// long as BOTH are unchanged: reordering
+	// with the direction document's RunID it forms the identity a config push
+	// reconciles against — (run id, name) — so a rule keeps its
+	// MaxDuration/MaxAffected counters as long as BOTH are unchanged: reordering
 	// the list, editing another rule or re-pushing the same document inside one
 	// run never resets a live rule, while a NEW run id starts every rule from
 	// zero. That is what lets a scheduled controller re-push idempotently and a
@@ -109,8 +90,7 @@ type Rule struct {
 	// [matcher.StringMatch] per key — the op always spelled out
 	// (`match.tenant.exact=acme`, `match.version.prefix=v2`), one condition per
 	// key, documents being platform-generated rather than hand-written, and
-	// evaluated as bound with no translation. Bind via indexed properties, e.g.
-	// spring.fault.client.rules[0].match.tenant.exact=acme.
+	// evaluated as bound with no translation.
 	MetadataMatch map[string]matcher.StringMatch `value:"${match:=}"`
 
 	// ActionMatch narrows the rule to calls whose [Target.Action] it matches —
@@ -121,13 +101,45 @@ type Rule struct {
 	// action.exact=GET /users/{id}).
 	ActionMatch matcher.ActionMatch `value:"${action:=}"`
 
-	// Rate is the per-call probability (0..1) of injecting the configured Error.
-	// 0 means never inject; 1 means every call fails. Latency, when set, is
-	// applied to every call regardless of Rate — use it to model a uniformly
-	// slow downstream without forcing errors.
+	// Rate is the probability (0..1) of applying the rule's effect. 0 means never
+	// inject; 1 means every attempt fails. Latency, when set, is applied to every
+	// attempt regardless of Rate — use it to model a uniformly slow downstream
+	// without forcing errors.
+	//
+	// It counts ATTEMPTS, not logical calls. An outbound call that retries is N
+	// separate requests to the downstream, and each is judged independently —
+	// the same per-request model Envoy and Istio use. For independent draws the
+	// call-level failure probability is therefore 1-(1-Rate)^N; retries mask
+	// part of the injected rate, which is exactly what a real flaky downstream
+	// does.
+	//
+	// Rate and [Every] are two ways to decide the same thing and are mutually
+	// exclusive ([RuleCore.Validate] rejects both).
 	Rate float64 `value:"${rate:=0}" expr:"$ >= 0 && $ <= 1"`
 
-	// Latency is injected before every ATTEMPT (and before the error decision):
+	// Every fires the effect on every Nth matching ATTEMPT (1 = every attempt),
+	// a deterministic alternative to [Rate]. Like Rate it counts attempts, so a
+	// retried outbound call consumes more than one sequence number. The counter
+	// is per rule identity and survives re-pushes within a run, like the
+	// guardrail counters. 0 disables it; it is mutually exclusive with Rate.
+	Every int `value:"${every:=0}" expr:"$ >= 0"`
+
+	// StartAfter delays the whole rule: no effect (and no latency eligibility)
+	// until this much time has passed since the rule's FIRST matching call. It
+	// is what expresses "arm now, start the outage in 10s"; the window rides the
+	// rule identity, so a re-push within a run does not restart it.
+	StartAfter time.Duration `value:"${start-after:=0}" expr:"int($) >= 0"`
+
+	// On and Off make the rule INTERMITTENT: from StartAfter onward it is
+	// eligible for On, then silent for Off, repeating. Within an On window the
+	// Rate/Every decision still applies, so "5s of 50% failures" is expressible.
+	// The pair must be set together ([RuleCore.Validate]); 0/0 means always
+	// eligible. This is how a drill produces "bad for a while, then recover" —
+	// the shape a breaker's half-open probe and a balancer's re-admission need.
+	On  time.Duration `value:"${on:=0}" expr:"int($) >= 0"`
+	Off time.Duration `value:"${off:=0}" expr:"int($) >= 0"`
+
+	// Latency is injected before every ATTEMPT (and before the effect decision):
 	// the outbound seam fires once per retry, so a call that retried N times
 	// sleeps N x Latency and spends N budget units against the guardrails. That
 	// matches how a network-layer delay behaves against a retrying client. Use it
@@ -141,42 +153,9 @@ type Rule struct {
 	// the sleep exactly Latency.
 	LatencyJitter time.Duration `value:"${latency-jitter:=0}" expr:"int($) >= 0"`
 
-	// Error selects the injected failure kind, applied at Rate:
-	//   [ErrorGeneric]   — a retryable injected error ([ErrInjected]), the default
-	//   [ErrorTimeout]   — wraps context.DeadlineExceeded
-	//   [ErrorReset]     — wraps syscall.ECONNRESET
-	//   [ErrorRefused]   — wraps syscall.ECONNREFUSED
-	// Rate 0 means no errors are injected (a latency-only rule).
-	Error string `value:"${error:=generic}" expr:"$ in ['generic', 'timeout', 'reset', 'refused']"`
-
-	// Class is how the caller's resilience stack classifies the injected failure:
-	//   [ClassTransient] (default) — retried, counted by the circuit breaker
-	//   [ClassPermanent]            — NOT retried, still counted
-	//   [ClassBusiness]             — NOT retried, NOT counted
-	//
-	// It is the process-internal counterpart of the status code a wire-level
-	// chaos tool can inject (HTTPChaos's replace.code, gRPCChaos's code): what the
-	// resilience stack actually consumes is the classification, not the number.
-	// Use "permanent"/"business" to exercise the paths a retryable injection
-	// cannot reach — "this failure must not be retried", "this failure must not
-	// open the breaker".
-	//
-	// WHY THE CLASS RIDES ON THE RULE (not on some caller-side list): this
-	// framework's classification contract is IDENTITY-DRIVEN — [resilience.Retryable]
-	// and [resilience.FailureClass] are interfaces an error implements to answer
-	// for itself (a non-idempotent write opts out of retry the same way), in the
-	// Hystrix typed-exception tradition. There is no resilience4j-style
-	// ignore/record exception list for a synthetic error to fall through to, so
-	// a class an injection cannot carry is a class nothing else could express:
-	// dropping this field would make the permanent/business paths unreachable,
-	// with no alternative entrance. [InjectedError] implementing those
-	// interfaces is therefore not the injection overriding the framework — it
-	// is the injected error obeying the same contract every real error obeys.
-	Class string `value:"${class:=transient}" expr:"$ in ['transient', 'permanent', 'business']"`
-
 	// MaxDuration is this rule's safety auto-off: after this much time
 	// elapses since ITS first affected call, the rule stops applying any fault
-	// (latency or error). It lets an operator arm a fire and walk away — a
+	// (latency or effect). It lets an operator arm a fire and walk away — a
 	// forgotten rule self-heals rather than running until the next deploy.
 	// 0 (the default) means no time bound. The window and its clock are PER
 	// PROCESS: in a fleet of N replicas each one runs its own copy of the rule.
@@ -186,90 +165,24 @@ type Rule struct {
 	// (or a rule identity change).
 	MaxDuration time.Duration `value:"${max-duration:=0}" expr:"int($) >= 0"`
 
-	// MaxAffected is this rule's blast-radius cap: once this many calls
-	// have received any fault effect (latency or error) FROM THIS RULE, it stops.
-	// Use it to bound the impact of a high-Rate fire on production traffic. 0
-	// (the default) means no count bound. The counter is PER PROCESS, so a fleet
-	// of N replicas can affect up to N x MaxAffected calls; this is a per-instance
-	// blast-radius cap, not a cluster-wide one. Per rule on purpose — one
-	// rule's budget must not silently switch another one off; the counters
+	// MaxAffected is this rule's blast-radius cap: once this many ATTEMPTS
+	// have received any fault effect (latency or injection) FROM THIS RULE, it
+	// stops. It counts attempts on purpose: every affected attempt is one real
+	// corrupted request, so a retried call can spend more than one unit and a
+	// call-level count would understate the blast radius. Use it to bound the
+	// impact of a high-Rate fire on production traffic. 0 (the default) means
+	// no count bound. The counter is PER PROCESS,
+	// so a fleet of N replicas can affect up to N x MaxAffected calls; this is a
+	// per-instance blast-radius cap, not a cluster-wide one. Per rule on purpose
+	// — one rule's budget must not silently switch another one off; the counters
 	// are keyed by the rule's identity.
 	MaxAffected int64 `value:"${max-affected:=0}" expr:"$ >= 0"`
 }
 
-// Config is the set of rules ARMED in one traffic direction right now — an
-// experiment's projection onto this process, not the experiment (the plan, its
-// scheduling and its stop conditions live in the platform). One push may carry
-// many rules; they all belong to the same [Config.RunID]. The SAME type serves
-// both traffic directions: the outbound and inbound fault Managers each hold one,
-// installed with their own Refresh. Both are fed from the fault root's
-// document (the [Document] type here) — the client side from
-// spring.fault.client.*, the server side from spring.fault.server.*. Fault is a
-// peer of governance, not part of its document, and there is no per-starter
-// fault key either.
-//
-// There is deliberately NO global default and NO catch-all: a call is set on
-// fire only when a rule that NAMES its service matches it, and every rule must
-// name one ([Rule.Service] has no empty case). A "fire everything" mode would
-// be the most dangerous thing a chaos tool could carry — an operator aiming at
-// one service would have to remember to disarm the rest of the process, and
-// outbound an empty match would set every downstream on fire at once, which is
-// an incident, not a drill. The mainstream chaos tools agree: every Chaos Mesh
-// experiment names a selector and a mode, every ChaosBlade command names a
-// target; neither has a "fire everything" state.
-//
-// An empty Config injects nothing, so a side built from it is a transparent
-// no-op.
-type Config struct {
-	// RunID labels ONE DRILL EXECUTION of this document — the id a control plane
-	// mints when an operator starts a drill and every replica shares. It is
-	// document metadata, not a rule and not an effect: the rules-only invariant
-	// (no top-level default) is untouched, because a run id changes nothing about
-	// what fires.
-	//
-	// It exists because [Rule.Name] is the rule's IDENTITY, stable across
-	// pushes, while "this particular execution" is a different question: spans,
-	// call records and per-rule counters can only be grouped into one drill if
-	// they carry a value that changes per run. It rides through
-	// [Result.RunID] to the call record and the span
-	// (`resilience.injected.run`); aggregation across replicas is the control
-	// plane's, which reads each process's document and counters.
-	//
-	// It is NOT a configuration field: there is no binding tag, so an operator
-	// cannot set it per direction and it can never disagree with the document's.
-	// On the control-plane path the center assigns it from [Document.RunID]
-	// BEFORE it commits; a caller that drives [Manager.Refresh] directly sets it
-	// in code.
-	// Empty is legal on that direct path and means "no drill id" — identity then
-	// falls back to [Rule.Name] alone.
-	RunID string
-
-	// Rules are an ORDERED list. The FIRST rule whose conditions match a call
-	// governs it — evaluation stops there, so a call is never affected by more
-	// than one rule. Order is precedence among rules on the SAME service (see
-	// [Manager.Fire]). Bind via indexed properties — the same shape on either side,
-	// under that side's block, e.g.:
-	//
-	//	spring.fault.client.rules[0].name=redis-errors
-	//	spring.fault.client.rules[0].service=redis:cache
-	//	spring.fault.client.rules[0].rate=0.5
-	//	spring.fault.server.rules[0].service=grpc
-	//	spring.fault.server.rules[0].rate=0.2
-	Rules []Rule `value:"${rules:=}"`
-}
-
-// Config has NO Validate method: every constraint a rule carries is a
-// single-field rule that lives on the field's `expr` tag, judged by conf.Bind
-// when the document enters. The cross-field and cross-rule candidates were
-// each examined and declined — a duplicate name only makes the later rule
-// unreachable (selection stops at the first match), and a LatencyJitter with
-// no Latency is silently inert (see [Rule.roll]), both typos to notice in
-// review rather than states to defend against.
-
 // Matches reports whether r governs a call: its Service equals the call's
 // service, its Action matches the call's, and the call's metadata satisfies
 // its Match.
-func (r Rule) Matches(t Target) bool {
+func (r RuleCore) Matches(t Target) bool {
 	if r.Service != t.Service {
 		return false
 	}
@@ -279,34 +192,61 @@ func (r Rule) Matches(t Target) bool {
 	return matcher.MetadataMatches(r.MetadataMatch, t.Metadata)
 }
 
-// roll draws this rule's dose for one attempt into a [Result]: the latency
-// first (always, when Latency > 0), then the error at Rate. Latency and error
-// are independent knobs; either one counts as affected for the guardrails. One
-// rule produces one result, and [Manager.Fire] stops at the first matching rule, so
-// a call is governed by exactly one. [Result.RunID] is left empty — the kernel,
-// not the rule, knows which document it published.
-//
-// The rule is the WHOLE declaration — there is no global effect to fall back to,
-// so whatever this rule leaves zero is zero for the calls it governs.
-func (r Rule) roll() Result {
-	o := Result{Name: r.Name}
-	if r.Latency > 0 {
-		o.Delay = r.Latency
-		if r.LatencyJitter > 0 {
-			// Uniform draw in [-jitter, +jitter], clamped at 0: latency stays a
-			// lower bound, and a jitter larger than latency cannot make it
-			// negative. Jitter breaks the resonance of a fixed sleep with a
-			// fixed retry backoff.
-			o.Delay += time.Duration((rand.Float64()*2 - 1) * float64(r.LatencyJitter))
-			if o.Delay < 0 {
-				o.Delay = 0
-			}
+// Validate rejects a contradiction the field-level expr tags cannot see: Rate
+// and Every both decide the same thing, and On/Off is a pair. It runs when a
+// rule is bound (the binder validates every embedded RuleCore); a directly
+// constructed configuration must call it itself.
+func (r *RuleCore) Validate() error {
+	if r.Every > 0 && r.Rate > 0 {
+		return errutil.Explain(nil, "fault: rule %q sets both rate and every; use one", r.Name)
+	}
+	if (r.On > 0) != (r.Off > 0) {
+		return errutil.Explain(nil, "fault: rule %q must set on and off together", r.Name)
+	}
+	return nil
+}
+
+// Dose is what the shared kernel decided for one matching call: whether the
+// rule's effect applies and how long the attempt sleeps. The kernel applies the
+// time pattern, the Rate/Every draw and the latency; the direction rule turns
+// `Inject` into its own effect.
+type Dose struct {
+	Inject bool
+	Delay  time.Duration
+}
+
+// Dose decides one matching call against the rule's time pattern and dose knobs.
+// The kernel calls it for the first matching rule and nothing else.
+func (r RuleCore) Dose(b *Budget, now time.Time) Dose {
+	n := b.noteMatch(now)
+	if !b.inWindow(r, now) {
+		return Dose{}
+	}
+	d := Dose{Delay: r.drawLatency()}
+	switch {
+	case r.Every > 0:
+		d.Inject = n%uint64(r.Every) == 0
+	case r.Rate > 0 && rand.Float64() < r.Rate:
+		d.Inject = true
+	}
+	return d
+}
+
+// drawLatency draws the per-attempt latency, including jitter.
+func (r RuleCore) drawLatency() time.Duration {
+	if r.Latency <= 0 {
+		return 0
+	}
+	delay := r.Latency
+	if r.LatencyJitter > 0 {
+		// Uniform draw in [-jitter, +jitter], clamped at 0: latency stays a
+		// lower bound, and a jitter larger than latency cannot make it
+		// negative. Jitter breaks the resonance of a fixed sleep with a
+		// fixed retry backoff.
+		delay += time.Duration((rand.Float64()*2 - 1) * float64(r.LatencyJitter))
+		if delay < 0 {
+			delay = 0
 		}
 	}
-	if r.Rate > 0 && rand.Float64() < r.Rate {
-		o.Inject = true
-		o.Error = r.Error
-		o.Class = r.Class
-	}
-	return o
+	return delay
 }

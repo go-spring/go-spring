@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/stdlib/testing/assert"
@@ -51,7 +52,11 @@ func withReader(t *testing.T) *sdkmetric.ManualReader {
 // registered.
 func mustNew(t *testing.T, bc ByteCache) *Cache {
 	t.Helper()
-	c, err := New(bc)
+	obs, err := NewOTelObserver()
+	if err != nil {
+		t.Fatalf("NewOTelObserver: %v", err)
+	}
+	c, err := New(bc, WithObserver(obs))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,4 +235,35 @@ func TestContributesToTheCallSpan(t *testing.T) {
 	assert.String(t, carried["cache.operation"]).Equal("get")
 	assert.String(t, carried["cache.key"]).Equal("user:42")
 	assert.That(t, len(attrs.SpanAttributes(ctx))).Equal(0)
+}
+
+// recordingObserver captures the cache's events so the seam is tested without
+// OTel.
+type recordingObserver struct {
+	events []string
+}
+
+func (o *recordingObserver) Operation(_ context.Context, operation, status string, _ time.Duration) {
+	o.events = append(o.events, operation+":"+status)
+}
+
+func TestObserverSeam(t *testing.T) {
+	obs := &recordingObserver{}
+	c, err := New(scriptedCache(), WithObserver(obs))
+	assert.That(t, err).Nil()
+
+	_, _ = c.GetBytes(context.Background(), "hit")
+	_, _ = c.GetBytes(context.Background(), "miss")
+	_ = c.Delete(context.Background(), "ok")
+
+	assert.Slice(t, obs.events).Equal([]string{"get:hit", "get:miss", "delete:ok"})
+}
+
+// A nil observer disables the metric event without unwrapping the decorator or
+// the span-attribute contribution.
+func TestNilObserverDisablesEvents(t *testing.T) {
+	c, err := New(scriptedCache(), WithObserver(nil))
+	assert.That(t, err).Nil()
+	_, err = c.GetBytes(context.Background(), "hit")
+	assert.That(t, err).Nil()
 }

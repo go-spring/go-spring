@@ -176,7 +176,7 @@ func (s *ChunkStep[I, O]) Run(ctx context.Context, rc *StepContext) error {
 		// retries process+write rather than failing the step. Processing is a
 		// pure transform, so replaying it on retry is safe.
 		var written int64
-		writeChunk := func(ctx context.Context) error {
+		writeChunk := func(ctx context.Context, _ *chain.Round) error {
 			out := make([]O, 0, len(items))
 			for _, item := range items {
 				o, keep, err := s.process(ctx, item)
@@ -207,7 +207,9 @@ func (s *ChunkStep[I, O]) Run(ctx context.Context, rc *StepContext) error {
 			op.Service = s.Name
 			err = exec.Execute(ctx, op, new(chain.Recorder), writeChunk)
 		} else {
-			err = writeChunk(ctx)
+			// No executor runs the chunk, so no loop opens a round: open a bare one so
+			// the fn still runs IN a round, as its signature promises.
+			err = writeChunk(ctx, new(chain.Recorder).NewRound())
 		}
 		if err != nil {
 			return err

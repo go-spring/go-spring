@@ -84,10 +84,11 @@ type Client struct {
 // governance: the observer emits the span, metrics and access log, and nothing
 // throttles or retries. It is the constructor the bundled [DefaultDriver] uses; a
 // company Driver may call it too.
-func NewClient(nameServers []string, c Config, prop traffic.Propagator) *Client {
+func NewClient(nameServers []string, c Config, prop traffic.Propagator, obsFactory observability.Metrics) *Client {
+
 	cl := &Client{nameServers: primitive.NamesrvAddr(nameServers), cfg: c, prop: prop}
 	cl.serviceLabel = label.ServiceLabel("rocketmq", strings.Join(nameServers, ","))
-	cl.obs = observability.NewOperationObserver("rocketmq", cl.serviceLabel)
+	cl.obs = observability.NewOperationObserver("rocketmq", cl.serviceLabel, obsFactory)
 	return cl
 }
 

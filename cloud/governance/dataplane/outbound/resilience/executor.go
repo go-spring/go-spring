@@ -30,6 +30,7 @@ package resilience
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -135,6 +136,7 @@ type retrySlot struct {
 // [Executor.planFor].
 type callPlan struct {
 	timeout    time.Duration
+	connect    time.Duration           // the round's connection budget, 0 = none (see TimeoutRetry.ConnectTimeout)
 	retry      Retry                   // the effective schedule; the budget lives in budget, not here
 	attempts   int                     // retry.MaxRetries + 1
 	breaker    *circuitbreaker.Breaker // nil = the breaker stage is off
@@ -200,6 +202,7 @@ func (e *Executor) planFor(op chain.Operation) callPlan {
 
 	plan := callPlan{
 		timeout:  tr.Timeout,
+		connect:  tr.ConnectTimeout,
 		retry:    tr.Retry,
 		attempts: tr.Retry.MaxRetries + 1,
 		budget:   e.retryBudget(trs.labelBudget(op.Service)),
@@ -365,13 +368,13 @@ func (e *Executor) retryBudget(capacity int) chan struct{} {
 // why the loop TERMINATES on a refusal rather than retrying it — a retry of an
 // admission-refused call (rate limited today) is exactly the load amplification
 // the gate exists to prevent.
-func refusedRound(rec *chain.Recorder, err error) {
-	rec.AddRound(chain.Round{
-		Start:     time.Now(),
-		Status:    chain.ClassifyStatus(err),
-		ErrorType: chain.ClassifyErrorType(err),
-		Error:     err,
-	})
+func refusedRound(rec *chain.Recorder, err error, timeout, connect time.Duration, maxRetries int) {
+	rd := rec.NewRound()
+	rd.Start = time.Now()
+	rd.SetError(err)
+	rd.Timeout = timeout
+	rd.ConnectTimeout = connect
+	rd.MaxRetries = maxRetries
 }
 
 // Execute is the whole pipeline, in blocks:
@@ -380,11 +383,8 @@ func refusedRound(rec *chain.Recorder, err error) {
 //
 // It is the only outward seam. Everything it touches is either per-composition
 // (next) or per-label state held by the executor itself.
-func (e *Executor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+func (e *Executor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	plan := e.planFor(op)
-
-	// What governed this call, for the record.
-	rec.Timeout = plan.timeout
 
 	// One deadline bounds every round and the backoff between them; it only
 	// tightens the caller's own context. A zero budget leaves the context
@@ -395,12 +395,18 @@ func (e *Executor) Execute(ctx context.Context, op chain.Operation, rec *chain.R
 		callCtx, cancel = context.WithTimeout(ctx, plan.timeout)
 	}
 	defer cancel()
+	// The connection budget rides the ROUND the loop opens below (not a
+	// deadline) so every dial site beneath — a pool acquire, a vendor driver's
+	// dial hook — can tighten its own establishment with min(budget, static
+	// cap, remaining deadline). It is one value for the whole call: each round
+	// spends at most this much ESTABLISHING, out of the rounds' shared Timeout
+	// above.
 
 	// Rate limit: every attempt is a real downstream request. The first charge
 	// runs before the breaker gate so a limited call never spends a half-open
 	// trial permit.
 	if err := chargeRate(callCtx, plan.rate, plan.ratePolicy); err != nil {
-		refusedRound(rec, err)
+		refusedRound(rec, err, plan.timeout, plan.connect, plan.retry.MaxRetries)
 		return err
 	}
 
@@ -418,7 +424,7 @@ func (e *Executor) Execute(ctx context.Context, op chain.Operation, rec *chain.R
 		permit, admitted = plan.breaker.Allow()
 	}
 	if !admitted {
-		refusedRound(rec, chain.ErrCircuitOpen)
+		refusedRound(rec, chain.ErrCircuitOpen, plan.timeout, plan.connect, plan.retry.MaxRetries)
 		return chain.ErrCircuitOpen
 	}
 	if plan.breaker != nil {
@@ -433,31 +439,36 @@ func (e *Executor) Execute(ctx context.Context, op chain.Operation, rec *chain.R
 			// instead of piling one more retry on a downstream everyone is
 			// already retrying.
 			if rerr := budget.take(); rerr != nil {
-				refusedRound(rec, rerr)
+				refusedRound(rec, rerr, plan.timeout, plan.connect, plan.retry.MaxRetries)
 				return rerr
 			}
 			if rerr := chargeRate(callCtx, plan.rate, plan.ratePolicy); rerr != nil {
 				budget.release()
-				refusedRound(rec, rerr)
+				refusedRound(rec, rerr, plan.timeout, plan.connect, plan.retry.MaxRetries)
 				return rerr
 			}
 		}
 
+		// Create the round before it runs: the layers beneath — the addressing
+		// stage, the fault gate, the fn — write into it as the round runs, and
+		// the loop seals the measured facts here when the attempt returns. Status
+		// is classified HERE: the words are this package's, and an emitter that
+		// had to classify would depend on this package — the reverse import
+		// direction.
+		rd := rec.NewRound()
+		rd.Timeout = plan.timeout
+		rd.ConnectTimeout = plan.connect
+		rd.MaxRetries = plan.retry.MaxRetries
 		start := time.Now()
-		err = chain.Next(e.next, callCtx, op, rec, fn)
+		// The round rides the attempt context so a driver deep below — behind
+		// a vendor pool the chain cannot see through — reads the peer and the
+		// connection budget off it ([chain.RoundFrom]).
+		err = chain.Next(e.next, chain.WithRound(callCtx, rd), op, rec, fn)
 		attemptDur = time.Since(start)
 		ran = true
-		// The attempt's own cost and outcome, recorded where only this loop can
-		// see them. Status is classified HERE: the words are this package's, and
-		// an emitter that had to classify would depend on this package — the
-		// reverse import direction.
-		rec.AddRound(chain.Round{
-			Start:     start,
-			Duration:  attemptDur,
-			Status:    chain.ClassifyStatus(err),
-			ErrorType: chain.ClassifyErrorType(err),
-			Error:     err,
-		})
+		rd.Start = start
+		rd.Duration = attemptDur
+		rd.SetError(err)
 		if err == nil || callCtx.Err() != nil || !ShouldRetry(err) || i == plan.attempts-1 {
 			break
 		}
@@ -470,6 +481,14 @@ func (e *Executor) Execute(ctx context.Context, op chain.Operation, rec *chain.R
 		budget.release()
 	}
 	budget.release()
+	// A deadline that came from OUR budget is marked as such: the parent context
+	// is still live, so a caller deadline cannot be the cause. A plain
+	// DeadlineExceeded with the parent live and the budget unexpired is the
+	// peer's own timeout and keeps its identity (the chain cannot claim it).
+	if err != nil && plan.timeout > 0 && ctx.Err() == nil &&
+		errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %w", chain.ErrCallTimeout, err)
+	}
 	return err
 }
 
@@ -493,17 +512,15 @@ func chargeRate(ctx context.Context, limiter ratelimit.Limiter, policy ratelimit
 }
 
 // settleBreaker records the one sample a logical call owes. A panic before fn
-// returns leaves ran false and settles a failure; a caller abort and an error
-// the caller classifies as not evidence (an injected business fault, a 4xx-style
-// adapter error) carry no verdict rather than opening the circuit against a
-// healthy downstream.
+// returns leaves ran false and settles a failure; a caller abort carries no
+// verdict rather than opening the circuit against a healthy downstream.
 func settleBreaker(br *circuitbreaker.Breaker, permit circuitbreaker.Permit, err error, dur time.Duration, ran bool, ctx context.Context) {
 	switch {
 	case !ran:
 		br.Record(permit, false, dur)
 	case err == nil:
 		br.Record(permit, true, dur)
-	case ctx.Err() != nil && errors.Is(err, ctx.Err()), !CountsAsFailure(err):
+	case ctx.Err() != nil && errors.Is(err, ctx.Err()):
 		// A caller abort is not evidence against the downstream. Only the PARENT
 		// context counts: a timeout derived from the policy budget means the unit
 		// did not serve within the budget and remains a failure, while a caller

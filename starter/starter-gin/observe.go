@@ -30,6 +30,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/bufutil"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/httputil"
@@ -37,7 +38,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
@@ -138,11 +138,12 @@ func isLoggableContentType(ct string) bool {
 //     metric, and log. Here one start time and one status feed all three, and
 //     the access log also picks up the span's trace_id/span_id for free.
 //
-// Tracing and metrics ride the OTel globals that starter-otel installs. When
-// starter-otel is not imported the global TracerProvider and MeterProvider are
-// no-ops, so those two signals cost almost nothing and the span's SpanContext
-// stays invalid (no trace_id is stamped on the access log). Recovery and the
-// access log always run.
+// Tracing and the default metric observer ride the OTel globals that
+// starter-otel installs; a company may replace the metric observer with its own
+// bean. When starter-otel is not imported the global TracerProvider and
+// MeterProvider are no-ops, so those two signals cost almost nothing and the
+// span's SpanContext stays invalid (no trace_id is stamped on the access log).
+// Recovery and the access log always run.
 //
 // Span attributes, metric instruments, and access-log fields follow the OTel
 // HTTP semantic conventions (stable since semconv v1.27.0): the span name is
@@ -157,7 +158,7 @@ func isLoggableContentType(ct string) bool {
 // = false) and owns its chain can install the unified observe middleware at a
 // chosen point. See ApplyMiddlewares for the full chain and the manual-mode
 // recipe.
-func Observe(cfg AccessLogConfig) (gin.HandlerFunc, error) {
+func Observe(cfg AccessLogConfig, obs Observer) (gin.HandlerFunc, error) {
 	// Build the skip set once at registration; the skip check consults it per
 	// request. applyMiddlewares folds the health endpoint path into cfg.SkipPaths
 	// so liveness/readiness probes don't flood the backends.
@@ -166,15 +167,10 @@ func Observe(cfg AccessLogConfig) (gin.HandlerFunc, error) {
 		skip[p] = struct{}{}
 	}
 
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	// The three signal objects are built once at registration and shared across
-	// requests (they hold only per-middleware state - instruments, tracer, config -
-	// never per-request data, so they're concurrency-safe).
+	// The signal objects are built once at registration and shared across
+	// requests (they hold only per-middleware state - the observer, tracer and
+	// config - never per-request data, so they're concurrency-safe).
 	tracer := newHTTPTracer()
-	metrics := newHTTPMetrics(cfg.Metrics, ins)
 	logger := newHTTPAccessLog(cfg)
 
 	return func(c *gin.Context) {
@@ -205,13 +201,14 @@ func Observe(cfg AccessLogConfig) (gin.HandlerFunc, error) {
 		// methods are all no-ops) and the gauge stays unbumped so the defer doesn't
 		// have to balance a -1.
 		start := time.Now()
-		var inflight metric.MeasurementOption
 		var span trace.Span = tracenoop.Span{}
 		if !skipped {
 			var ctx context.Context
 			span, ctx = tracer.Begin(c.Request.Context(), c.Request, facts)
 			c.Request = c.Request.WithContext(ctx)
-			inflight = metrics.Begin(c.Request.Context(), facts)
+			if cfg.Metrics.ActiveRequests && obs != nil {
+				obs.Active(c.Request.Context(), requestMetricOf(facts), 1)
+			}
 		}
 
 		// Capture the request body (gated by payload capture) for the access
@@ -277,9 +274,14 @@ func Observe(cfg AccessLogConfig) (gin.HandlerFunc, error) {
 				rec:     rec,
 				reqBody: reqBody,
 			}
-			tracer.End(ff)            // T
-			metrics.End(ff, inflight) // M
-			logger.Emit(ff)           // L
+			tracer.End(ff) // T
+			if obs != nil {
+				obs.Request(ctx, finalizeMetricOf(ff)) // M
+				if cfg.Metrics.ActiveRequests && !skipped {
+					obs.Active(ctx, requestMetricOf(ff.req), -1)
+				}
+			}
+			logger.Emit(ff) // L
 		}()
 
 		c.Next()
@@ -333,7 +335,7 @@ type responseFacts struct {
 	respBody        []byte // captured uncompressed response body (nil for SSE)
 }
 
-// metricFacts bundles the metrics-only response flags httpMetrics.End needs
+// metricFacts bundles the metrics-only response flags the metric observer needs
 // beyond the shared response facts: whether the response was an SSE stream
 // (tagged on the duration histogram so streaming responses can be filtered out
 // of slow-request percentiles) and whether the request was skipped (no gauge -1,
@@ -360,7 +362,7 @@ type logRequestFacts struct {
 // finalizeFacts bundles everything the three signal objects need at end-of-request.
 // The observe closure builds it once (from the request facts, the response facts,
 // the start time, the span, and the error/panic/skip flags) and hands the single
-// struct to httpTracer.End, httpMetrics.End, and httpAccessLog.Emit. That keeps
+// struct to httpTracer.End, the metric observer, and httpAccessLog.Emit. That keeps
 // each finalize method a one-argument function of these facts rather than the
 // long, partly-overlapping parameter lists they had before (Emit alone took nine).
 type finalizeFacts struct {
@@ -398,7 +400,7 @@ func newHTTPTracer() *httpTracer {
 // SpanContext, so the access log omits the trace id. The caller stamps the
 // returned context onto the request.
 //
-// Named Begin to match httpMetrics.Begin - both are the entry half of a symmetric
+// Named Begin to match the metric observer's entry half of a symmetric
 // Begin/End lifecycle (span open->close, gauge +1->-1). The access log's entry
 // side is CaptureBody, intentionally not Begin: its lifecycle is asymmetric
 // (capture at entry, emit at exit), not a Begin/End pair.
@@ -458,76 +460,30 @@ func (t *httpTracer) End(ff finalizeFacts) {
 
 // --- metrics (M) ------------------------------------------------------------
 
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use (see instruments) so it binds to whichever providers are
-// current then.
-//
-// The two always-on instruments are built with the set. The config-gated ones
-// are not: metrics.activeRequests and metrics.sseDistributions default to off,
-// and an off toggle must leave the descriptor unregistered rather than create it
-// and never record (a deployment that never enables one stays byte-identical to
-// one built before the instrument existed). Each is therefore created on first
-// use and resolved at most once per set.
-type instrumentSet struct {
-	meter metric.Meter
-
-	duration   metric.Float64Histogram
-	sseCounter metric.Int64Counter
-
-	activeOnce   sync.Once
-	active       metric.Int64UpDownCounter
-	sizeOnce     sync.Once
-	sseSize      metric.Int64Histogram
-	intervalOnce sync.Once
-	sseInterval  metric.Float64Histogram
-}
-
-// buildInstruments resolves this starter's instruments against the meter
-// provider the otel starter installs before any middleware is built. The
-// middleware owns the set, so a failed registration fails server construction
-// instead of silently dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
-	m := otel.Meter(componentName)
-	in := &instrumentSet{meter: m}
-	var err error
-	in.duration, err = m.Float64Histogram(
-		"http.server.request.duration",
-		metric.WithDescription("Duration of HTTP server requests"),
-		metric.WithUnit("s"),
-		// OTel HTTP semconv recommended buckets (seconds).
-		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
-	)
-	if err != nil {
-		return nil, errutil.Explain(err, "gin: register http.server.request.duration")
-	}
-	in.sseCounter, err = m.Int64Counter(
-		"http.server.sse.events",
-		metric.WithDescription("Number of SSE events streamed by the server"),
-		metric.WithUnit("{event}"),
-	)
-	if err != nil {
-		return nil, errutil.Explain(err, "gin: register http.server.sse.events")
-	}
-	return in, nil
-}
+// The always-on instruments are resolved in [NewOTelObserver]. The
+// config-gated ones are not: metrics.activeRequests and metrics.sseDistributions
+// default to off, and an off toggle must leave the descriptor unregistered
+// rather than create it and never record (a deployment that never enables one
+// stays byte-identical to one built before the instrument existed). Each is
+// therefore created on first use and resolved at most once per observer.
 
 // activeRequests returns the shared in-flight gauge, creating it on first use.
-func (in *instrumentSet) activeRequests() metric.Int64UpDownCounter {
-	in.activeOnce.Do(func() {
-		in.active, _ = in.meter.Int64UpDownCounter(
+func (o *otelObserver) activeRequests() metric.Int64UpDownCounter {
+	o.activeOnce.Do(func() {
+		o.active, _ = o.meter.Int64UpDownCounter(
 			"http.server.active_requests",
 			metric.WithDescription("Number of active HTTP server requests"),
 			metric.WithUnit("{request}"),
 		)
 	})
-	return in.active
+	return o.active
 }
 
 // eventSize returns the shared per-event size histogram, creating it on first
 // use.
-func (in *instrumentSet) eventSize() metric.Int64Histogram {
-	in.sizeOnce.Do(func() {
-		in.sseSize, _ = in.meter.Int64Histogram(
+func (o *otelObserver) eventSize() metric.Int64Histogram {
+	o.sizeOnce.Do(func() {
+		o.sseSize, _ = o.meter.Int64Histogram(
 			"http.server.sse.event.size",
 			metric.WithDescription("Size of each SSE event streamed by the server"),
 			metric.WithUnit("By"),
@@ -535,14 +491,14 @@ func (in *instrumentSet) eventSize() metric.Int64Histogram {
 			metric.WithExplicitBucketBoundaries(16, 64, 256, 1024, 4096, 16384, 65536, 262144),
 		)
 	})
-	return in.sseSize
+	return o.sseSize
 }
 
 // eventInterval returns the shared per-event interval histogram, creating it on
 // first use.
-func (in *instrumentSet) eventInterval() metric.Float64Histogram {
-	in.intervalOnce.Do(func() {
-		in.sseInterval, _ = in.meter.Float64Histogram(
+func (o *otelObserver) eventInterval() metric.Float64Histogram {
+	o.intervalOnce.Do(func() {
+		o.sseInterval, _ = o.meter.Float64Histogram(
 			"http.server.sse.event.interval",
 			metric.WithDescription("Interval between consecutive SSE events (seconds)"),
 			metric.WithUnit("s"),
@@ -550,83 +506,95 @@ func (in *instrumentSet) eventInterval() metric.Float64Histogram {
 			metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
 		)
 	})
-	return in.sseInterval
+	return o.sseInterval
 }
 
-// httpMetrics owns the request-level metric configuration: the request-duration
-// histogram (always on) and the in-flight gauge (opt-in). It holds no instrument
-// itself - the values live in the process-wide set (see instruments) and are
-// resolved at the use site; only the toggle is per middleware. Built once at
-// registration and shared across requests; per-request data (start time, status,
-// the inflight attribute set) is passed to its methods.
-type httpMetrics struct {
-	activeRequests bool
-	ins            *instrumentSet
-}
-
-func newHTTPMetrics(cfg MetricsConfig, ins *instrumentSet) *httpMetrics {
-	return &httpMetrics{activeRequests: cfg.ActiveRequests, ins: ins}
-}
-
-// active returns the in-flight gauge this middleware records through: the shared
-// instrument when the toggle is on, a no-op otherwise. The gauge is off by
-// default (low-value for short requests; derivable from QPS+latency), and an
-// off toggle must not even create the instrument - a no-op satisfies the calls so
-// the per-request +1/-1 record nowhere at no cost, with no branch at the call
-// sites. Opt in for long-lived connections (SSE), where in-flight count is a
-// capacity essential.
-func (m *httpMetrics) active() metric.Int64UpDownCounter {
-	if !m.activeRequests {
-		return metricnoop.Int64UpDownCounter{}
+// requestMetricOf maps the request-side facts onto the metric seam's value.
+func requestMetricOf(f requestFacts) RequestMetric {
+	return RequestMetric{
+		Method:    f.method,
+		Route:     f.route,
+		URLScheme: f.urlScheme,
+		Proto:     f.proto,
 	}
-	return m.ins.activeRequests()
 }
 
-// Begin bumps the in-flight gauge (+1) and returns the attribute set the matching
-// End must pass to its -1 so the gauge balances. Per HTTP semconv the gauge
-// carries method + scheme + proto (no route, no status - unknown at start).
-func (m *httpMetrics) Begin(ctx context.Context, f requestFacts) metric.MeasurementOption {
-	inflightAttrs := metric.WithAttributes(
-		attribute.String(attrHTTPRequestMethod, f.method),
-		attribute.String(attrURLScheme, f.urlScheme),
-		attribute.String(attrNetworkProtocolVersion, f.proto),
-	)
-	m.active().Add(ctx, 1, inflightAttrs)
-	return inflightAttrs
-}
-
-// End records the request-duration histogram and balances the in-flight gauge
-// (-1). The duration carries method + route + status + scheme + proto, plus
-// error.type on error and http.response.stream=sse for SSE streams - so a (often
-// long) streaming response can be filtered out of slow-request percentiles: a 30s
-// stream is normal, a 30s request is not. The gauge -1 is skipped when the
-// request was skipped: a skipped request never did the +1 (panic-on-skipped-path
-// records the duration but the gauge was never bumped, so it must not be
-// decremented). status and isError come straight off finalizeFacts (resp.status /
-// isError); only the metrics-only wasSSE/skipped flags are read from mf.
-func (m *httpMetrics) End(ff finalizeFacts, inflight metric.MeasurementOption) {
-	f := ff.req
-	mf := ff.mf
-	status := ff.resp.status
-	durAttrs := []attribute.KeyValue{
-		attribute.String(attrHTTPRequestMethod, f.method),
-		attribute.String(attrURLScheme, f.urlScheme),
-		attribute.String(attrNetworkProtocolVersion, f.proto),
-		attribute.String(attrHTTPResponseStatusCode, strconv.Itoa(status)),
-	}
-	if f.route != "" {
-		durAttrs = append(durAttrs, attribute.String(attrHTTPRoute, f.route))
-	}
+// finalizeMetricOf completes a RequestMetric from the end-of-request facts.
+func finalizeMetricOf(ff finalizeFacts) RequestMetric {
+	m := requestMetricOf(ff.req)
+	m.Status = ff.resp.status
+	m.Duration = time.Since(ff.start)
+	m.Stream = ff.mf.wasSSE
 	if ff.isError {
-		durAttrs = append(durAttrs, attribute.String(attrErrorType, strconv.Itoa(status)))
+		m.ErrorType = strconv.Itoa(ff.resp.status)
 	}
-	if mf.wasSSE {
+	return m
+}
+
+// Active implements [Observer]. Per HTTP semconv the gauge carries method +
+// scheme + proto (no route, no status - unknown at start).
+func (o *otelObserver) Active(ctx context.Context, m RequestMetric, delta int64) {
+	o.activeRequests().Add(ctx, delta, metric.WithAttributes(
+		attribute.String(attrHTTPRequestMethod, m.Method),
+		attribute.String(attrURLScheme, m.URLScheme),
+		attribute.String(attrNetworkProtocolVersion, m.Proto),
+	))
+}
+
+// Request implements [Observer]. The duration carries method + route + status +
+// scheme + proto, plus error.type on error and http.response.stream=sse for SSE
+// streams - so a (often long) streaming response can be filtered out of
+// slow-request percentiles: a 30s stream is normal, a 30s request is not.
+func (o *otelObserver) Request(ctx context.Context, m RequestMetric) {
+	durAttrs := []attribute.KeyValue{
+		attribute.String(attrHTTPRequestMethod, m.Method),
+		attribute.String(attrURLScheme, m.URLScheme),
+		attribute.String(attrNetworkProtocolVersion, m.Proto),
+		attribute.String(attrHTTPResponseStatusCode, strconv.Itoa(m.Status)),
+	}
+	if m.Route != "" {
+		durAttrs = append(durAttrs, attribute.String(attrHTTPRoute, m.Route))
+	}
+	if m.ErrorType != "" {
+		durAttrs = append(durAttrs, attribute.String(attrErrorType, m.ErrorType))
+	}
+	if m.Stream {
 		durAttrs = append(durAttrs, attribute.String(attrHTTPResponseStream, "sse"))
 	}
-	m.ins.duration.Record(ff.ctx, time.Since(ff.start).Seconds(), metric.WithAttributes(durAttrs...))
-	if !mf.skipped {
-		m.active().Add(ff.ctx, -1, inflight)
+	o.duration.Record(ctx, m.Duration.Seconds(), metric.WithAttributes(durAttrs...))
+}
+
+// SSEEvent implements [Observer]. The counter is always on, so the event rate
+// stays sampling-independent; it carries the same vocabulary as the
+// request-level metrics, minus status (always 200 for a streaming SSE response)
+// so it breaks event rate down by endpoint, not by a constant.
+func (o *otelObserver) SSEEvent(ctx context.Context, e SSEEventMetric) {
+	attrs := []attribute.KeyValue{
+		attribute.String(attrHTTPRequestMethod, e.Method),
+		attribute.String(attrURLScheme, e.URLScheme),
+		attribute.String(attrNetworkProtocolVersion, e.Proto),
 	}
+	if e.Route != "" {
+		attrs = append(attrs, attribute.String(attrHTTPRoute, e.Route))
+	}
+	o.sseCounter.Add(ctx, 1, metric.WithAttributes(attrs...))
+}
+
+// SSEEventDistribution implements [Observer]. Per-event distributions survive
+// trace sampling (metrics are counted every time), so they are the reliable
+// source for "p99 event size" and "event interval / stall" dashboards.
+func (o *otelObserver) SSEEventDistribution(ctx context.Context, e SSEEventMetric) {
+	attrs := []attribute.KeyValue{
+		attribute.String(attrHTTPRequestMethod, e.Method),
+		attribute.String(attrURLScheme, e.URLScheme),
+		attribute.String(attrNetworkProtocolVersion, e.Proto),
+	}
+	if e.Route != "" {
+		attrs = append(attrs, attribute.String(attrHTTPRoute, e.Route))
+	}
+	opt := metric.WithAttributes(attrs...)
+	o.eventSize().Record(ctx, int64(e.Size), opt)
+	o.eventInterval().Record(ctx, e.Interval.Seconds(), opt)
 }
 
 // --- logging (L) ------------------------------------------------------------
@@ -738,4 +706,98 @@ func (l *httpAccessLog) Emit(ff finalizeFacts) {
 	default:
 		log.Info(ctx, accessLogTag, "access log", fields...)
 	}
+}
+
+// Observer receives gin's METRIC events: the request duration, the in-flight
+// gauge and the per-event SSE signals. It is the seam: the default is OTel, and
+// an application may contribute its own adapter. Spans and the access log are
+// the STANDARD capabilities (OTel / the log package) and stay inside the
+// unified middleware, not in this contract.
+type Observer interface {
+	// Active moves the in-flight request gauge by delta: +1 when a request
+	// starts, -1 when it finishes. Only called when the gauge is enabled.
+	Active(ctx context.Context, m RequestMetric, delta int64)
+
+	// Request records one finished request's duration.
+	Request(ctx context.Context, m RequestMetric)
+
+	// SSEEvent records one streamed SSE event (the always-on event counter).
+	SSEEvent(ctx context.Context, e SSEEventMetric)
+
+	// SSEEventDistribution records one streamed SSE event's size and interval.
+	// Only called when the distributions are enabled.
+	SSEEventDistribution(ctx context.Context, e SSEEventMetric)
+}
+
+// RequestMetric is one HTTP request as the metric seam reports it. status is 0
+// at entry (unknown until the response).
+type RequestMetric struct {
+	Method    string
+	Route     string
+	URLScheme string
+	Proto     string
+	Status    int
+	ErrorType string
+	Stream    bool
+	Duration  time.Duration
+}
+
+// SSEEventMetric is one streamed SSE event as the metric seam reports it.
+type SSEEventMetric struct {
+	Method    string
+	Route     string
+	URLScheme string
+	Proto     string
+	Size      int
+	Interval  time.Duration
+}
+
+// NewOTelObserver resolves the always-on instruments and returns the default
+// OTel-backed [Observer]. It is registered as the process's default bean.
+func NewOTelObserver() (Observer, error) {
+	m := otel.Meter(componentName)
+	o := &otelObserver{meter: m}
+	var err error
+	o.duration, err = m.Float64Histogram(
+		"http.server.request.duration",
+		metric.WithDescription("Duration of HTTP server requests"),
+		metric.WithUnit("s"),
+		// OTel HTTP semconv recommended buckets (seconds).
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
+	)
+	if err != nil {
+		return nil, errutil.Explain(err, "gin: register http.server.request.duration")
+	}
+	o.sseCounter, err = m.Int64Counter(
+		"http.server.sse.events",
+		metric.WithDescription("Number of SSE events streamed by the server"),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return nil, errutil.Explain(err, "gin: register http.server.sse.events")
+	}
+	return o, nil
+}
+
+// otelObserver is the default [Observer]. The two always-on instruments are
+// resolved when the observer is constructed; the config-gated ones are created
+// on first use (see activeRequests, eventSize and eventInterval).
+type otelObserver struct {
+	meter metric.Meter
+
+	duration   metric.Float64Histogram
+	sseCounter metric.Int64Counter
+
+	activeOnce   sync.Once
+	active       metric.Int64UpDownCounter
+	sizeOnce     sync.Once
+	sseSize      metric.Int64Histogram
+	intervalOnce sync.Once
+	sseInterval  metric.Float64Histogram
+}
+
+// The package's default [Observer] bean: an application that contributes its
+// own observer takes precedence.
+func init() {
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 }

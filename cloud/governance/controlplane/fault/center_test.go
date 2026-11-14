@@ -31,10 +31,10 @@ import (
 
 // newTestCenter builds a center over src. A nil source stands for what the
 // starter supplies when no source module is configured: an empty PushSource.
-func newTestCenter(t *testing.T, src source.Source[kfault.Document]) *Center {
+func newTestCenter(t *testing.T, src source.Source[Document]) *Center {
 	t.Helper()
 	if src == nil {
-		src = source.NewPushSource(kfault.Document{})
+		src = source.NewPushSource(Document{})
 	}
 	c, err := NewCenter(context.Background(), clientfault.NewManager(), serverfault.NewManager(), src)
 	if err != nil {
@@ -44,11 +44,17 @@ func newTestCenter(t *testing.T, src source.Source[kfault.Document]) *Center {
 }
 
 // doc is one valid document per direction, named after the rule it arms.
-func doc(clientName, serverName string) kfault.Document {
-	return kfault.Document{
-		RunID:  "drill-test",
-		Client: kfault.Config{Rules: []kfault.Rule{{Name: clientName, Rate: 1, Class: kfault.ClassTransient, Error: kfault.ErrorGeneric}}},
-		Server: kfault.Config{Rules: []kfault.Rule{{Name: serverName, Rate: 1, Class: kfault.ClassTransient, Error: kfault.ErrorTimeout}}},
+func doc(clientName, serverName string) Document {
+	return Document{
+		RunID: "drill-test",
+		Client: clientfault.ClientConfig{Rules: []clientfault.ClientRule{{
+			RuleCore: kfault.RuleCore{Name: clientName, Rate: 1},
+			Class:    kfault.ClassTransient, Error: kfault.ErrorGeneric,
+		}}},
+		Server: serverfault.ServerConfig{Rules: []serverfault.ServerRule{{
+			RuleCore: kfault.RuleCore{Name: serverName, Rate: 1},
+			Status:   503,
+		}}},
 	}
 }
 
@@ -76,7 +82,7 @@ func TestCenter_NoSourceStaysUnarmed(t *testing.T) {
 // TestCenter_LatePushDrivesBothDirections: every push is applied to both
 // directions, not just the one that changed.
 func TestCenter_LatePushDrivesBothDirections(t *testing.T) {
-	src := source.NewPushSource(kfault.Document{RunID: "drill-init"})
+	src := source.NewPushSource(Document{RunID: "drill-init"})
 	c := newTestCenter(t, src)
 
 	src.Push(context.Background(), doc("c2", "s2"))
@@ -118,7 +124,7 @@ func TestCenter_DocumentRunIDOverridesDirections(t *testing.T) {
 func TestCenter_DirectDocumentMayOmitRunID(t *testing.T) {
 	c := newTestCenter(t, nil)
 
-	assert.Error(t, c.Refresh(context.Background(), kfault.Document{})).Nil()
+	assert.Error(t, c.Refresh(context.Background(), Document{})).Nil()
 
 	d := doc("client", "server")
 	d.RunID = ""
@@ -191,11 +197,14 @@ const documentYAML = `spring:
         - name: inbound-slow
           service: gin
           rate: 1
+          status: 503
+          body: '{"error":"injected"}'
+          content-type: application/json
           latency: 50ms
 `
 
 func TestParse_DocumentShape(t *testing.T) {
-	doc, err := source.Parse[kfault.Document]("fault.yaml", []byte(documentYAML), "")
+	doc, err := source.Parse[Document]("fault.yaml", []byte(documentYAML), "")
 	assert.Error(t, err).Nil()
 	assert.String(t, doc.RunID).Equal("drill-yaml")
 
@@ -212,6 +221,9 @@ func TestParse_DocumentShape(t *testing.T) {
 
 	assert.Number(t, len(doc.Server.Rules)).Equal(1)
 	assert.String(t, doc.Server.Rules[0].Name).Equal("inbound-slow")
+	assert.Number(t, doc.Server.Rules[0].Status).Equal(503)
+	assert.String(t, doc.Server.Rules[0].Body).Equal(`{"error":"injected"}`)
+	assert.String(t, doc.Server.Rules[0].ContentType).Equal("application/json")
 	assert.That(t, doc.Server.Rules[0].Latency).Equal(50 * time.Millisecond)
 }
 
@@ -219,7 +231,7 @@ func TestParse_DocumentShape(t *testing.T) {
 // document binds the ZERO fault document, and the required run-id then fails the
 // binding — the guard is the field, not a transport-level prefix check.
 func TestParse_RejectsGovernanceOnlyDocument(t *testing.T) {
-	_, err := source.Parse[kfault.Document]("governance.properties",
+	_, err := source.Parse[Document]("governance.properties",
 		[]byte("client.resilience.timeout=1s\n"), "")
 	assert.Error(t, err).NotNil()
 }
@@ -230,13 +242,13 @@ func TestParse_RejectsGovernanceOnlyDocument(t *testing.T) {
 // name validation would reject. A disarm still names its run.
 func TestParse_EmptyDocumentSentinel(t *testing.T) {
 	const yaml = "spring:\n  fault:\n    run-id: drill-off\n    client:\n      rules: \"\"\n"
-	doc, err := source.Parse[kfault.Document]("fault.yaml", []byte(yaml), "")
+	doc, err := source.Parse[Document]("fault.yaml", []byte(yaml), "")
 	assert.Error(t, err).Nil()
 	assert.String(t, doc.RunID).Equal("drill-off")
 	assert.Number(t, len(doc.Client.Rules)).Equal(0)
 
 	// The same sentinel in properties spelling.
-	doc, err = source.Parse[kfault.Document]("fault.properties",
+	doc, err = source.Parse[Document]("fault.properties",
 		[]byte("spring.fault.run-id=drill-off\nspring.fault.client.rules=\n"), "")
 	assert.Error(t, err).Nil()
 	assert.Number(t, len(doc.Client.Rules)).Equal(0)
@@ -247,10 +259,10 @@ func TestParse_EmptyDocumentSentinel(t *testing.T) {
 // rejected where it is READ, not only where it is pushed.
 func TestParse_ValidatesAtBind(t *testing.T) {
 	const yaml = "spring:\n  fault:\n    run-id: drill-unnamed\n    client:\n      rules:\n        - rate: 1\n"
-	_, err := source.Parse[kfault.Document]("fault.yaml", []byte(yaml), "")
+	_, err := source.Parse[Document]("fault.yaml", []byte(yaml), "")
 	assert.Error(t, err).NotNil() // rule has no name
 
 	// A missing run id fails at the field's own required binding.
-	_, err = source.Parse[kfault.Document]("fault.yaml", []byte("spring:\n  fault:\n    client:\n      rules: \"\"\n"), "")
+	_, err = source.Parse[Document]("fault.yaml", []byte("spring:\n  fault:\n    client:\n      rules: \"\"\n"), "")
 	assert.Error(t, err).NotNil()
 }

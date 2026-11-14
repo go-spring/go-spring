@@ -27,8 +27,6 @@ import (
 	"go-spring.org/stdlib/httputil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -83,27 +81,20 @@ const respCaptureKey = "_gs_gin_resp_capture"
 // = false) and owns its chain can install the innermost capture wrapper at a
 // chosen point - it must sit inside any response transformer (e.g. gzip) so it
 // records uncompressed bytes. See ApplyMiddlewares for the full chain.
-func ResponseCapture(payloadEnabled bool, payloadLimit int, sseDistributions bool) (gin.HandlerFunc, error) {
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
+func ResponseCapture(payloadEnabled bool, payloadLimit int, sseDistributions bool, obs Observer) (gin.HandlerFunc, error) {
 	tracer := newSSETracer()
-	metrics := newSSEMetrics(sseDistributions, ins)
 	accessLog := newSSEAccessLog(payloadEnabled, payloadLimit)
 
 	return func(c *gin.Context) {
-		// Low-cardinality attributes for the per-event counter - the same
+		// Low-cardinality identity for the per-event metric - the same
 		// vocabulary as Observe's request-level metrics, minus status (always
 		// 200 for a streaming SSE response) so the counter breaks down event
 		// rate by endpoint, not by a constant.
-		eventAttrs := []attribute.KeyValue{
-			attribute.String(attrHTTPRequestMethod, c.Request.Method),
-			attribute.String(attrURLScheme, httputil.Scheme(c.Request)),
-			attribute.String(attrNetworkProtocolVersion, httputil.ProtocolVersion(c.Request.Proto)),
-		}
-		if route := c.FullPath(); route != "" {
-			eventAttrs = append(eventAttrs, attribute.String(attrHTTPRoute, route))
+		eventMetric := SSEEventMetric{
+			Method:    c.Request.Method,
+			Route:     c.FullPath(),
+			URLScheme: httputil.Scheme(c.Request),
+			Proto:     httputil.ProtocolVersion(c.Request.Proto),
 		}
 
 		// sseStream is the per-stream accumulator: it holds only state that
@@ -111,18 +102,19 @@ func ResponseCapture(payloadEnabled bool, payloadLimit int, sseDistributions boo
 		// reference to c so the signal objects can read the live request context
 		// at flush time. The three signal objects (tracer/metrics/accessLog) are
 		// shared across streams and passed into flush, mirroring how Observe's
-		// observe closure shares httpTracer/httpMetrics/httpAccessLog.
+		// observe closure shares httpTracer/the metric observer/httpAccessLog.
 		stream := &sseStream{
-			c:          c,
-			eventAttrs: eventAttrs,
-			lastEvent:  time.Now(),
-			buf:        accessLog.newBuffer(),
+			c:           c,
+			eventMetric: eventMetric,
+			lastEvent:   time.Now(),
+			buf:         accessLog.newBuffer(),
 		}
 		cw := &captureWriter{
 			ResponseWriter: c.Writer,
 			sse:            stream,
 			tracer:         tracer,
-			metrics:        metrics,
+			obs:            obs,
+			distributions:  sseDistributions,
 			accessLog:      accessLog,
 		}
 		if payloadEnabled {
@@ -161,22 +153,23 @@ func getResponseCapture(c *gin.Context) *captureWriter {
 // only on disconnect. sseCount/wasSSE are set by finalizeSSE and read by
 // Observe's access log and duration metric.
 //
-// The three SSE signal objects (tracer/metrics/accessLog) are built once at
-// registration by responseCapture and stored here per request, so Flush() and
-// finalizeSSE() can dispatch to sseStream.flush without changing their
-// parameter-less signatures - Flush must stay gin.ResponseWriter/http.Flusher
-// compatible since handlers call c.Writer.Flush() with no args. This mirrors
-// how Observe's closure shares httpTracer/httpMetrics/httpAccessLog, adapted to
-// the ResponseWriter-override boundary.
+// The signal objects (tracer/observer/accessLog) are built once at registration
+// by ResponseCapture and stored here per request, so Flush() and finalizeSSE()
+// can dispatch to sseStream.flush without changing their parameter-less
+// signatures - Flush must stay gin.ResponseWriter/http.Flusher compatible since
+// handlers call c.Writer.Flush() with no args. This mirrors how Observe's
+// closure shares httpTracer/httpAccessLog, adapted to the ResponseWriter-
+// override boundary.
 type captureWriter struct {
 	gin.ResponseWriter
-	capture   *bufutil.LimitedBuffer
-	sse       *sseStream
-	tracer    *sseTracer
-	metrics   *sseMetrics
-	accessLog *sseAccessLog
-	sseCount  int  // events counted for this stream; set by finalizeSSE
-	wasSSE    bool // whether this response was SSE; set by finalizeSSE
+	capture       *bufutil.LimitedBuffer
+	sse           *sseStream
+	tracer        *sseTracer
+	obs           Observer
+	distributions bool
+	accessLog     *sseAccessLog
+	sseCount      int  // events counted for this stream; set by finalizeSSE
+	wasSSE        bool // whether this response was SSE; set by finalizeSSE
 }
 
 func (w *captureWriter) Write(b []byte) (int, error) {
@@ -213,7 +206,7 @@ func (w *captureWriter) Flush() {
 	w.ResponseWriter.Flush()
 
 	if w.sse != nil && w.sse.active {
-		w.sse.flush(w.tracer, w.metrics, w.accessLog)
+		w.sse.flush(w.tracer, w.obs, w.distributions, w.accessLog)
 	}
 }
 
@@ -226,7 +219,7 @@ func (w *captureWriter) finalizeSSE() (count int, wasSSE bool) {
 	if w.sse == nil || !w.sse.active {
 		return 0, false
 	}
-	w.sse.flush(w.tracer, w.metrics, w.accessLog)
+	w.sse.flush(w.tracer, w.obs, w.distributions, w.accessLog)
 	return w.sse.count, true
 }
 
@@ -241,70 +234,16 @@ func (w *captureWriter) capturedBody() []byte {
 
 // --- metrics (M) ------------------------------------------------------------
 
-// sseMetrics owns the per-event SSE metric configuration: the event counter
-// (always on) and the size/interval distribution histograms (toggleable). It
-// holds no instrument itself - the values live in the process-wide set (see
-// instruments) and are resolved at the use site; only the toggle is per
-// middleware. Built once at registration and shared across streams; per-event
-// data (chunk size, interval) is passed to Record.
-type sseMetrics struct {
-	distributions bool
-	ins           *instrumentSet
-}
-
-func newSSEMetrics(sseDistributions bool, ins *instrumentSet) *sseMetrics {
-	return &sseMetrics{distributions: sseDistributions, ins: ins}
-}
-
-// size returns the per-event size histogram to record through: the shared
-// instrument when the toggle is on, a no-op otherwise. Per-event distributions
-// survive trace sampling (metrics are counted every time), so they are the
-// reliable source for "p99 event size" and "event interval / stall" dashboards
-// and alerts - the quantities that only lived on the span before and were
-// therefore unreliable under sampling.
-//
-// Toggleable via metrics.sseDistributions; when off, fall back to a no-op
-// histogram so the flush path needs no per-event branch (the records just go
-// nowhere) and the descriptor is never registered.
-func (m *sseMetrics) size() metric.Int64Histogram {
-	if !m.distributions {
-		return metricnoop.Int64Histogram{}
-	}
-	return m.ins.eventSize()
-}
-
-// interval returns the per-event interval histogram to record through (see size).
-func (m *sseMetrics) interval() metric.Float64Histogram {
-	if !m.distributions {
-		return metricnoop.Float64Histogram{}
-	}
-	return m.ins.eventInterval()
-}
-
-// Record bumps the event counter and records the per-event size and interval
-// distributions. Recorded on every event (sampling-independent), so they are the
-// reliable source for p99-event-size / stall-alert dashboards that the sampled
-// child span can't back. interval is the span since the previous event - the same
-// "event rate" signal the span's duration carries, but aggregated rather than
-// per-instance.
-func (m *sseMetrics) Record(ef eventFacts) {
-	attrs := metric.WithAttributes(ef.attrs...)
-	m.ins.sseCounter.Add(ef.ctx, 1, attrs)
-	m.size().Record(ef.ctx, int64(ef.chunkSize), attrs)
-	m.interval().Record(ef.ctx, ef.interval.Seconds(), attrs)
-}
-
 // eventFacts bundles the per-event values the three SSE signal objects share at
 // each flush, mirroring Observe's finalizeFacts: the request context (read live
 // from the gin.Context so a handler that wraps the context mid-stream is still
 // seen), the low-cardinality metric attributes, the event's sequence number and
 // chunk size, and the interval since the previous event. sseStream builds it
-// once per flush and hands the single struct to sseMetrics.Record / sseTracer.
+// once per flush and hands the single struct to the metric observer / sseTracer.
 // Stamp / sseAccessLog.Emit - keeping each a one-argument method rather than
 // restating a long parameter list (the same shape the pre-gzip layer settled on).
 type eventFacts struct {
 	ctx       context.Context
-	attrs     []attribute.KeyValue
 	seq       int
 	chunkSize int
 	interval  time.Duration
@@ -398,22 +337,22 @@ func (l *sseAccessLog) Emit(ef eventFacts, body *bufutil.LimitedBuffer) {
 // flush. It holds only state that changes as events arrive (seq/count/chunkSize/
 // lastEvent/buf) plus a reference to c so the signal objects can read the live
 // request context at flush time (a handler that wraps the context mid-stream is
-// still seen). The three signal objects (sseTracer/sseMetrics/sseAccessLog) are
+// still seen). The signal objects (sseTracer/observer/sseAccessLog) are
 // shared across streams and passed into flush by captureWriter.Flush /
 // finalizeSSE - the same split as Observe, where shared signal objects plus a
 // per-request collector own one flush path. It is the renamed, slimmed-down
 // successor to sseLogger: tracer/tag/logEnabled/metrics moved off into the
 // shared signal objects; only the per-stream accumulator remains.
 type sseStream struct {
-	c          *gin.Context
-	buf        *bufutil.LimitedBuffer
-	eventAttrs []attribute.KeyValue
-	lastEvent  time.Time // span start for the next event; updated to flush time
-	seq        int
-	count      int
-	chunkSize  int // bytes accumulated since the last flush (span/metric attr)
-	active     bool
-	dirty      bool // bytes arrived since the last flush (count/span signal)
+	c           *gin.Context
+	buf         *bufutil.LimitedBuffer
+	eventMetric SSEEventMetric
+	lastEvent   time.Time // span start for the next event; updated to flush time
+	seq         int
+	count       int
+	chunkSize   int // bytes accumulated since the last flush (span/metric attr)
+	active      bool
+	dirty       bool // bytes arrived since the last flush (count/span signal)
 }
 
 // flush emits the per-event signals (M/T/L) for the bytes written since the last
@@ -421,7 +360,7 @@ type sseStream struct {
 // since the last flush (dirty is false). The three signal objects are passed in
 // by the caller (captureWriter.Flush / finalizeSSE), which holds them per
 // request; sseStream itself stays free of any registration-time state.
-func (s *sseStream) flush(tracer *sseTracer, metrics *sseMetrics, accessLog *sseAccessLog) {
+func (s *sseStream) flush(tracer *sseTracer, obs Observer, distributions bool, accessLog *sseAccessLog) {
 	if !s.dirty {
 		return
 	}
@@ -431,12 +370,19 @@ func (s *sseStream) flush(tracer *sseTracer, metrics *sseMetrics, accessLog *sse
 
 	ef := eventFacts{
 		ctx:       s.c.Request.Context(),
-		attrs:     s.eventAttrs,
 		seq:       s.seq,
 		chunkSize: s.chunkSize,
 		interval:  now.Sub(s.lastEvent),
 	}
-	metrics.Record(ef)                 // M
+	m := s.eventMetric
+	m.Size = s.chunkSize
+	m.Interval = ef.interval
+	if obs != nil {
+		obs.SSEEvent(ef.ctx, m) // M
+		if distributions {
+			obs.SSEEventDistribution(ef.ctx, m)
+		}
+	}
 	tracer.Stamp(ef, s.lastEvent, now) // T
 	accessLog.Emit(ef, s.buf)          // L
 

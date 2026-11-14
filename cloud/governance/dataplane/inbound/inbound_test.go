@@ -37,7 +37,10 @@ import (
 // adapter needs one Inbound and cannot double-fire.
 func TestOver_InjectsFaultThroughGuard(t *testing.T) {
 	inj := serverfault.NewManager()
-	inj.Refresh(fault.Config{Rules: []fault.Rule{{Name: "all", Service: "gin", Rate: 1, Class: fault.ClassTransient, Error: "generic"}}})
+	inj.Refresh(serverfault.ServerConfig{Rules: []serverfault.ServerRule{{
+		RuleCore: fault.RuleCore{Name: "all", Service: "gin", Rate: 1},
+		Status:   503,
+	}}})
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +51,7 @@ func TestOver_InjectsFaultThroughGuard(t *testing.T) {
 	}
 	defer gm.Close()
 
-	in, err := Over("gin", "gin:test", gm, inj)
+	in, err := Over("gin", "gin:test", gm, nil, inj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +88,7 @@ func TestOver_NoInjectorIsGovernanceOnly(t *testing.T) {
 	}
 	defer gm.Close()
 
-	in, err := Over("gin", "gin:test", gm)
+	in, err := Over("gin", "gin:test", gm, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,8 +121,9 @@ func TestOver_TagsInjectedFaultOnSpan(t *testing.T) {
 	})
 
 	inj := serverfault.NewManager()
-	inj.Refresh(fault.Config{Rules: []fault.Rule{{
-		Name: "all", Service: "gin", Rate: 1, Class: fault.ClassTransient, Error: "generic",
+	inj.Refresh(serverfault.ServerConfig{Rules: []serverfault.ServerRule{{
+		RuleCore: fault.RuleCore{Name: "all", Service: "gin", Rate: 1},
+		Status:   503,
 	}}})
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
@@ -131,7 +135,7 @@ func TestOver_TagsInjectedFaultOnSpan(t *testing.T) {
 	}
 	defer gm.Close()
 
-	in, err := Over("gin", "gin:test", gm, inj)
+	in, err := Over("gin", "gin:test", gm, nil, inj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,10 +150,59 @@ func TestOver_TagsInjectedFaultOnSpan(t *testing.T) {
 	for _, kv := range spans[0].Attributes {
 		attrs[string(kv.Key)] = kv.Value
 	}
-	if got := attrs["resilience.injected"].AsString(); got != "generic" {
-		t.Fatalf("resilience.injected = %q, want generic", got)
+	if got := attrs["resilience.injected"].AsString(); got != "response" {
+		t.Fatalf("resilience.injected = %q, want response", got)
+	}
+	if got := attrs["resilience.injected.status"].AsInt64(); got != 503 {
+		t.Fatalf("resilience.injected.status = %d, want 503", got)
 	}
 	if got := attrs["resilience.injected.rule"].AsString(); got != "all" {
 		t.Fatalf("resilience.injected.rule = %q, want all", got)
+	}
+}
+
+// fakeObservation is a minimal Observation for a fake emitter.
+type fakeObservation struct{}
+
+func (fakeObservation) Response() *observe.Response { return &observe.Response{} }
+func (fakeObservation) MarkInjected(fault.Result)   {}
+
+// fakeMetrics records that the handle drove the injected metric seam.
+type fakeMetrics struct{ requests int }
+
+func (m *fakeMetrics) Active(context.Context, observe.Request, int64) {}
+
+func (m *fakeMetrics) Request(context.Context, observe.Request) { m.requests++ }
+
+func (m *fakeMetrics) Fault(context.Context, observe.Request, observe.Fault) {}
+
+// TestOver_UsesInjectedMetrics proves the inbound handle reports through the
+// injected metric seam instead of the OTel one.
+func TestOver_UsesInjectedMetrics(t *testing.T) {
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm, err := admission.NewManager(factories)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gm.Close()
+
+	m := &fakeMetrics{}
+	in, err := Over("sys", "svc", gm, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	err = in.Run(context.Background(), observe.ServerOperation{Action: "GET /x"}, func(context.Context) error {
+		ran = true
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ran || m.requests != 1 {
+		t.Fatalf("expected the handler and the injected metrics to run: handler=%v metrics=%d", ran, m.requests)
 	}
 }

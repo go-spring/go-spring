@@ -32,12 +32,13 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -67,8 +68,11 @@ var (
 // the only shape a direct (non-gs) caller has. The constructor cannot fail for
 // that input.
 func mustLbManager() *loadbalance.Manager {
-	m := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
-	return m
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		panic(err) // the built-in factory cannot fail to register its instruments
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }
 
 // stubDiscovery serves a fixed endpoint set.
@@ -144,9 +148,19 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 		assert.That(t, err).Nil()
 	}
 	// Round-robin over the two discovered endpoints, never the service name.
-	assert.That(t, rec.hosts).Equal([]string{
-		"10.0.0.1:9000", "10.0.0.2:9000", "10.0.0.1:9000", "10.0.0.2:9000",
-	})
+	// The cycle's starting phase is random by design (a fleet of clients that
+	// starts together must not send its first picks to one instance), so pin
+	// the ALTERNATION and the coverage, not the absolute first pick.
+	assert.That(t, len(rec.hosts)).Equal(4)
+	seen := map[string]bool{}
+	for i, h := range rec.hosts {
+		assert.That(t, h == "10.0.0.1:9000" || h == "10.0.0.2:9000").True()
+		seen[h] = true
+		if i > 0 {
+			assert.That(t, h != rec.hosts[i-1]).True() // strict alternation
+		}
+	}
+	assert.That(t, len(seen)).Equal(2)
 }
 
 func TestNewTransport_FailFast(t *testing.T) {
@@ -181,9 +195,9 @@ func TestGovernSelection_RebuildsThroughTheChain(t *testing.T) {
 	// A rule for this service's label rebuilds the chain underneath the live
 	// transport; the next request is served by the new generation.
 	mgr.Apply(context.Background(), loadbalance.Settings{Selection: loadbalance.Selection{
-		Balancer:               loadbalance.ConsistentHash,
+		Balancer:               balancer.ConsistentHash,
 		ConsistentHashReplicas: 100,
-		OutlierThreshold:       3,
+		RequestFailures:        3,
 	}})
 
 	req2, _ := http.NewRequest(http.MethodGet, "http://orders/ping", nil)

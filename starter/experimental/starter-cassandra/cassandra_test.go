@@ -31,12 +31,12 @@ import (
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -68,7 +68,7 @@ func newTestCenter(t *testing.T) *governance.Runtime {
 	}
 	ctr := &governance.Runtime{
 		Resilience:  res,
-		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		LoadBalance: mustLbManager(t),
 		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
@@ -151,7 +151,7 @@ type captureExec struct {
 	ops  []string
 }
 
-func (c *captureExec) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+func (c *captureExec) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	c.ops = append(c.ops, opName(op))
 	return c.next.Execute(ctx, op, rec, fn)
 }
@@ -176,7 +176,7 @@ func newGuardedExec(t *testing.T, p ratelimit.Policy) chain.Executor {
 		}},
 	}}})).Nil()
 	inner := m.Wrap("svc", nil)
-	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")
+	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test", nil)
 }
 
 // TestGuardPassThrough proves the pass-through stance: a chain over an unarmed
@@ -340,4 +340,14 @@ func TestInnerQueryReorganize(t *testing.T) {
 	assert.Error(t, wrapped.Exec(context.Background())).Nil()
 	assert.That(t, cap.ops).Equal([]string{"exec"})
 	assert.That(t, tail.execs).Equal(1)
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

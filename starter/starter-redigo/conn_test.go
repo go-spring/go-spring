@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/gomodule/redigo/redis"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
 // stubConn is a minimal redis.Conn recording the commands its Do receives.
@@ -41,11 +42,18 @@ func (s *stubConn) Send(string, ...interface{}) error { return nil }
 func (s *stubConn) Flush() error                      { return nil }
 func (s *stubConn) Receive() (interface{}, error)     { return nil, nil }
 
+// sinkFor wires a stub conn as the terminal command handler the chain runs.
+func sinkFor(inner *stubConn) CommandHandler {
+	return func(_ context.Context, _ chain.Peer, cmd string, args []interface{}) (interface{}, error) {
+		return inner.Do(cmd, args...)
+	}
+}
+
 // newTestConn builds a Conn wired to inner with the given interceptor chain and
 // no observe / no resilience — the minimal harness for command-path tests,
 // routed through the real NewConn constructor.
-func newTestConn(inner redis.Conn, chain ...CommandInterceptor) *Conn {
-	return NewConn(inner, chain...)
+func newTestConn(inner *stubConn, chain ...CommandInterceptor) *Conn {
+	return NewConn(sinkFor(inner), chain...)
 }
 
 // A short-circuiting interceptor must return its canned reply WITHOUT calling
@@ -54,12 +62,12 @@ func TestConn_InterceptorShortCircuitSkipsRedis(t *testing.T) {
 	inner := &stubConn{reply: "from-redis"}
 	calledNext := false
 	chain := CommandInterceptor(func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+		return func(ctx context.Context, peer chain.Peer, cmd string, args []interface{}) (interface{}, error) {
 			if cmd == "GET" {
 				return "cached", nil // local hit — do not call next
 			}
 			calledNext = true
-			return next(ctx, cmd, args)
+			return next(ctx, peer, cmd, args)
 		}
 	})
 	c := newTestConn(inner, chain)
@@ -84,8 +92,8 @@ func TestConn_InterceptorShortCircuitSkipsRedis(t *testing.T) {
 func TestConn_InterceptorCallingNextReachesRedis(t *testing.T) {
 	inner := &stubConn{reply: "from-redis"}
 	chain := CommandInterceptor(func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			reply, err := next(ctx, cmd, args)
+		return func(ctx context.Context, peer chain.Peer, cmd string, args []interface{}) (interface{}, error) {
+			reply, err := next(ctx, peer, cmd, args)
 			if err != nil {
 				return nil, err
 			}
@@ -113,18 +121,18 @@ func TestConn_InterceptorOnionOrder(t *testing.T) {
 	inner := &stubConn{reply: "r"}
 	var order []string
 	outer := CommandInterceptor(func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+		return func(ctx context.Context, peer chain.Peer, cmd string, args []interface{}) (interface{}, error) {
 			order = append(order, "outer-in")
-			reply, err := next(ctx, cmd, args)
+			reply, err := next(ctx, peer, cmd, args)
 			order = append(order, "outer-out")
 			return reply, err
 		}
 	})
 	innerMw := CommandInterceptor(func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+		return func(ctx context.Context, peer chain.Peer, cmd string, args []interface{}) (interface{}, error) {
 			order = append(order, "inner-in")
 			// rewrite: forward a different command toward Redis
-			return next(ctx, "GET", args)
+			return next(ctx, peer, "GET", args)
 		}
 	})
 	c := newTestConn(inner, outer, innerMw)
@@ -173,7 +181,7 @@ func TestConn_NoInterceptorReachesRedis(t *testing.T) {
 // nil-deref occurs. Proves wrapping stays transparent.
 func TestConn_ObserveDisabledPassThrough(t *testing.T) {
 	inner := &stubConn{reply: "ok"}
-	c := NewConn(inner)
+	c := NewConn(sinkFor(inner))
 
 	reply, err := c.Do("PING")
 	if err != nil {
@@ -193,18 +201,18 @@ func TestPool_UseCommandInterceptor(t *testing.T) {
 	inner := &stubConn{reply: "ok"}
 	p := &Pool{}
 	p.UseCommandInterceptor(func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+		return func(ctx context.Context, peer chain.Peer, cmd string, args []interface{}) (interface{}, error) {
 			if cmd == "PING" {
 				return "intercepted", nil
 			}
-			return next(ctx, cmd, args)
+			return next(ctx, peer, cmd, args)
 		}
 	})
 	if len(p.chain) != 1 {
 		t.Fatalf("chain length = %d, want 1", len(p.chain))
 	}
 
-	c := NewConn(inner, p.chain...)
+	c := NewConn(sinkFor(inner), p.chain...)
 	reply, err := c.Do("PING")
 	if err != nil {
 		t.Fatalf("Do: %v", err)
@@ -226,37 +234,6 @@ func TestPool_UseCommandInterceptor(t *testing.T) {
 	}
 }
 
-// wrapConn produces the instrumented Conn including the user interceptor chain.
-func TestPool_wrapConn(t *testing.T) {
-	inner := &stubConn{reply: "ok"}
-
-	// With a chain armed, the factory's conn runs it (here: short-circuits).
-	p := &Pool{}
-	p.UseCommandInterceptor(func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			return "intercepted", nil
-		}
-	})
-	c := p.wrapConn(inner)
-	if _, ok := c.(*Conn); !ok {
-		t.Fatal("wrapConn must produce a *Conn")
-	}
-	reply, err := c.Do("PING")
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
-	if reply != "intercepted" {
-		t.Fatalf("reply = %v, want intercepted (wrapConn must include the chain)", reply)
-	}
-
-	// Without a chain (and no observe/resilience) it is a plain *Conn wrapping
-	// the raw connection.
-	p2 := &Pool{}
-	if _, ok := p2.wrapConn(inner).(*Conn); !ok {
-		t.Fatal("default factory must yield a *Conn")
-	}
-}
-
 // NewConn composes layers in order: an earlier layer sits outside a later
 // one — the contract that makes the span-wrap-executor invariant (see
 // Pool.wrapConn) expressible purely by layer order.
@@ -265,15 +242,15 @@ func TestNewConn_LayerOrder(t *testing.T) {
 	var order []string
 	mk := func(tag string) CommandInterceptor {
 		return func(next CommandHandler) CommandHandler {
-			return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+			return func(ctx context.Context, peer chain.Peer, cmd string, args []interface{}) (interface{}, error) {
 				order = append(order, tag+"-in")
-				reply, err := next(ctx, cmd, args)
+				reply, err := next(ctx, peer, cmd, args)
 				order = append(order, tag+"-out")
 				return reply, err
 			}
 		}
 	}
-	c := NewConn(inner, mk("first"), mk("second"))
+	c := NewConn(sinkFor(inner), mk("first"), mk("second"))
 	if _, err := c.Do("PING"); err != nil {
 		t.Fatalf("Do: %v", err)
 	}

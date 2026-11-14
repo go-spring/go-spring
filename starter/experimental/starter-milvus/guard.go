@@ -32,10 +32,11 @@ package StarterMilvus
 import (
 	"context"
 	"errors"
+	"sync"
+
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
-	"sync"
 
 	"google.golang.org/grpc"
 
@@ -104,7 +105,7 @@ func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 		if exec, service, prop := slot.load(); exec != nil {
 			op := operation(ctx, prop, method)
 			op.Service = service
-			_, err := resilience.Run(ctx, exec, op, func(ctx context.Context) (struct{}, error) {
+			_, err := resilience.Run(ctx, exec, op, func(ctx context.Context, _ chain.Peer) (struct{}, error) {
 				return struct{}{}, invoker(ctx, method, req, reply, cc, opts...)
 			}, milvusOptions...)
 			return err
@@ -203,7 +204,7 @@ func streamGuard(slot *guardSlot) grpc.StreamClientInterceptor {
 		if exec, service, prop := slot.load(); exec != nil {
 			op := operation(ctx, prop, method)
 			op.Service = service
-			cs, err := resilience.Run(ctx, exec, op, func(ctx context.Context) (grpc.ClientStream, error) {
+			cs, err := resilience.Run(ctx, exec, op, func(ctx context.Context, _ chain.Peer) (grpc.ClientStream, error) {
 				return streamer(ctx, desc, cc, method, opts...)
 			}, milvusOptions...)
 			return cs, err

@@ -62,9 +62,9 @@
 // a custom Runner — otherwise the participants may be absent when the recovery
 // Runner runs.
 //
-// Observability is on by default: when Config.Tracing is true the coordinator
-// emits an otel child span per participant phase on the globals starter-otel
-// installs.
+// Spans are standard OTel: the coordinator emits a child span per participant
+// phase on the globals starter-otel installs; without starter-otel the global
+// tracer is a no-op.
 package StarterTransactionTCC
 
 import (
@@ -89,10 +89,10 @@ func init() {
 	gs.Provide(func() tcc.Store { return &tcc.MemoryStore{} }).
 		Condition(enabled, gs.OnMissingBean[tcc.Store]())
 
-	// The in-process coordinator, built from the bound configuration (for the
-	// tracing toggle) and the autowired Store. Exported as the tcc.Coordinator
+	// The in-process coordinator, built from the bound configuration and the
+	// autowired Store. Exported as the tcc.Coordinator
 	// interface so business code depends on the abstraction, not this construction.
-	gs.Provide(newCoordinator, gs.TagArg("${spring.transaction.tcc}"), gs.TagArg("")).
+	gs.Provide(newCoordinator, gs.IndexArg(0, gs.TagArg("${spring.transaction.tcc}")), gs.IndexArg(1, gs.TagArg(""))).
 		Condition(enabled).
 		Export(gs.As[tcc.Coordinator]())
 
@@ -111,12 +111,12 @@ var enabled = gs.OnProperty("spring.transaction.tcc.enabled").HavingValue("true"
 var recoverOnStart = gs.OnProperty("spring.transaction.tcc.recover-on-start").HavingValue("true").MatchIfMissing()
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
-// TCC-log Store and, when tracing is enabled, the otel observer.
-func newCoordinator(c Config, store tcc.Store) (tcc.Coordinator, error) {
+// TCC-log Store.
+func newCoordinator(c Config, store tcc.Store, metrics transaction.MetricsObserver) (tcc.Coordinator, error) {
 	opts := []tcc.Option{tcc.WithStore(store)}
-	if c.Tracing {
-		opts = append(opts, tcc.WithObserver(transaction.TccObserver{}))
+	if metrics != nil {
+		opts = append(opts, tcc.WithMetrics(metrics))
 	}
-	log.Info(context.Background(), log.TagAppDef, "create tcc coordinator success", log.Bool("tracing", c.Tracing))
+	log.Info(context.Background(), log.TagAppDef, "create tcc coordinator success", log.Bool("metrics", metrics != nil))
 	return tcc.NewCoordinator(opts...)
 }

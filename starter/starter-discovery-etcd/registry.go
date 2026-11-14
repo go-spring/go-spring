@@ -61,7 +61,7 @@ type etcdRegistry struct {
 
 	// obs is the backend block's observability layer; it carries the identity
 	// (system, center) every reported attempt and log line is labelled with.
-	obs *registration.Observer
+	obs registration.Observer
 
 	// backoffBase/backoffCap pace the re-register retry loop after a keep-alive
 	// loss: 1s doubling up to 1min. Fields (not constants) so tests shrink them.
@@ -127,7 +127,7 @@ func (r *etcdRegistry) stopHold(h *hold) {
 // newEtcdRegistry returns a registry writing through cli (the shared center
 // client; the cluster was already probed when cli was built) with c's prefix
 // and TTL. It does NOT close cli — the owner (etcdBackend) does.
-func newEtcdRegistry(c EtcdConfig, cli registryKV, obs *registration.Observer) (*etcdRegistry, error) {
+func newEtcdRegistry(c EtcdConfig, cli registryKV, obs registration.Observer) (*etcdRegistry, error) {
 	if cli == nil {
 		return nil, errutil.Explain(nil, "discovery-etcd: nil etcd client")
 	}
@@ -205,7 +205,7 @@ func (r *etcdRegistry) Register(ctx context.Context, reg discovery.Instance) err
 
 	h := newHold(reg)
 	var ka <-chan *clientv3.LeaseKeepAliveResponse
-	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonInitial, func(ctx context.Context) error {
+	if err := registration.RegisterAttempt(ctx, r.obs, reg.ServiceName, registration.ReasonInitial, func(ctx context.Context) error {
 		var err error
 		ka, err = r.etcdPublish(ctx, h)
 		return err
@@ -330,7 +330,7 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 			// failure being retried and the span recording it are one event in
 			// the trace, not two unconnected ones.
 			var nka <-chan *clientv3.LeaseKeepAliveResponse
-			err := r.obs.RegisterAttempt(ctx, h.reg.ServiceName, registration.ReasonSelfHeal, func(actx context.Context) error {
+			err := registration.RegisterAttempt(ctx, r.obs, h.reg.ServiceName, registration.ReasonSelfHeal, func(actx context.Context) error {
 				var err error
 				nka, err = r.etcdPublish(actx, h)
 				if err != nil {
@@ -396,7 +396,7 @@ func (r *etcdRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance,
 	}
 	// Reported around the write itself: a marshal failure above never reached
 	// the center, so it is not a discovery-center operation outcome.
-	if err := r.obs.WeightChange(ctx, reg.ServiceName, func(ctx context.Context) error {
+	if err := registration.WeightChange(ctx, r.obs, reg.ServiceName, func(ctx context.Context) error {
 		_, err := r.client.Put(ctx, key, string(val), lease)
 		return err
 	}); err != nil {
@@ -426,7 +426,7 @@ func (r *etcdRegistry) Deregister(ctx context.Context, reg discovery.Instance) e
 		return nil
 	}
 	r.stopHold(h)
-	if err := r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(ctx context.Context) error {
+	if err := registration.DeregisterAttempt(ctx, r.obs, reg.ServiceName, func(ctx context.Context) error {
 		_, err := r.client.Revoke(ctx, lease)
 		return err
 	}); err != nil {

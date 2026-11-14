@@ -173,9 +173,10 @@ import starter-neo4j
 gs.Run()
   ├─ 构造 newClient [starter.go:107]：记录实例创建日志
   │   ├─ 装配期把 `${...default.discovery}` 回退折叠进 `c.Discovery`；driver 读这一个 label，
-  │   │  若设置 service-name 且 mesh 关闭则自行 resolveURI → 选一个端点，
-  │   │  地址拼进 URI host [driver.go:185-213]；同一个 resolver
-  │   │  还喂给 driver 的 AddressResolver，种子主机挂掉后 neo4j:// client 可重新找回集群
+  │   │  若设置 service-name 且 mesh 关闭则自行 resolveSeed → 选一个合格端点作为路由种子，
+  │   │  地址拼进 URI host [driver.go]；同一个 resolver
+  │   │  还喂给 driver 的 AddressResolver 兜底，种子主机挂掉后路由 client 可重新找回集群。
+  │   │  不涉及 loadbalance 授权：种子不是每次调用的挑选
   │   ├─ 可选 Driver bean——没有则回退内置 DefaultDriver（d == nil
   │   │  回退 [starter.go:113-115]）；多个并存时实例可按名指定：
   │   │  `spring.neo4j.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
@@ -204,7 +205,7 @@ gs.Run()
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterNeo4j.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.neo4j` 下每个实例都经它构建。
 `CreateClient(ctx, c, center)` 接收注入的 `*governance.Runtime`；发现后端由 driver 自行从
-`center.Discovery().Get(c.Discovery)` 解析——该条目 `${discovery}` label 挂在 config 上
+`center.Directory.Get(c.Discovery)` 解析——该条目 `${discovery}` label 挂在 config 上
 （ctor 已把家族默认值折叠进 `c.Discovery`），因此不再传入预解析的后端。没有该 bean 时 starter
 在装配内回退到内置 `DefaultDriver`
 （`driver.go:71`，`starter.go:113-115`）。没有 per-config 的 `driver` key。
@@ -270,21 +271,27 @@ gs.Run()
 
 ### 2.4 服务发现寻址 —— 种子 + 路由模式下的自愈
 
-设置 `service-name` 且 mesh 关闭时，driver 从 `center.Discovery().Get(c.Discovery)` 解析
-该条目 `discovery` label 所指的后端，`resolveURI` 在其上建 Resolver、选一个端点、
-把地址拼进 URI host [driver.go:185-213]。neo4j driver 无 dialer 注入点，
-所以这个地址是**启动种子**——运行期不会按查询重挑。真正继续跟随命名服务的是 driver 自己的
-`AddressResolver` 钩子，由同一个 resolver 驱动 [driver.go:92-96]：路由驱动（`neo4j://` scheme）
-在无法从拨号地址建立路由表时会咨询它——也就是种子主机消失的那一刻。所以路由模式的 client 能
-**不重启**恢复到当前集群；而 **`bolt://` 直连没有路由表，会一直停在启动地址上**。注册中心抖动时
-该钩子回吐 driver 手中已有的地址，绝不把一次读失败变成空路由表。mesh 模式（`GS_MESH_MODE=on`）下
-sidecar 负责发现+LB，URI 原样使用 [starter.go:103]。
+设置 `service-name` 且 mesh 关闭时，driver 从 `center.Directory.Get(c.Discovery)` 解析
+该条目 `discovery` label 所指的后端，在其上建 Resolver，`resolveSeed` 选一个合格端点
+（非 disabled；优先 healthy 且非 drain）作为**路由种子**，把地址拼进 URI host [driver.go]。
+这不是负载均衡：driver 在该种子上建池，之后所有服务器选择都由它自己的 routing table 完成。
+真正继续跟随命名服务的是 driver 自己的 `AddressResolver` 钩子，由同一个 resolver 驱动
+[driver.go]：路由驱动在"上次已知 routers + 种子 router"都失败后咨询它——也就是种子主机消失的
+那一刻。所以路由模式的 client 能**不重启**恢复到当前集群。注册中心抖动时该钩子回吐 driver
+手中已有的地址，绝不把一次读失败变成空路由表。mesh 模式（`GS_MESH_MODE=on`）下 sidecar 负责
+发现+LB，URI 原样使用 [starter.go]。
 
-⚠ **刻意不接受管的端点选择。** 没有"每次查询挑选"可管：启动那次挑选被固化进 URI 字符串，池在同一
-个函数里建了就用、用完就丢。因此 `spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` 对 neo4j 无效；
-它的治理止于保护策略（label 为 `neo4j:<service-name|uri>` 的 timeout / retries / breaker）。写在这里
-是为了让这个缺口读起来是**决策**而不是遗漏。（上面的 `AddressResolver` 管的是**哪个集群**，
-不是**哪个节点**——节点仍然由 driver 自己选。）
+`service-name` 要求 routing scheme（`neo4j`、`neo4j+s`、`neo4j+ssc`）；与直连 scheme
+（`bolt`、`bolt+s`、`bolt+ssc`）组合会在绑定期被 `Config.Validate` 拒绝——直连驱动只在一个
+地址上建池、之后再也不会咨询发现，种子会被永久固化。直连地址（VIP/sidecar/单机）仍然合法，
+只是地址写在 URI 里、不设 `service-name`。
+
+⚠ **刻意不接受管的端点选择。** 没有"每次查询挑选"可管：种子只被固化进 URI 字符串一次，
+之后由 driver 的 routing table 选节点。因此 `spring.governance.client.loadbalance.services[N].balancer`
+/ `request-failures` 对 neo4j 无效；它的治理止于保护策略（label 为
+`neo4j:<service-name|uri>` 的 timeout / retries / breaker）。写在这里是为了让这个缺口读起来是
+**决策**而不是遗漏。另外注意：driver 只在集群内（或单机 4.0+，其 routing table 只指向自己）
+做均衡；同一名字下互相独立的实例**不会**被均衡——应前置 VIP/L4 或组成集群。
 
 ---
 
@@ -297,8 +304,8 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|---------|-------------------------|------------------------------|
-| `uri` | string | — | **必填**（`expr:"$ != ''"`）。scheme 决定路由+加密：`bolt`/`neo4j` 明文，`neo4j+s`/`bolt+s` TLS，`+ssc` 自签。⚠ 设置 `service-name` 时 host 被发现结果替换（example 故意用哑地址 `bolt://0.0.0.0:0`）。 | 缺失 → BindEach 报错并点名实例；scheme 非法 → 构造期 driver 报错。 |
-| `service-name` | string | — | 经发现后端解析**启动地址**，并为 `neo4j://` client 保留一份活的路由集用于自愈（§2.4）。⚠ 需有匹配的命名后端 bean。 | 后端未注册 → 启动报错 "neo4j: resolve service …"。 |
+| `uri` | string | — | **必填**（`expr:"$ != ''"`）。scheme 决定路由+加密：`bolt`/`neo4j` 明文，`neo4j+s`/`bolt+s` TLS，`+ssc` 自签。⚠ 设置 `service-name` 时 host 被发现种子替换（example 故意用哑地址 `neo4j://0.0.0.0:0`）。`service-name` 要求 routing scheme（`neo4j*`）。 | 缺失 → BindEach 报错并点名实例；scheme 非法 → 构造期 driver 报错；`bolt*` + `service-name` → 绑定期 Validate 报错。 |
+| `service-name` | string | — | 经发现后端解析**路由种子**，并把同一 resolver 保留为 driver `AddressResolver` 的兜底（§2.4）。⚠ 需 routing scheme 且需匹配的命名后端 bean。 | 后端未注册 → 启动报错 "neo4j: resolve service …"；直连 scheme → Validate 报错。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme 的端点；仅 `service-name` 生效时被读取。 | — |
 | `discovery` | string | — | 用哪个已注册后端解析 `service-name`。未配置时回退 `${spring.neo4j.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 
@@ -384,10 +391,10 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 ### 4.4 发现演练
 
 注册后端 bean（见 example/discovery.go），设
-`spring.neo4j.instances.graph.service-name=neo4j-cluster` 与哑 `uri=bolt://0.0.0.0:0`。启动日志
-`neo4j client initialized, uri=bolt://127.0.0.1:7687`——拼接后的地址，不是哑值。
-杀掉该实例：查询持续失败——地址只在启动时解析过一次（§2.4）；重启应用（或交给平台）
-才会重新解析。
+`spring.neo4j.instances.graph.service-name=neo4j-cluster` 与哑 `uri=neo4j://0.0.0.0:0`。启动日志
+`neo4j client initialized, uri=neo4j://127.0.0.1:7687`——拼接后的种子，不是哑值。
+示例用的静态后端永远返回同一地址，杀掉实例后无处可恢复；换成会重新发布集群的真实后端时，
+种子 router 失败后路由驱动会调用 `AddressResolver` 重读路由表，**无需重启**继续工作（§2.4）。
 
 ---
 

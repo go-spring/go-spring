@@ -190,7 +190,6 @@ func (s *OrderService) place(ctx context.Context, txID string, qty, cost int) (t
 # --- tcc ---------------------------------------------------------------------
 # All three keys default on; a blank import is enough. Shown for discoverability.
 spring.transaction.tcc.enabled=true
-spring.transaction.tcc.tracing=true
 
 # Startup recovery scan. ⚠ No-op with the in-memory default Store (a restart
 # loses the log); real only once a durable tcc.Store bean exists. NOTE: unlike
@@ -213,7 +212,7 @@ spring.observability.metrics.path=/metrics
 **Expected output** (failure drill — `place(ctx, "order-rollback", 2, 999)`):
 
 ```
-... tcc coordinator created tracing=true
+... tcc coordinator created metrics=true
 commit path OK: Committed                    (path 1 ran first in the self-test)
 rollback path OK: Cancelled - tcc: participant FreezeBalance Try: insufficient
 ```
@@ -251,7 +250,7 @@ gs.Run()
   │   Coordinator autowired into the recovery Runner
   ├─ Rooter/bean construction: YOUR code calls reg.Register(...) here — wiring-time
   │   registration is a hard requirement (recovery rebuilds by method name)
-  ├─ log: "tcc coordinator created tracing=<v>"
+  ├─ log: "tcc coordinator created metrics=<v>"
   ├─ Runners execute (recovery Runner is a no-op unless a durable Store holds
   │   non-terminal snapshots) — never fails startup
   └─ on SIGTERM: standard container shutdown; no tcc-specific drain
@@ -304,7 +303,6 @@ group.
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.transaction.tcc.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` — absent means ON. `false` imports the module without contributing any bean. | `false` by accident → no Coordinator bean → autowire of `tcc.Coordinator` fails at wiring (visible). |
-| `spring.transaction.tcc.tracing` | bool | `true` | Attaches `transaction.TccObserver{}` at construction → one otel child span per participant phase (`tcc.try/confirm/cancel <name>`) on the starter-otel globals. No-op without starter-otel. | Expecting traces without starter-otel → nothing, and no warning anywhere. |
 | `spring.transaction.tcc.recover-on-start` | bool | `true` | Registers the recovery `gs.Runner`: scans `Store.Pending()` for NON-terminal snapshots (`Trying`/`Confirming`/`Cancelling`) and drives each to its decided outcome — forward Confirm for `Confirming`, backward Cancel otherwise. ⚠ **Coupled to the store seam AND currently dead**: no durable TCC Store starter ships; with the in-memory store the scan is always empty after a restart. Contribute your own `tcc.Store` bean to activate it. | `false` with a durable store → crash-stranded transactions never resolved (silently inconsistent); `true` without one → no-op, no warning. |
 
 Related keys owned by OTHER modules: `spring.observability.*` (starter-otel). Note there is NO
@@ -376,7 +374,7 @@ own `tcc.Store` bean (next section) — no durable TCC store ships in this repo.
   recorded with error status. [example-otel](example-otel/) proves the chain end-to-end against
   Jaeger (`docker compose up -d`, then `go run .` — it queries Jaeger's API and asserts traces
   for service `transaction-tcc-otel-example`).
-- Logs: tag `AppDef`; lines `tcc coordinator created tracing=…` and the `tcc recovery: …`
+- Logs: tag `AppDef`; lines `tcc coordinator created metrics=…` and the `tcc recovery: …`
   family.
 - No metrics, no health indicator (see §6).
 
@@ -393,7 +391,7 @@ own `tcc.Store` bean (next section) — no durable TCC store ships in this repo.
 | Concurrent transactions double-reserve | Reservations not keyed by tx id → Try replay isn't a no-op (anti-hanging violated) | Key every reservation by the transaction id (`WithTransactionID`), as the example's ledger does. |
 | `StatusConfirmFailed` with nil error from `Execute` | A Confirm ultimately failed — by design not a try error | Retry/alert on Confirm (`Participant.Retry` non-zero); inspect `Result.Errors`; no Cancel-after-Confirm exists. |
 | Cancel errors on "already released" | Cancel not idempotent / not empty-rollback-safe | Make Cancel tolerate a missing reservation (nil tried value) — see the example's `cancel`. |
-| No spans despite `tracing=true` | starter-otel not imported / observability off | Import starter-otel and set `spring.observability.*`. |
+| No spans despite starter-otel | observability off | Set `spring.observability.*`; without starter-otel the global tracer is a no-op. |
 
 ## 6. Design Health
 

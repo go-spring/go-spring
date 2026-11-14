@@ -85,7 +85,7 @@ func NewClient(connector driver.Connector, c Config, center *governance.Runtime)
 	cl := &Client{DB: db, slot: slot}
 	cl.serviceLabel = serviceLabel(c)
 	slot.service = cl.serviceLabel
-	cl.exec = center.ExecutorFor("tdengine", cl.serviceLabel)
+	cl.exec = center.ExecutorFor("tdengine", cl.serviceLabel, nil)
 	slot.exec = cl.exec
 	slot.prop = center.Traffic
 	return cl

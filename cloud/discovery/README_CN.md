@@ -133,7 +133,7 @@ ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
 - 每次调用 resolver 都重读后端快照并如实上抛错误——对带缓存的后端就是一次廉价
   内存读，不掩盖注册中心抖动。
 - 端点选择——round-robin、权重、一致性哈希、失败摘除——全在上一层
-  [`loadbalance`](../governance/capability/loadbalance/README_CN.md)，它把 resolver（函数本体）收作端点源。
+  [`loadbalance`](../governance/dataplane/outbound/loadbalance/README_CN.md)，它把 resolver（函数本体）收作端点源。
   发现本身不携带选择策略，resolver 也不持有任何资源——新鲜度全在后端内部，
   没有什么可 Stop。
 
@@ -282,7 +282,7 @@ func (m *Manager) Names() []string
   `loadbalance.Pool`（每请求，快时间尺度）两套选择器——连接池 client 用前者，
   RPC/httpx 用后者；将来 infra client 需按权重建连应在内部升层用 loadbalance，
   **不给 Resolver 加策略**。（2026-09-04）
-- `Pool` 直接收 `discovery.Resolver`：`NewPool(src discovery.Resolver, bal Balancer,
+- `Pool` 直接收 `discovery.Resolver`：`NewPool(resolver discovery.Resolver, bal Balancer,
   tracker *Tracker, sel Selection)`，`Pool.Pick` 传播源错误。没有 `EndpointSource` / `SourceFunc`
   （已删）；`discovery.Allows` 早已移成 loadbalance 私有 `admission`。
 - 连接池消费形态：`NewPool(resolver, bal, NewTracker(TrackerConfig{}), Selection{})`，拨号闭包里 `pool.Pick(ctx, PickInfo{})`；

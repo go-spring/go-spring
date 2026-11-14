@@ -38,7 +38,7 @@ import (
 // The middleware rides the OTel globals — when starter-otel is not imported the
 // global TracerProvider and TextMapPropagator are no-ops, so this costs almost
 // nothing. The middleware is on by default; importing starter-otel activates it.
-func tracingMiddleware() app.HandlerFunc {
+func tracing() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		// Hertz stores headers in a []args.Header but the OTel Propagation
 		// API needs http.Header. Build an adapter.

@@ -198,7 +198,6 @@ run `place` once in a goroutine after 500ms, assert `err != nil` and
 # --- saga --------------------------------------------------------------------
 # All three default on; a blank import is enough. Shown for discoverability.
 spring.transaction.saga.enabled=true
-spring.transaction.saga.tracing=true
 
 # Startup recovery scan. ⚠ No-op with the in-memory default Store (a restart
 # loses the log); becomes real only with a durable Store — see below.
@@ -222,7 +221,7 @@ spring.observability.trace.sampler-ratio=1.0
 **Expected output** (failure drill — `place(ctx, "order-1")` with the failing NotifyUser):
 
 ```
-... saga coordinator created tracing=true
+... saga coordinator created metrics=true
 ... inventory: deducted 2 for order-1
 ... payment: charged 50 for order-1
 ... payment: refunded pay:order-1        # compensation runs in REVERSE step order
@@ -253,7 +252,7 @@ gs.Run()
   │   Coordinator autowired into the recovery Runner
   ├─ Rooter/bean construction: YOUR code calls reg.Register(...) here — this is
   │   why registration must happen at wiring time, not from a Runner
-  ├─ log: "saga coordinator created tracing=<v>"
+  ├─ log: "saga coordinator created metrics=<v>"
   ├─ Runners execute (recovery Runner first-run is a no-op unless a durable Store
   │   holds StatusRunning snapshots) — never fails startup
   └─ on SIGTERM: standard container shutdown; no saga-specific drain
@@ -282,7 +281,7 @@ its own transaction.Store").
 5. **Step 3 Action fails**: the failing error is appended to `Result.Errors` first, so a compensated
    saga still explains why it rolled back; then `compensate` runs the COMPLETED steps in reverse —
    ChargePayment.Compensate(token) → DeductInventory.Compensate — each under the same retry policy
-   and observer as the action; a nil Compensate on a reached step sets `StatusCompensationFailed`
+   and span as the action; a nil Compensate on a reached step sets `StatusCompensationFailed`
    and records the step as irreversible (surfaced, never silently skipped).
 6. **finish**: a committed saga's log is DELETED (nothing to recover); a compensated/failed saga's
    log is KEPT with the terminal status so operators can inspect it.
@@ -305,7 +304,6 @@ TOP-LEVEL absolute keys under `spring.transaction.saga` — the starter binds on
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.transaction.saga.enabled` | bool | `true` | `OnProperty(...).HavingValue("true").MatchIfMissing()` — absent means ON. `false` imports the module without contributing any bean (useful when a test binary wants the types but not the wiring). | `false` by accident → no Coordinator bean → autowire of `transaction.Coordinator` fails at wiring (visible, not silent). |
-| `spring.transaction.saga.tracing` | bool | `true` | Attaches `transaction.SagaObserver{}` at coordinator construction → one otel child span per step phase on the starter-otel globals. No-op (no spans, no warnings) without starter-otel. | Expecting traces without starter-otel → nothing; also no error anywhere. |
 | `spring.transaction.saga.recover-on-start` | bool | `true` | Registers the recovery `gs.Runner` that scans `Store.Pending()` for `StatusRunning` snapshots and compensates each (backward recovery). ⚠ **Coupled to the store seam**: with the default in-memory `MemoryStore` the scan is always empty after a restart — the key is effectively dead unless a durable Store starter (e.g. `spring.transaction.saga.store=gorm` + starter-transaction-saga-gorm) is active. | Setting `false` with a durable store → crash-stranded sagas are NEVER compensated (silently inconsistent); setting `true` without one → no-op, no warning. |
 
 Related keys owned by OTHER modules that interact here (not this starter's surface):
@@ -359,7 +357,7 @@ Give ChargePayment no `Compensate` and let NotifyUser fail: the coordinator reco
   attributes `saga.id`, `saga.step`, `saga.phase`; failures recorded with error status. Jaeger
   query by service name; a compensated saga shows the action span failed plus the compensate
   spans beneath it.
-- Logs: tag `AppDef`; lines `saga coordinator created tracing=…` and the `saga recovery: …` family.
+- Logs: tag `AppDef`; lines `saga coordinator created metrics=…` and the `saga recovery: …` family.
 - No metrics, no health indicator (see §6).
 
 ---
@@ -374,7 +372,7 @@ Give ChargePayment no `Compensate` and let NotifyUser fail: the coordinator reco
 | Two concurrent sagas interfere / second saga overwrites the first | No `WithSagaID` → id falls back to the method name, one log slot per method | Set the id at the edge: `transaction.WithSagaID(ctx, id)`. |
 | `StatusCompensationFailed` in results | A compensation error, or a completed step with nil `Compensate` | Inspect `Result.Errors`; make Compensate idempotent + retried (`Step.Retry`); treat leftover failed logs as ops backlog. |
 | `Recover requires a Store` error | `Coordinator.Recover` called with no store configured | Only relevant for manual Recover use; the starter always wires the in-memory store, so this means a hand-built coordinator. |
-| No spans despite `tracing=true` | starter-otel not imported / observability disabled | Import starter-otel and set `spring.observability.*`; the observer is a silent no-op otherwise. |
+| No spans despite starter-otel | observability disabled | Set `spring.observability.*`; without starter-otel the global tracer is a no-op. |
 | `execute` returned err but ledgers show partial effects | Compensate not idempotent, or it ignores the Action result it receives | Compensate from the handed `result` (token/id), key side effects by saga id; expect replay after recovery. |
 
 ## 6. Design Health

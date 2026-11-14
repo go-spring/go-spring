@@ -25,6 +25,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go-spring.org/cloud/governance"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -60,7 +61,10 @@ type Driver interface {
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
-type DefaultDriver struct{}
+type DefaultDriver struct {
+	Observe Observer
+	Ops     observability.Metrics
+}
 
 // CreateClient assembles a new mqtt.Client from the provided configuration. It
 // owns full client assembly — the broker URL, client id, credentials, clean
@@ -68,7 +72,7 @@ type DefaultDriver struct{}
 // will — and installs the governance executor, so the returned client is complete
 // (see [Driver]). The broker connect/ping is the starter's lifecycle concern (see
 // newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (mqtt.Client, error) {
+func (d DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions().
 		AddBroker(c.Broker).
 		SetClientID(c.ClientID).
@@ -81,7 +85,10 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// Connection-lifecycle events are counted as well as logged, from this one
 	// place (see connStateCounter for why the pair cannot be split), so the
 	// client's health shows up both alongside app logs and on a dashboard.
-	connState := newConnStateCounter()
+	connState, err := newConnStateCounterWith(d.Observe)
+	if err != nil {
+		return nil, err
+	}
 	opts.SetOnConnectHandler(func(_ mqtt.Client) {
 		log.Info(ctx, log.TagAppDef, "mqtt connected", append(connState.record(ctx, connConnected),
 			log.String("broker", c.Broker))...)
@@ -116,6 +123,6 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// state per broker rather than per topic. Attaching requires a center that
 	// carries a [resilience.Manager]: resolving the executor panics
 	// without one.
-	AttachObserver(cl, c.Broker, center.Traffic)
+	AttachObserver(cl, c.Broker, center.Traffic, d.Ops)
 	return cl, nil
 }

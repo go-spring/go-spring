@@ -108,7 +108,7 @@ func (r *resolveRunner) Run(ctx context.Context) error {
 			return
 		}
 		for _, ep := range eps {
-			fmt.Printf("endpoint addr=%s healthy=%v zone=%s\n", ep.Addr, ep.Healthy, ep.Metadata["zone"])
+			fmt.Printf("endpoint addr=%s healthy=%v zone=%s\n", ep.Addr, ep.Healthy, ep.Zone)
 		}
 	}()
 	return nil

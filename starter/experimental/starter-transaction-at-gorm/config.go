@@ -26,12 +26,6 @@ type Config struct {
 	// is enough; set it to false to import the module without contributing beans.
 	Enabled bool `value:"${enabled:=true}"`
 
-	// Tracing wires the otel [at.Observer] so each branch's second-phase operation
-	// emits a child span (commit, rollback) on the globals installed by
-	// starter-otel. It defaults to true and costs almost nothing without
-	// starter-otel, since the global tracer is then a no-op.
-	Tracing bool `value:"${tracing:=true}"`
-
 	// RecoverOnStart enables the startup crash-recovery scan: a gs.Runner reads
 	// every AT-enrolled database's at_undo_log table and replays (rolls back) the
 	// undo logs a crash left behind. In this starter's single-process model any

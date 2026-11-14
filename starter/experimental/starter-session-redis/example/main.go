@@ -57,11 +57,11 @@ func main() {
 	// in-process state is shared between them, only Redis. What A writes, B reads.
 	gs.Provide(func(store session.SessionStore) (*gs.HttpServeMux, error) {
 		opt := session.Options{IdleTimeout: idleTimeout}
-		mgrA, err := session.NewManager(store, opt)
+		mgrA, err := session.NewManager(store, opt, nil)
 		if err != nil {
 			return nil, err
 		}
-		mgrB, err := session.NewManager(store, opt)
+		mgrB, err := session.NewManager(store, opt, nil)
 		if err != nil {
 			return nil, err
 		}

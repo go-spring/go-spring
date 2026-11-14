@@ -48,7 +48,6 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
-	"go-spring.org/stdlib/randutil"
 	"go-spring.org/stdlib/timeutil"
 )
 
@@ -83,9 +82,6 @@ type Job struct {
 	run     func(ctx context.Context) error
 	trigger Trigger
 	opts    []Option
-
-	// ins is this job's instrument set, resolved at construction.
-	ins *instrumentSet
 }
 
 // NewJob builds a [Job]. It returns an error on an empty name, a nil run
@@ -102,11 +98,7 @@ func NewJob(name string, trigger Trigger, run func(ctx context.Context) error, o
 	if trigger == nil {
 		return nil, errutil.Explain(nil, "scheduling: job %q has no trigger; pass FixedRate, FixedDelay, After or ParseCron", name)
 	}
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return &Job{name: name, trigger: trigger, run: run, opts: opts, ins: ins}, nil
+	return &Job{name: name, trigger: trigger, run: run, opts: opts}, nil
 }
 
 // Name returns the job's name: the scheduler's task name, and the default
@@ -192,6 +184,12 @@ type Options struct {
 	// LockTTL is the lease duration, auto-renewed while the job holds it; zero
 	// keeps the locker's own default.
 	LockTTL time.Duration
+
+	// Observer overrides the job's observability adapter for this execution.
+	// observerSet distinguishes "not given" (keep the job's observer) from an
+	// explicit nil (disabled).
+	Observer    Observer
+	observerSet bool
 }
 
 // Option mutates [Options].
@@ -231,6 +229,16 @@ func WithLock(l lock.Locker, key string, ttl time.Duration) Option {
 	}
 }
 
+// WithObserver overrides the scheduler's observability adapter for this job.
+// Passing nil disables observation for it; omitting it uses the scheduler's
+// injected adapter.
+func WithObserver(obs Observer) Option {
+	return func(o *Options) {
+		o.Observer = obs
+		o.observerSet = true
+	}
+}
+
 // event describes one scheduled fire, recorded by the package's built-in
 // instrumentation. A fire either runs or is skipped. A skipped event has Skipped
 // set and Reason naming why, with Start and Duration left zero.
@@ -260,15 +268,11 @@ type event struct {
 	// dropped it) or "lock" (another replica held the lock, or acquiring it
 	// failed).
 	Reason string
-
-	// ins is the job's instrument set, supplied by the task that reports the
-	// fire.
-	ins *instrumentSet
 }
 
 // NewScheduler returns a [Scheduler]. Nothing runs until Start.
-func NewScheduler() *Scheduler {
-	return &Scheduler{tasks: make(map[string]*task)}
+func NewScheduler(obs Observer) *Scheduler {
+	return &Scheduler{tasks: make(map[string]*task), obs: obs}
 }
 
 // Scheduler runs jobs against their triggers; it is safe for concurrent use.
@@ -276,6 +280,10 @@ func NewScheduler() *Scheduler {
 // flags; a task's own runtime state is guarded separately by [task].mu, so
 // managing tasks never contends with running them.
 type Scheduler struct {
+	// obs is the observability adapter a job reports through unless its own
+	// WithObserver option overrides it; nil disables the metrics.
+	obs Observer
+
 	mu    sync.Mutex
 	tasks map[string]*task // by task name
 
@@ -299,6 +307,10 @@ func (s *Scheduler) Schedule(j *Job) (func(), error) {
 	for _, fn := range j.opts {
 		fn(&o)
 	}
+	obs := s.obs
+	if o.observerSet {
+		obs = o.Observer
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -312,6 +324,7 @@ func (s *Scheduler) Schedule(j *Job) (func(), error) {
 	t := &task{
 		job:  j,
 		opts: o,
+		obs:  obs,
 		wg:   &s.wg,
 	}
 	// A fixedDelay trigger runs serially: the loop runs it inline so the next
@@ -406,6 +419,7 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 type task struct {
 	job      *Job
 	opts     Options
+	obs      Observer
 	isSerial bool // a fixedDelay trigger: runs inline, never overlaps
 
 	loopCancel context.CancelFunc // set by launch, cancelled by remove; guarded by Scheduler.mu
@@ -485,7 +499,7 @@ func (t *task) dispatch(ctx context.Context, scheduled time.Time) {
 		if t.running {
 			if t.queued {
 				t.mu.Unlock()
-				recordSkip(scheduled, t.job.name, "policy", t.job.ins)
+				recordSkip(scheduled, t.job.name, "policy", nil, t.obs)
 				return
 			}
 			t.queued, t.queuedAt = true, scheduled
@@ -512,7 +526,7 @@ func (t *task) dispatch(ctx context.Context, scheduled time.Time) {
 		t.mu.Lock()
 		if t.running {
 			t.mu.Unlock()
-			recordSkip(scheduled, t.job.name, "policy", t.job.ins)
+			recordSkip(scheduled, t.job.name, "policy", nil, t.obs)
 			return
 		}
 		t.running = true
@@ -582,12 +596,12 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 		}
 		l, ok, err := t.opts.Locker.TryAcquire(ctx, key, opts...)
 		if err != nil {
-			record(event{Name: t.job.name, Scheduled: scheduled, Err: err, Skipped: true, Reason: "lock", ins: t.job.ins})
+			recordSkip(scheduled, t.job.name, "lock", err, t.obs)
 			return
 		}
 		if !ok {
 			// Another replica holds the lock; this replica skips this fire.
-			recordSkip(scheduled, t.job.name, "lock", t.job.ins)
+			recordSkip(scheduled, t.job.name, "lock", nil, t.obs)
 			return
 		}
 		// An unlock failure is not the run's outcome (the run already finished
@@ -603,31 +617,26 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 		}()
 	}
 
-	ctx, span := traceRun(ctx, t.job.name)
-	// The run's identity comes from that span whenever a tracer is installed:
-	// the log hook emits the span's trace_id, so minting one here would put a
-	// second value under the same key. Only a span that yields no valid
-	// identity — no tracer, so the span is a no-op — leaves the run to name
-	// itself, and the id is minted per run because it must not outlive it.
-	if !span.SpanContext().IsValid() {
-		ctx = log.WithFields(ctx, log.String("trace_id", randutil.Hex(16)))
-	}
+	ctx, span := startRun(ctx, t.job.name)
 	start := time.Now()
 	err := safeRun(ctx, t.job.run)
-	end := time.Now()
+	finish := time.Now()
 	endRun(span, err)
+	if t.obs != nil {
+		t.obs.Run(context.Background(), t.job.name, statusOfRun(err),
+			finish.Sub(start), start.Sub(scheduled))
+	}
 
 	t.mu.Lock()
-	t.lastCompletion = end
+	t.lastCompletion = finish
 	t.mu.Unlock()
 
-	record(event{
+	recordLog(event{
 		Name:      t.job.name,
 		Scheduled: scheduled,
 		Start:     start,
-		Duration:  end.Sub(start),
+		Duration:  finish.Sub(start),
 		Err:       err,
-		ins:       t.job.ins,
 	})
 }
 

@@ -41,6 +41,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/observability/attrs"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/strutil"
 
@@ -65,77 +66,93 @@ const maxArg = 512
 // accessTag is the static log tag for the mongodb access log.
 var accessTag = log.RegisterAppTag("mongodb", "access")
 
-// dbObserver emits the mongodb signals for one instance: the
-// db.client.operation.duration histogram, the db.client.active_requests
-// gauge, an operation span, and the access log. Its records go through the
-// process-wide instrument set (see [instruments]); only the db.system label is
-// per instance. The emitted vocabulary mirrors the framework's unified emitter
-// so a mongodb call reads the same as any other client call in a dashboard; see
-// the file header for why the emission itself stays here rather than moving to
-// the resilience executor.
-type dbObserver struct {
-	system string
+// Observer receives mongodb's METRIC events: the operation duration and the
+// in-flight gauge. Spans are the STANDARD OTel capability and are opened by
+// [dbObserver.Start], not by this seam. A nil Observer disables the metrics.
+type Observer interface {
+	// Operation records one finished operation. status is ok | error.
+	Operation(ctx context.Context, operation, status string, duration time.Duration)
 
-	// ins is this observer's instrument set, resolved at construction.
-	ins *instrumentSet
+	// Active moves the in-flight gauge for operation by delta: +1 when it
+	// starts, -1 when it finishes.
+	Active(ctx context.Context, operation string, delta int64)
 }
 
-// instrumentSet is this starter's instrument set: one per client observer,
-// resolved when the client is constructed. It holds no per-instance state — the
-// db.system / db.operation / status labels travel with each record, not here.
-type instrumentSet struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// buildInstruments resolves this starter's instruments against the meter
-// provider the otel starter installs before any bean is built. The observer owns
-// the set, so a failed registration fails construction instead of silently
-// dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
+// NewOTelObserver resolves the layer's instruments and returns the default
+// OTel-backed [Observer].
+func NewOTelObserver() (Observer, error) {
 	m := otel.Meter(componentName)
-	duration, err := m.Float64Histogram("db.client.operation.duration",
+	o := &otelObserver{}
+	var err error
+	o.duration, err = m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of "+mongodbSystem+" client operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	if err != nil {
 		return nil, errutil.Explain(err, "mongodb: register db.client.operation.duration")
 	}
-	active, err := m.Int64UpDownCounter("db.client.active_requests",
+	o.active, err = m.Int64UpDownCounter("db.client.active_requests",
 		metric.WithDescription("Number of in-flight "+mongodbSystem+" client operations"),
 		metric.WithUnit("{request}"))
 	if err != nil {
 		return nil, errutil.Explain(err, "mongodb: register db.client.active_requests")
 	}
-	return &instrumentSet{duration: duration, active: active}, nil
+	return o, nil
 }
 
-// newDBObserver builds the observer for one instance.
-func newDBObserver() (*dbObserver, error) {
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return &dbObserver{system: mongodbSystem, ins: ins}, nil
+// otelObserver is the default [Observer]. The instruments are resolved when the
+// client is constructed. It holds no per-instance state — the db.system /
+// db.operation / status labels travel with each record, not here.
+type otelObserver struct {
+	duration metric.Float64Histogram
+	active   metric.Int64UpDownCounter
 }
 
-// Start begins one operation: it bumps the in-flight gauge, opens the
-// operation span, and records the start time; the returned span's End records
-// the duration histogram, balances the gauge, ends the span, and emits the
-// access log. op names the operation (span name, db.operation); arg is the
-// optional operation argument (statement, URL path), bounded by maxArg.
+// Operation implements [Observer].
+func (o *otelObserver) Operation(ctx context.Context, op, status string, duration time.Duration) {
+	o.duration.Record(ctx, duration.Seconds(), metric.WithAttributes(
+		attribute.String("db.system", mongodbSystem),
+		attribute.String("db.operation", op),
+		attribute.String("status", status),
+	))
+}
+
+// Active implements [Observer].
+func (o *otelObserver) Active(ctx context.Context, op string, delta int64) {
+	o.active.Add(ctx, delta, metric.WithAttributes(
+		attribute.String("db.system", mongodbSystem),
+		attribute.String("db.operation", op),
+	))
+}
+
+// dbObserver emits the mongodb signals for one instance. Its records go through
+// the injected [Observer]; only the log line stays here.
+type dbObserver struct {
+	system string
+	obs    Observer
+}
+
+// newDBObserverWith is the injection point: obs may be nil, which disables
+// observation.
+func newDBObserverWith(obs Observer) *dbObserver {
+	return &dbObserver{system: mongodbSystem, obs: obs}
+}
+
+// Start begins one operation: it bumps the in-flight gauge, opens the operation
+// span, and records the start time; the returned span's End records the
+// duration histogram, balances the gauge, ends the span, and emits the access
+// log. op names the operation (span name, db.operation); arg is the optional
+// operation argument (statement, URL path), bounded by maxArg.
 //
 // The span is SpanKindInternal — the framework-wide shape for a client call,
 // matching the unified emitter — because from this process's point of view the
 // call is an internal client operation, not a server-side handler.
 func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context, *dbSpan) {
-	inflight := metric.WithAttributes(
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", op),
-	)
-	o.ins.active.Add(ctx, 1, inflight)
+	if o.obs != nil {
+		o.obs.Active(ctx, op, 1)
+	}
 	attrs := []attribute.KeyValue{
-		attribute.String("db.system", o.system),
+		attribute.String("db.system", mongodbSystem),
 		attribute.String("db.operation", op),
 	}
 	if arg != "" {
@@ -144,19 +161,18 @@ func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context
 	ctx, span := otel.Tracer(componentName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(attrs...))
-	return ctx, &dbSpan{o: o, ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), inflight: inflight}
+	return ctx, &dbSpan{o: o, ctx: ctx, span: span, op: op, arg: arg, start: time.Now()}
 }
 
 // dbSpan is the handle returned by dbObserver.Start; End must be called
 // exactly once.
 type dbSpan struct {
-	o        *dbObserver
-	ctx      context.Context
-	span     trace.Span
-	op       string
-	arg      string
-	start    time.Time
-	inflight metric.MeasurementOption
+	o     *dbObserver
+	ctx   context.Context
+	span  trace.Span
+	op    string
+	arg   string
+	start time.Time
 }
 
 // End records the operation's outcome: the duration histogram, the in-flight
@@ -177,19 +193,15 @@ func (s *dbSpan) End(err error) {
 	if err != nil {
 		status = "error"
 	}
-	o.ins.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", s.op),
-		attribute.String("status", status),
-	))
-	o.ins.active.Add(s.ctx, -1, s.inflight)
-	if s.span != nil {
-		if err != nil {
-			s.span.SetStatus(codes.Error, err.Error())
-			s.span.RecordError(err)
-		}
-		s.span.End()
+	if o.obs != nil {
+		o.obs.Operation(s.ctx, s.op, status, dur)
+		o.obs.Active(s.ctx, s.op, -1)
 	}
+	if err != nil {
+		s.span.SetStatus(codes.Error, err.Error())
+		s.span.RecordError(err)
+	}
+	s.span.End()
 
 	common := func() []log.Field {
 		fields := []log.Field{
@@ -211,4 +223,10 @@ func (s *dbSpan) End(err error) {
 	default:
 		log.Info(s.ctx, accessTag, "mongo command completed", common()...)
 	}
+}
+
+// The package's default [Observer] bean: an application that contributes its
+// own observer takes precedence.
+func init() {
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 }

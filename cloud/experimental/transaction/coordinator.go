@@ -29,9 +29,6 @@ import (
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // componentName is the instrumentation componentName name every meter and tracer in this
@@ -46,9 +43,9 @@ type Option func(*coordinator)
 // production.
 func WithStore(s Store) Option { return func(c *coordinator) { c.store = s } }
 
-// WithObserver sets the [Observer] used to instrument every step phase, e.g. a
-// starter that opens otel spans.
-func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
+// WithMetrics sets the [MetricsObserver] used to record the saga's terminal
+// outcome. A nil observer disables the metric.
+func WithMetrics(o MetricsObserver) Option { return func(c *coordinator) { c.metrics = o } }
 
 // WithTraffic sets the process traffic convention used to stamp the operation
 // each step runs under, so a fault rule can target match.traffic.exact. Without it the
@@ -57,55 +54,28 @@ func WithTraffic(prop traffic.Propagator) Option {
 	return func(c *coordinator) { c.prop = prop }
 }
 
-// instrumentSet bundles the metrics a saga records: one per coordinator,
-// resolved when the coordinator is constructed. It holds no per-saga state.
-type instrumentSet struct {
-	// outcomes counts saga terminal states — the event counter of the metrics
-	// rules: a saga's outcome is a rare, semantically major event, named after
-	// itself rather than riding the total/duration operation template. The saga
-	// ID is unbounded cardinality and stays out of the attributes.
-	outcomes metric.Int64Counter
-}
-
-// buildInstruments resolves this package's instruments against the meter
-// provider the otel starter installs before any bean is constructed. The
-// coordinator owns the set, so a failed registration fails construction instead
-// of silently dropping the metric family.
-func buildInstruments() (*instrumentSet, error) {
-	outcomes, err := otel.Meter(componentName).
-		Int64Counter("transaction.saga.outcome.total",
-			metric.WithDescription("Saga terminal states, by status"),
-			metric.WithUnit("{saga}"))
-	if err != nil {
-		return nil, errutil.Explain(err, "transaction: register transaction.saga.outcome.total")
-	}
-	return &instrumentSet{outcomes: outcomes}, nil
-}
-
 // NewCoordinator returns the bundled in-process [Coordinator]: it runs a saga's
 // steps synchronously and, on the first failure, compensates the already-
-// succeeded steps in reverse order. With no options it uses no store and no
-// observer, which is a valid transparent setup for tests and development.
+// succeeded steps in reverse order. With no options it uses no store, which is
+// a valid transparent setup for tests and development.
 func NewCoordinator(opts ...Option) (Coordinator, error) {
-	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding())}
-	for _, opt := range opts {
-		opt(c)
-	}
-	ins, err := buildInstruments()
+	metrics, err := NewMetricsOTelObserver()
 	if err != nil {
 		return nil, err
 	}
-	c.ins = ins
+	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding()), metrics: metrics}
+	for _, opt := range opts {
+		opt(c)
+	}
 	return c, nil
 }
 
 type coordinator struct {
-	store    Store
-	observer Observer
-	prop     traffic.Propagator
+	store Store
+	prop  traffic.Propagator
 
-	// ins is this coordinator's instrument set, resolved at construction.
-	ins *instrumentSet
+	// metrics records the saga's terminal outcome; nil disables it.
+	metrics MetricsObserver
 }
 
 // completedStep records a step that succeeded, so compensation can replay it in
@@ -248,18 +218,16 @@ func (c *coordinator) compensateOrdered(ctx context.Context, sagaID string, orde
 	}
 }
 
-// runPhase runs one step phase under its retry policy and observer. The observer
-// end func always fires with the phase's final error so failures are observable.
+// runPhase runs one step phase under its retry policy and its standard span.
+// The span's end func always fires with the phase's final error so failures are
+// visible in the trace.
 func (c *coordinator) runPhase(ctx context.Context, sagaID string, step Step, phase Phase,
 	fn func(context.Context) (any, error)) (any, error) {
 
-	end := func(error) {}
-	if c.observer != nil {
-		ctx, end = c.observer.Begin(ctx, sagaID, step.Name, phase)
-	}
+	ctx, end := BeginSagaSpan(ctx, sagaID, step.Name, phase)
 
 	var result any
-	err := runWithPolicy(ctx, c.prop, step.Retry, step.Name, func(ctx context.Context) error {
+	err := runWithPolicy(ctx, c.prop, step.Retry, step.Name, func(ctx context.Context, _ *chain.Round) error {
 		var e error
 		result, e = fn(ctx)
 		return e
@@ -288,9 +256,9 @@ func (c *coordinator) persistRunning(ctx context.Context, s Saga, completed []co
 // log line too — a saga's outcome is the key lifecycle event an operator
 // greps for, and the span alone is not greppable text.
 func (c *coordinator) finish(ctx context.Context, s Saga, res *Result, completed []completedStep) {
-	c.ins.outcomes.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("status", res.Status.String()),
-	))
+	if c.metrics != nil {
+		c.metrics.Outcome(ctx, "saga", res.Status.String())
+	}
 	if res.Status == StatusCommitted {
 		log.Info(ctx, log.TagAppDef, "transaction: saga committed",
 			log.String("saga", s.ID),
@@ -335,9 +303,11 @@ func (c *coordinator) snapshot(s Saga, status Status, completed []completedStep,
 // reuses [resilience.TimeoutRetry] so Saga step retries and outbound resilience share
 // one knob set instead of duplicating retry logic here; the step's node becomes the
 // executor's policy retry node.
-func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn chain.RoundFunc) error {
 	if p.IsZero() {
-		return fn(ctx)
+		// No chain runs the step, so no loop opens a round: open a bare one so the
+		// fn still runs IN a round, as its signature promises.
+		return fn(ctx, new(chain.Recorder).NewRound())
 	}
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {

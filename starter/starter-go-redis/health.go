@@ -34,9 +34,10 @@ import (
 // Unlike the other client starters this probe cannot bypass the instrumentation:
 // the declaration and resilience layers are go-redis hooks attached to the raw
 // client the wrapper embeds, so a PING issued through the embedded client
-// necessarily rides them (it declares nothing — PING is a skip op — so the
-// resilience layer reports it as an undeclared call). That is inherent to how
-// go-redis exposes its extension point, not a choice made here.
+// necessarily rides them. It declares its identity like any other command; being
+// a skip op, its success line is levelled to Debug rather than flooding the log.
+// That is inherent to how go-redis exposes its extension point, not a choice
+// made here.
 func HealthCheck(ctx context.Context, c *Client) error {
 	return c.Ping(ctx).Err()
 }

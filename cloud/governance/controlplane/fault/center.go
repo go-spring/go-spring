@@ -37,9 +37,9 @@
 // generic [source.Source] contract as every other root, but the transport itself
 // (a file, a config center, a stream) is provided by whoever owns the
 // deployment's configuration — a company-level source starter. The document is
-// [kfault.Document] from the data plane: the root binds it and fans it out to
+// [Document] from the data plane: the root binds it and fans it out to
 // the two direction managers. It lives under spring.fault.*. A process whose
-// source starter provides no Source[kfault.Document] is simply not armed — a
+// source starter provides no Source[Document] is simply not armed — a
 // legitimate state that a single shared document could not express.
 //
 // The lifecycle is the document's presence: a rule appears and it starts; it
@@ -53,7 +53,6 @@ package fault
 import (
 	"context"
 
-	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -86,7 +85,7 @@ type Center struct {
 	// with an empty document (injects nothing) instead of leaving the field nil.
 	// A deployment whose source starter DOES provide one fails loudly in that
 	// adapter (unreadable file, unreachable console).
-	src source.Source[kfault.Document]
+	src source.Source[Document]
 }
 
 // NewCenter arms the fault root: it applies the source's snapshot, then
@@ -106,12 +105,12 @@ type Center struct {
 // via [gs.ContextProvider]; a hand-built caller passes whatever it has. The
 // startup "config applied" log borrows it, the same way every later push's is.
 func NewCenter(ctx context.Context, client *clientfault.Manager, server *serverfault.Manager,
-	src source.Source[kfault.Document]) (*Center, error) {
+	src source.Source[Document]) (*Center, error) {
 	c := &Center{client: client, server: server, src: src}
 	if err := c.Refresh(ctx, c.src.Snapshot()); err != nil {
 		return nil, err
 	}
-	c.src.Subscribe(func(ctx context.Context, doc kfault.Document) {
+	c.src.Subscribe(func(ctx context.Context, doc Document) {
 		// A push has no caller to intervene.
 		_ = c.Refresh(ctx, doc)
 	})
@@ -123,17 +122,16 @@ func NewCenter(ctx context.Context, client *clientfault.Manager, server *serverf
 // which commits it and rebuilds that direction's kernel. Wiring propagates the
 // error and refuses to start; a source push has no caller to intervene.
 //
-// It has no failure mode today: every constraint is a field-level expr tag
-// judged at conf.Bind, and the direction managers take a commit. The error
-// return is the family contract, so both phases keep one shape and a future
-// kernel check has somewhere to surface.
+// Every constraint is a field expr tag judged at conf.Bind, and the direction
+// split is in the types themselves (a client config cannot express an inbound
+// answer, and vice versa), so this method just commits what it is given.
 //
 // It is the ONE entry point for both the initial snapshot and every push, whole
 // document and idempotent: a source always delivers the complete document, never
 // a delta, so "a push that changed nothing" is naturally a no-op. It never runs
 // concurrently: the source serializes deliveries, and the initial load happens
 // during wiring, before the source's loop starts.
-func (c *Center) Refresh(ctx context.Context, doc kfault.Document) error {
+func (c *Center) Refresh(ctx context.Context, doc Document) error {
 	// The document's run id is the drill id of BOTH directions.
 	if doc.RunID != "" {
 		doc.Client.RunID = doc.RunID

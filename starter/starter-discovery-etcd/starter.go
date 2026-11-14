@@ -118,8 +118,8 @@ type etcdBackend struct {
 	// obs and regObs are this block's two observability layers: the read-side
 	// sync observer (data plane) and the registration observer (control plane).
 	// They are independent by design and both are closed by the bean destructor.
-	obs    *discovery.Observer
-	regObs *registration.Observer
+	obs    discovery.Observer
+	regObs registration.Observer
 
 	// bgCancel ends the discovery half's background watches. It is the signal
 	// that separates "the backend is closing" from "a watch failed": the watch
@@ -142,7 +142,13 @@ type etcdBackend struct {
 // The probe is the fail-fast: a misconfigured or unreachable cluster fails
 // startup here, once per block. With Ping off (the default) construction skips
 // the probe so a cluster that is not up yet does not block startup.
-func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
+func newEtcdBackend(c EtcdConfig, name string, discFactory discovery.ObserverFactory, regFactory registration.ObserverFactory) (*etcdBackend, error) {
+	if discFactory == nil {
+		return nil, errutil.Explain(nil, "discovery: observer factory is required")
+	}
+	if regFactory == nil {
+		return nil, errutil.Explain(nil, "registration: observer factory is required")
+	}
 	if len(c.Endpoints) == 0 {
 		return nil, errutil.Explain(nil, "discovery-etcd: endpoints is required")
 	}
@@ -170,12 +176,12 @@ func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
 		}
 	}
 	kv := etcdClient{cli}
-	obs, err := discovery.NewObserver(obsSystem, name)
+	obs, err := discFactory.New(obsSystem, name)
 	if err != nil {
 		_ = cli.Close()
 		return nil, err
 	}
-	regObs, err := registration.NewObserver(obsSystem, name)
+	regObs, err := regFactory.New(obsSystem, name)
 	if err != nil {
 		_ = cli.Close()
 		return nil, err

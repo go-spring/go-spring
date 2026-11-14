@@ -55,8 +55,9 @@
 // from inside a custom Runner — otherwise the steps may be absent when the
 // recovery Runner runs.
 //
-// Observability is on by default: when Config.Tracing is true the coordinator
-// emits an otel child span per step phase on the globals starter-otel installs.
+// Spans are standard OTel: the coordinator emits a child span per step phase on
+// the globals starter-otel installs; without starter-otel the global tracer is
+// a no-op.
 package StarterTransactionSaga
 
 import (
@@ -80,11 +81,11 @@ func init() {
 	gs.Provide(func() transaction.Store { return &transaction.MemoryStore{} }).
 		Condition(enabled, gs.OnMissingBean[transaction.Store]())
 
-	// The in-process coordinator, built from the bound configuration (for the
-	// tracing toggle) and the autowired Store. Exported as the
+	// The in-process coordinator, built from the bound configuration and the
+	// autowired Store. Exported as the
 	// transaction.Coordinator interface so business code depends on the
 	// abstraction, not this construction.
-	gs.Provide(newCoordinator, gs.TagArg("${spring.transaction.saga}"), gs.TagArg("")).
+	gs.Provide(newCoordinator, gs.IndexArg(0, gs.TagArg("${spring.transaction.saga}")), gs.IndexArg(1, gs.TagArg(""))).
 		Condition(enabled).
 		Export(gs.As[transaction.Coordinator]())
 
@@ -103,12 +104,12 @@ var enabled = gs.OnProperty("spring.transaction.saga.enabled").HavingValue("true
 var recoverOnStart = gs.OnProperty("spring.transaction.saga.recover-on-start").HavingValue("true").MatchIfMissing()
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
-// saga-log Store and, when tracing is enabled, the otel observer.
-func newCoordinator(c Config, store transaction.Store) (transaction.Coordinator, error) {
+// saga-log Store.
+func newCoordinator(c Config, store transaction.Store, metrics transaction.MetricsObserver) (transaction.Coordinator, error) {
 	opts := []transaction.Option{transaction.WithStore(store)}
-	if c.Tracing {
-		opts = append(opts, transaction.WithObserver(transaction.SagaObserver{}))
+	if metrics != nil {
+		opts = append(opts, transaction.WithMetrics(metrics))
 	}
-	log.Info(context.Background(), log.TagAppDef, "create saga coordinator success", log.Bool("tracing", c.Tracing))
+	log.Info(context.Background(), log.TagAppDef, "create saga coordinator success", log.Bool("metrics", metrics != nil))
 	return transaction.NewCoordinator(opts...)
 }

@@ -27,7 +27,6 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
@@ -35,6 +34,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
@@ -71,10 +71,15 @@ func testCenter() *governance.Runtime {
 	if err != nil {
 		panic(err)
 	}
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		panic(err)
+	}
+	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
-		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-	Admission:   adm,
+		LoadBalance: lbMgr,
+		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -117,7 +122,7 @@ func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
 	armRateLimit(t, ctr)
 	in, err := ctr.InboundFor("grpc", "grpc:test")
 	assert.That(t, err).Nil()
-	ic := resilienceUnaryInterceptor(in, "grpc:test", ctr.Traffic)
+	ic := resilienceUnaryInterceptor(in, ctr.Traffic)
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 
 	hits := 0
@@ -143,13 +148,13 @@ func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
 //
 // ServerPolicy rejections are mapped to semantic status codes (see
 // mapServerPolicyError): a rate-limit rejection crosses the wire as
-// ResourceExhausted with message "resilience: rate limited", so consumers
+// ResourceExhausted with message "chain: rate limited", so consumers
 // branching on status code can recognise throttling.
 func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 	addr := uniqueTestAddr("inbound-e2e")
 
 	ctr := testCenter()
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, ctr, testProp)
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, ctr, testProp, nil)
 	// Arm AFTER constructing the server: the server captures its Inbound at
 	// wiring time, and the guard follows the manager's later pushes.
 	armRateLimit(t, ctr)
@@ -193,7 +198,7 @@ func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 // no-op, so every RPC runs the handler untouched.
 func TestServerPolicy_UnarmedManagerIsTransparent(t *testing.T) {
 	addr := uniqueTestAddr("inbound-unarmed")
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(), testProp)
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(), testProp, nil)
 	ri, ok, err := s.buildResilienceInterceptors()
 	assert.That(t, err).Nil()
 	assert.That(t, ok).True()

@@ -59,7 +59,7 @@ func TestGuardRetriesTransient(t *testing.T) {
 	boom := &net.OpError{Op: "read", Net: "tcp", Err: errors.New("reset")}
 	var calls int
 	_, err = guard(context.Background(), m.Wrap("svc", nil), chain.Operation{Service: "svc"},
-		func(context.Context) (struct{}, error) {
+		func(context.Context, chain.Peer) (struct{}, error) {
 			calls++
 			return struct{}{}, boom
 		})

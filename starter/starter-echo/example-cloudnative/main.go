@@ -20,8 +20,6 @@
 //
 //   - HEALTH: a health.Indicator bean is aggregated by starter-actuator on its
 //     management port (:9370); toggling it flips /readyz between 200 and 503.
-//   - DISCOVERY: a static discovery backend hands out the app's own echo address;
-//     the app resolves it client-side and dials the endpoint end-to-end.
 //   - RESILIENCE: the builtin "default" driver rate-limits an arbitrary function
 //     (chain.Executor.Execute -> ErrRateLimited) and an inbound route (/limited -> 429).
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file
@@ -52,8 +50,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -93,16 +89,6 @@ var dep = &health.Indicator{
 var exec chain.Executor
 
 func init() {
-	// Serve the app's own echo address through discovery (a real deployment
-	// would point Consul/Nacos/k8s here; a static backend keeps it self-contained).
-	// The backend is a named bean — the container is the discovery directory —
-	// cited by the clients' `discovery: static` config key.
-	gs.Provide(func() (discovery.Discovery, error) {
-		return discovery.NewStaticDiscovery(
-			discovery.Endpoint{Addr: "127.0.0.1:8082", Healthy: true},
-		), nil
-	}).Name("static")
-
 	gs.Provide(dep)
 	gs.Provide(&Config{}).Export(gs.As[gs.Rooter]())
 }
@@ -158,7 +144,7 @@ func main() {
 			// A rate-limited route: the handler body runs through the resilience
 			// executor, so excess requests are shed with HTTP 429.
 			e.GET("/limited", func(ctx echo.Context) error {
-				err := exec.Execute(ctx.Request().Context(), chain.Operation{Service: "echo:demo"}, new(chain.Recorder), func(context.Context) error {
+				err := exec.Execute(ctx.Request().Context(), chain.Operation{Service: "echo:demo"}, new(chain.Recorder), func(context.Context, *chain.Round) error {
 					return ctx.String(http.StatusOK, "ok")
 				})
 				if errors.Is(err, chain.ErrRateLimited) {
@@ -199,42 +185,10 @@ func runTest() {
 	mustStatus(actuatorBase+"/readyz", http.StatusOK)
 	fmt.Println("health: readiness aggregate OK (UP -> DOWN when dependency down -> UP)")
 
-	// --- 2. Discovery ----------------------------------------------------
-	// The smoke test runs outside the container, so it re-builds the same
-	// static backend the init above registered as the "static" bean.
-	resolver, err := discovery.NewResolver(ctx, discovery.NewStaticDiscovery(
-		discovery.Endpoint{Addr: "127.0.0.1:8082", Healthy: true},
-	), "cloudnative-echo", "")
-	if err != nil {
-		fail("new resolver: %v", err)
-	}
-	factories := loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})
-	bal, err := factories.Create(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
-	if err != nil {
-		fail("new balancer: %v", err)
-	}
-	tracker, err := loadbalance.NewTracker(loadbalance.TrackerConfig{})
-	if err != nil {
-		fail("new tracker: %v", err)
-	}
-	pool, err := loadbalance.NewPool(resolver, bal, tracker, loadbalance.Selection{})
-	if err != nil {
-		fail("new pool: %v", err)
-	}
-	pick, err := pool.Pick(ctx, loadbalance.PickInfo{})
-	if err != nil {
-		fail("resolve: %v", err)
-	}
-	if pick.Endpoint.Addr != "127.0.0.1:8082" {
-		fail("unexpected resolved addr: %s", pick.Endpoint.Addr)
-	}
-	mustStatus("http://"+pick.Endpoint.Addr+"/", http.StatusOK)
-	fmt.Printf("discovery: resolved %q -> dialed OK\n", pick.Endpoint.Addr)
-
-	// --- 3. Resilience ---------------------------------------------------
+	// --- 2. Resilience ---------------------------------------------------
 	var admitted, rejected int
 	for range 15 {
-		err := exec.Execute(ctx, chain.Operation{Service: "echo:demo"}, new(chain.Recorder), func(context.Context) error { return nil })
+		err := exec.Execute(ctx, chain.Operation{Service: "echo:demo"}, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })
 		switch {
 		case err == nil:
 			admitted++
@@ -249,6 +203,13 @@ func runTest() {
 	}
 	fmt.Printf("resilience: chain.Executor rate limit admitted=%d rejected=%d\n", admitted, rejected)
 
+	// The token bucket's stockpile starts EMPTY (Guava semantics) and only
+	// refills while idle — the loop above already drained it, so request now
+	// would all be shed with no admitted request to compare against. With
+	// rate-limit=3/s and the default burst (one second's worth = 3 permits),
+	// idling ~1s rebuilds the stockpile; the burst below then admits the stock
+	// and sheds the excess, which is the pair this check asserts.
+	time.Sleep(1500 * time.Millisecond)
 	okHTTP, limitedHTTP := 0, 0
 	for range 15 {
 		resp, err := http.Get(appBase + "/limited")
@@ -270,7 +231,7 @@ func runTest() {
 	}
 	fmt.Printf("resilience: /limited admitted=%d rejected=%d\n", okHTTP, limitedHTTP)
 
-	// --- 4. Dynamic configuration ----------------------------------------
+	// --- 3. Dynamic configuration ----------------------------------------
 	body := mustBody(appBase + "/greeting")
 	if !strings.Contains(body, "hello") {
 		fail("initial greeting missing: %s", body)

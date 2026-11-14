@@ -41,7 +41,7 @@ import (
 	"reflect"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	// The center that consumes what this source feeds: gs registers beans in
 	// package init(), and Go's import graph is the component scan — without this
 	// import the loadbalance root does not exist in the binary and the source

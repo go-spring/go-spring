@@ -80,10 +80,13 @@ type Client struct {
 // throttles, retries or circuit-breaks. There is no Init step — building a
 // Client and initializing it are the same act.
 func NewClient(raw *mongo.Client, cfg Config) (*Client, error) {
-	obs, err := newDBObserver()
-	if err != nil {
-		return nil, err
-	}
+	return NewClientWithObserver(raw, cfg, nil)
+}
+
+// NewClientWithObserver is the injection point for a custom [Observer]. A nil
+// observer disables the metrics.
+func NewClientWithObserver(raw *mongo.Client, cfg Config, o Observer) (*Client, error) {
+	obs := newDBObserverWith(o)
 	return &Client{
 		Client:       raw,
 		obs:          obs,

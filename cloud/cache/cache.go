@@ -69,6 +69,17 @@ type Cache struct {
 // config carries a [Cache]'s configured behaviour.
 type config struct {
 	codec Codec
+
+	// observer receives the cache's events; nil disables observation.
+	observer Observer
+}
+
+// WithObserver injects the observability adapter. Passing nil disables
+// observation.
+func WithObserver(obs Observer) Option {
+	return func(cfg *config) {
+		cfg.observer = obs
+	}
 }
 
 // Option customizes a [Cache]. Passed to [New] it sets the cache's default;
@@ -94,11 +105,7 @@ func New(bc ByteCache, opts ...Option) (*Cache, error) {
 	for _, o := range opts {
 		o(&cfg)
 	}
-	observed, err := newObservedCache(bc)
-	if err != nil {
-		return nil, err
-	}
-	return &Cache{ByteCache: observed, cfg: cfg}, nil
+	return &Cache{ByteCache: newObservedCache(bc, cfg.observer), cfg: cfg}, nil
 }
 
 // configFor copies the cache's config and applies the per-call opts on top.

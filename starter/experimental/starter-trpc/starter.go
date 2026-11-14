@@ -124,6 +124,7 @@ type SimpleTrpcServer struct {
 	// one, go-spring.s default otherwise — the "loadtest" server filter reads the inbound marker
 	// through it.
 	prop traffic.Propagator
+	obs  Observer
 	svr  *server.Server
 	done chan struct{}
 }
@@ -134,7 +135,7 @@ type SimpleTrpcServer struct {
 // (nil when governance is not imported). prop is the load-test
 // convention bean — the application.s when it provides one, go-spring.s default
 // otherwise — handed to the "loadtest" server filter.
-func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Runtime, prop traffic.Propagator) *SimpleTrpcServer {
+func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Runtime, prop traffic.Propagator, obs Observer) *SimpleTrpcServer {
 	log.Debug(context.Background(), log.TagAppDef, "create trpc server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),
@@ -143,7 +144,7 @@ func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Run
 			log.String("protocol", cfg.Protocol),
 		}
 	})
-	return &SimpleTrpcServer{cfg: cfg, reg: reg, center: center, prop: prop, done: make(chan struct{})}
+	return &SimpleTrpcServer{cfg: cfg, reg: reg, center: center, prop: prop, obs: obs, done: make(chan struct{})}
 }
 
 // Run builds the tRPC server from a programmatic *trpc.Config (no trpc_go.yaml)
@@ -199,8 +200,8 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if s.cfg.Observer.Tracing.Enabled {
 		filter.Register("tracing", TracingServerFilter(), nil)
 	}
-	if s.cfg.Observer.Metrics.Enabled {
-		mf, err := MetricsServerFilter()
+	if s.cfg.Observer.Metrics.Enabled && s.obs != nil {
+		mf, err := s.obs.Metrics()
 		if err != nil {
 			return err
 		}

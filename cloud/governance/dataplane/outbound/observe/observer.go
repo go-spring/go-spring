@@ -39,11 +39,11 @@ type OperationObserver struct {
 // NewOperationObserver builds the observer for one client system/service. system
 // is the backend name ("kafka", "webhook"); service is the per-instance label
 // (see [label.ServiceLabel]).
-func NewOperationObserver(system, service string) *OperationObserver {
+func NewOperationObserver(system, service string, m Metrics) *OperationObserver {
 	return &OperationObserver{callEmitter: &callEmitter{
 		system:  system,
 		service: service,
-		ins:     clientInstruments(),
+		metrics: m,
 	}}
 }
 

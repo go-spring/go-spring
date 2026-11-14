@@ -1,15 +1,22 @@
 # fault
 
-`fault` is the shared, direction-neutral kernel of the in-process
-**fault-injection** family. It owns the rule document, the matching vocabulary
-and the injection sequence; the two direction packages wrap it:
-[outbound/fault](../../dataplane/outbound/fault/) gates an outbound attempt inside the
-resilience executor's retry loop, and [inbound/fault](../../dataplane/inbound/fault/) decides
-an inbound request before the handler runs.
+`fault` is the shared, direction-neutral MECHANISM of the in-process
+**fault-injection** family: the targeting vocabulary, the rule core every
+direction embeds, the guardrail state model and the injection sequence. The two
+direction packages own their CONFIGURATION and their effect:
+[outbound/fault](../../dataplane/outbound/fault/) defines `ClientRule`/`ClientConfig`
+(an error kind + class) and gates an outbound attempt inside the resilience
+executor's retry loop; [inbound/fault](../../dataplane/inbound/fault/) defines
+`ServerRule`/`ServerConfig` (the failure the server returns) and decides an
+inbound request before the handler runs. A rule cannot express an effect its
+direction cannot produce.
 
 The two authorities are independent: each owns its own document and kernel, so
 "setting fire" to a running client or server verifies retry, circuit-breaker,
 per-attempt timeout and Fallback without one direction touching the other.
+
+**What it is for and what it is NOT**: see [SCOPE.md](SCOPE.md). Read it before
+adding an effect or a new injection seam.
 
 ## Features
 
@@ -19,7 +26,7 @@ per-attempt timeout and Fallback without one direction touching the other.
   validate resilience, not bypass it.
 - Centralized, hot-reloadable config. fault has its own control-plane ROOT
   (`controlplane/fault`, document `spring.fault.*`, source
-  `Source[fault.Document]` provided by the deployment's source starter) — peer to
+  `Source[controlplane/fault.Document]` provided by the deployment's source starter) — peer to
   governance, sharing only the transport.
   The two direction packages own independent authorities —
   `*clientfault.Manager` and `*serverfault.Manager`, each registered
@@ -34,13 +41,28 @@ per-attempt timeout and Fallback without one direction touching the other.
   guardrail counter is per rule, keyed by the rule's identity, so one fire
   self-healing cannot stop another.
 - Four injection kinds: `generic` (a retryable injected error), `timeout`
-  (`context.DeadlineExceeded`), `reset` (`syscall.ECONNRESET`), `refused`
-  (`syscall.ECONNREFUSED`); plus a pure latency mode. Per-service rules via
-  `Config.Rules`.
-- Injected errors implement `resilience.Retryable` AND
-  `resilience.FailureClass`, so they deterministically drive retry and breaker
-  decisions exactly as the rule's `class` declared, regardless of the host's
-  own predicates.
+  (`os.ErrDeadlineExceeded` — an I/O read/write timeout, not a context deadline),
+  `reset` (`syscall.ECONNRESET`), `refused`
+  (`syscall.ECONNREFUSED`); plus a pure latency mode. Inbound rules declare the
+  response `status` (400–599) instead. Per-service rules via each direction's
+  `ClientConfig`/`ServerConfig`.
+- Dose and time: `rate` (probability) or `every` (deterministic every-Nth), a
+  `start-after` delay, and `on`/`off` intermittent windows; `max-affected` and
+  `max-duration` remain the guardrails. This is what expresses "bad for 30s,
+  then recover" — the shape a breaker's half-open probe needs.
+  All dose knobs count ATTEMPTS: a retried outbound call is N downstream
+  requests, each judged independently (the same per-request model Envoy and
+  Istio use). For independent draws the call-level failure rate composes as
+  `1-(1-rate)^N`; retries mask part of the injected rate, as they would with a
+  real flaky downstream.
+- Outbound rules may also declare `status` (400–599): it rides the injected
+  error for an adapter whose protocol has a native status to translate. A
+  `net/http` caller is different — a 5xx there is a RESPONSE, not an error — so
+  it sees a status only once response replacement lands.
+- Outbound injected errors implement `resilience.Retryable`, so they
+  deterministically drive retry and breaker decisions exactly as the rule's
+  `class` declared, regardless of the host's own predicates. There is no
+  business class: the outbound chain never sees a business answer.
 - The kernel itself imports nothing of cloud's call vocabulary — only the
   shared `capability/matcher` vocabulary; `chain` appears in the direction
   adapters (the client seam's `Executor` and the record the fire is written
@@ -119,11 +141,16 @@ spring.fault.run-id=drill-2026-10-27
 spring.fault.client.rules[0].service=redis:cache
 spring.fault.client.rules[0].rate=0.5
 spring.fault.client.rules[0].error=generic        # optional: "generic" (default) | "timeout" | "reset" | "refused"
-spring.fault.client.rules[0].class=transient      # optional: transient | permanent | business
+spring.fault.client.rules[0].class=transient      # optional: transient | permanent
 spring.fault.client.rules[0].latency=50ms         # optional, applied on every attempt
 spring.fault.client.rules[0].latency-jitter=20ms  # optional, sleep latency ± U[0,20ms]
 spring.fault.client.rules[0].max-affected=100     # optional blast-radius cap (per process)
 spring.fault.client.rules[0].max-duration=5m      # optional self-heal window (per process)
+spring.fault.client.rules[0].status=503           # optional protocol status (400–599) for adapters that translate
+spring.fault.client.rules[0].start-after=10s      # optional: delay the whole rule from its first match
+# spring.fault.client.rules[0].every=10           # alternative to rate: fire every 10th matching call
+spring.fault.client.rules[0].on=5s                # optional intermittent window (pairs with off)
+spring.fault.client.rules[0].off=5s
 spring.fault.client.rules[0].match.traffic.exact=loadtest       # optional: "real" | "loadtest" | any custom class
 
 # inbound: Server.Fire's decision (gin / echo / grpc / hertz / trpc / dubbo).
@@ -131,11 +158,13 @@ spring.fault.client.rules[0].match.traffic.exact=loadtest       # optional: "rea
 spring.fault.server.rules[0].service=grpc
 spring.fault.server.rules[0].action.exact=/demo.Service/Echo
 spring.fault.server.rules[0].rate=0.2
-spring.fault.server.rules[0].error=timeout
+spring.fault.server.rules[0].status=503           # required once rate > 0: 400–599
+spring.fault.server.rules[0].body={"error":"injected"}       # optional response body / RPC message
+spring.fault.server.rules[0].content-type=application/json   # optional, HTTP only
 ```
 
-A direction is armed when at least one rule carries a `rate` or a `latency`;
-with no such rule it injects nothing. There is no separate `enabled` key, and —
+A direction is armed when at least one rule carries a `rate`/`every` or a
+`latency`; with no such rule it injects nothing. There is no separate `enabled` key, and —
 deliberately — no top-level effect: an operator aiming at one service cannot
 accidentally burn the rest of the process, and every fire is visible as a rule
 in the config diff.
@@ -162,7 +191,7 @@ calls, `Server.Fire` for inbound requests — plus the load-test binary
   operations are made to fail (or slow down) before the real executor sees
   them; hot-swap the live config behind an atomic pointer; expose neutral
   `InjectedError` values that are `resilience.Retryable` and surface as familiar
-  Go errors (`context.DeadlineExceeded`, `syscall.ECONNRESET`).
+  Go errors (`os.ErrDeadlineExceeded`, `syscall.ECONNRESET`).
 - **Refuses:**
   - No gs / spring dependency in the DOMAIN code: the injector is a plain object,
     and `WrapClientExecutor` / `Server.Fire` are container-free functions. The one
@@ -225,19 +254,24 @@ construction); fault then wraps that from the outside. The injected fault still
 reaches the real executor's retry loop, so it is both *handled* by resilience
 and *recorded* by observe.
 
-**Failure class.** `InjectedError` implements both `Retryable()` and
-`CountsAsFailure()`, driven by the rule's `class`:
-`transient` (default) is retried and counted by the breaker, `permanent` is not
-retried but still counted, and `business` is neither — the shape of a caller
-mistake (an HTTP 4xx), which must not open a circuit against a healthy
-downstream. The classification overrides the host's predicate, so the paths a
-hard-wired retryable injection cannot reach ("this must not be retried", "this
-must not trip the breaker") become testable. The inbound adapters finish the
-story on the wire: `business` crosses as 400 / `codes.InvalidArgument`, anything
-else as 503 / `codes.Unavailable`, so the client's own retry and breaker classify
-the injected failure the way the rule declared. The typed kinds wrap a real error
-so `errors.Is(err, context.DeadlineExceeded)` works and downstream classifiers
-(observe's outcome map) label the call like a genuine timeout/reset.
+**Outbound failure class.** `InjectedError` implements `Retryable()` and carries
+the rule's `class`: `transient` (default) is retried and counted by the breaker,
+`permanent` is not retried but still counted. The classification overrides the
+host's predicate, so "this must not be retried" becomes testable. There is no
+"business" class — the outbound chain never sees a business answer (a real
+client adapter folds one to nil with `resilience.Tolerate` before the executor
+runs). The typed kinds wrap a real error so
+`errors.Is(err, os.ErrDeadlineExceeded)` works and downstream classifiers
+(observe's outcome map) label the call like a genuine I/O timeout/reset.
+
+**Inbound response.** A server rule declares `status` (400–599), required once
+`rate > 0`, and optionally a `body` + `content-type`. The handler does not run:
+the adapters answer with the declared response — HTTP writes the status and
+body (content type defaults to plain text), gRPC/trpc/dubbo map the status
+FAMILY (4xx → InvalidArgument / validation code, 5xx → Unavailable / system
+error) and use the body as the status message. This is a declared response, not
+a corrupted real one: 2xx/3xx replacement and post-handler mutation are not
+supported yet.
 
 **Naming the call: `Target`.** A rule is matched against a `Target` — the three
 coordinates a rule can name: `Service` (what was called), `Action` (which

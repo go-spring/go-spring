@@ -167,7 +167,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   **独立**接口上(如 go-redis 的 `ClusterDriver`),让已有的自定义 driver 保持可编译。
 - **要对外访问的 client starter 靠自己的 import 拿到治理能力。** 不需要任何治理 import:每个 authority
   由**管它的那个包**注册 —— `cloud/governance/dataplane/outbound/resilience` 注册 `*resilience.Manager`、
-  `cloud/governance/capability/loadbalance` 注册 `*loadbalance.Manager`、`cloud/governance/dataplane/{outbound,inbound}/fault` 注册
+  `cloud/governance/dataplane/outbound/loadbalance` 注册 `*loadbalance.Manager`、`cloud/governance/dataplane/{outbound,inbound}/fault` 注册
   `*clientfault.Manager` / `*serverfault.Manager`、`cloud/discovery` 注册
   `*discovery.Manager` —— 而注入其中一个的 client 必然已经为了类型 import 了那个包。
   根包把它们组装成唯一的 `*governance.Runtime` bean(入站 `*admission.Manager` 由它自己创建)。于是 `*resilience.Manager` /
@@ -215,7 +215,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     `starter.go`;这里只放 resolver 的构建。所有发现模式的链都按同一套建:挂
     suspension `Tracker`、在建连处把 `Pick` 与 `Complete` 配对、再用
     `lbMgr.Chain(resolver, entry label)`(带注入的 `*loadbalance.Manager`)——于是该 entry 的
-    治理规则会为 `balancer` / `outlier-threshold` / `outlier-suspend-for` 整条重建链路,走的是
+    治理规则会为 `balancer` / `dial-failures` / `request-failures` / `suspend-for` 整条重建链路,走的是
     `loadbalance` manager,不需要 import 各策略根。
   - `client.go` —— 组装好的 client 及其 resilience 那一侧:构造函数钉在它上面的 executor、
     把每次调用路由进该 executor、`Close` Destroy 钩子,以及任何 per-client 保护缝
@@ -571,9 +571,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     比不同名更糟。HTTP 同此一刀:共用的轴是 `status`,细节是
     `http.response.status_code`。
     客户端发射点同此一刀:`status` 与别处一样是 `ok`/`error`,而
-    **`resilience.error_type`** 承载这次调用唯一的结果词——保护各阶段施加的门禁
-    （`rate_limited`、`circuit_open`、`bulkhead_full`、`retry_exceeded`、
-    `timeout`），或 `downstream` / `canceled`。只有成功时**不出现**,因此失败的调用
+    **`resilience.error_type`** 承载这次调用唯一的结果词——链路给出的判定
+    （`rate_limited`、`circuit_open`、`bulkhead_full`、`retry_exceeded`、`no_endpoints`、
+    `call_timeout`），或 `connect_failed` / `resource_exhausted` / `context_canceled` / `unknown`。只有成功时**不出现**,因此失败的调用
     永远可归因。把这些词放进 `status`,就是让一个键有两套词表,正是这一档要防的失败。
   - *日志必须能 join 指标。* 日志行里的身份键必须在某个属性（span 属性或 metric label）
     上同名存在,否则失败的指标落不到解释它的那行日志上。时长键（以 `_ms` 结尾）与
@@ -723,8 +723,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    **走发现拨号?** → 建链一律这三件套:挂 `loadbalance.Tracker`、在建连处把 `Pool.Pick`
    与 `Pool.Complete` 配对(把拨号结果喂回去,不喂 tracker 就是瞎的)、再用**与 executor
    同一个** `label.ServiceLabel`,带注入的 `*loadbalance.Manager` 调
-   `lbMgr.Chain(resolver, <entry label>)`。这才是 `balancer` / `outlier-threshold` /
-   `outlier-suspend-for` 可经治理规则配置而不是写死的原因——自己不加 `balancer` 配置键,
+   `lbMgr.Chain(resolver, <entry label>)`。这才是 `balancer` / `dial-failures` / `request-failures` /
+   `suspend-for` 可经治理规则配置而不是写死的原因——自己不加 `balancer` 配置键,
    也不 import 各策略根。不能重挑的 client
    (一次性解析、或库自持选择器)刻意不接,要在它的 USAGE 里写明。
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、

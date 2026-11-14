@@ -44,7 +44,7 @@ type FileConfig struct {
 // What the file contains is decided by T: [Parse] binds it through the same
 // value-tag machinery every root uses, so the transport is implemented once and
 // instantiated per root (`NewFileSource[admission.Settings]`,
-// `NewFileSource[kfault.Document]`, ...).
+// `NewFileSource[fault.Document]`, ...).
 //
 // A parse failure on reload keeps the last good snapshot and logs — the Source
 // contract is "everything pushed is vouched for"; a bad edit must not blank a

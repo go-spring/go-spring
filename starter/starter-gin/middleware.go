@@ -95,7 +95,7 @@ func RequestIDFromContext(ctx context.Context) string {
 // middleware the requests are gated on (nil likewise, which disables injection).
 // prop is the load-test convention bean — the application.s when it provides
 // one, go-spring.s default otherwise.
-func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, prop traffic.Propagator) error {
+func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, prop traffic.Propagator, observers ...Observer) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all: it tags the request context
@@ -124,7 +124,11 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, pro
 	if cfg.Health.Enabled && cfg.Health.Path != "" {
 		accessCfg.SkipPaths = append(append([]string{}, accessCfg.SkipPaths...), cfg.Health.Path)
 	}
-	observe, err := Observe(accessCfg)
+	obs := Observer(nil)
+	if len(observers) > 0 {
+		obs = observers[0]
+	}
+	observe, err := Observe(accessCfg, obs)
 	if err != nil {
 		return err
 	}
@@ -176,6 +180,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, pro
 		mw.AccessLog.Payload.Enabled,
 		mw.AccessLog.Payload.Limit,
 		mw.AccessLog.Metrics.SSEDistributions,
+		obs,
 	)
 	if err != nil {
 		return err

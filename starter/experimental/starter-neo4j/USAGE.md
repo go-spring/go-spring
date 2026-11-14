@@ -175,9 +175,10 @@ gs.Run()
   ├─ ctor newClient [starter.go:107]: log instance creation
   │   ├─ the wiring's `${...default.discovery}` fallback is folded into `c.Discovery`;
   │   │  the driver reads that one label and, if service-name is set and mesh off,
-  │   │  runs resolveURI itself → one endpoint picked, its address spliced into the URI host
-  │   │  [driver.go:185-213]; the same resolver also feeds the driver's AddressResolver, so a
-  │   │  neo4j:// client can re-find the cluster after the seeded host dies
+  │   │  runs resolveSeed itself → one eligible endpoint becomes the routing seed, its address
+  │   │  spliced into the URI host [driver.go]; the same resolver also feeds the driver's
+  │   │  AddressResolver fallback, so a routing client can re-find the cluster after the seed
+  │   │  host dies. No loadbalance authority is involved: the seed is not a per-call pick
   │   ├─ optional Driver bean — none → bundled DefaultDriver (d == nil
   │   │  fallback [starter.go:113-115]); several coexist → the entry selects
   │   │  one by name: spring.neo4j.instances.<name>.driver = <bean-name> (empty = `spring.neo4j.default.driver`,
@@ -207,7 +208,7 @@ already-governed client (`Destroy`) rather than leaking the executor.
 container bean** (a `gs.Provide(func() StarterNeo4j.Driver{...})`, so it can inject config bound
 from the properties file at wiring time); every instance under `spring.neo4j` is then built
 through it. `CreateClient(ctx, c, center)` receives the injected `*governance.Runtime`; the driver
-resolves the discovery backend itself from `center.Discovery().Get(c.Discovery)` — the entry's
+resolves the discovery backend itself from `center.Directory.Get(c.Discovery)` — the entry's
 `${discovery}` label rides on the config (the ctor has folded the family default into `c.Discovery`),
 so no pre-resolved backend is passed. When no such bean exists the
 starter falls back to the bundled `DefaultDriver`
@@ -282,26 +283,33 @@ This is the documented cost of the missing seam (§6).
 ### 2.4 Discovery addressing — seed plus routing-mode recovery
 
 When `service-name` is set and mesh mode is off, the driver resolves the backend the entry's
-`discovery` label names from `center.Discovery().Get(c.Discovery)`; `resolveURI` then builds a
-Resolver on it, picks one endpoint, and splices its address into the URI host
-[driver.go:185-213]. The neo4j driver exposes no dialer injection point, so that address is a
-**boot-time seed** — a running client does not re-pick per query. What does keep following the
-naming service is the driver's own `AddressResolver` hook, installed over the same resolver
-[driver.go:92-96]: the routing driver (`neo4j://` schemes) consults it when it failed to build a
-routing table from the address it was dialed with, i.e. exactly when the seeded host disappeared.
-So a routing-mode client recovers onto the current cluster without a restart; a **direct
-`bolt://` client has no routing table and stays on its boot-time address**. On a registry hiccup
-the hook hands back the address the driver already had, so it never turns a bad read into an empty
-router list. In mesh mode (`GS_MESH_MODE=on`) the sidecar owns discovery+LB and the URI is used
-unchanged [starter.go:103].
+`discovery` label names from `center.Directory.Get(c.Discovery)`, builds a Resolver on it, and
+`resolveSeed` picks one eligible endpoint (non-disabled; healthy and non-draining preferred; a
+direct address on failure) whose address is spliced into the URI host [driver.go]. That is a
+**routing seed**, not load balancing: the driver builds its pool over it and owns every later
+server choice. What keeps following the naming service is the driver's own `AddressResolver`
+hook, installed over the same resolver [driver.go]: the routing driver consults it after both its
+last-known routers and the seeded root router failed, i.e. exactly when the seeded host
+disappeared. So a routing-mode client recovers onto the current cluster without a restart. On a
+registry hiccup the hook hands back the address the driver already had, so it never turns a bad
+read into an empty router list. In mesh mode (`GS_MESH_MODE=on`) the sidecar owns discovery+LB
+and the URI is used unchanged [starter.go].
 
-⚠ **Deliberately not wired to governed endpoint selection.** There is no per-query pick to govern:
-the boot-time pick is frozen into a URI string and the pool is built, used, and discarded in that
-one function. `spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` therefore have no effect on neo4j;
-its governance stops at the protection policy (timeout / retries / breaker under the label
-`neo4j:<service-name|uri>`). Recorded here so the absence reads as a decision, not a gap. (The
-`AddressResolver` hook above is about *which cluster*, not *which node* — the driver still chooses
-nodes itself.)
+`service-name` requires a routing scheme (`neo4j`, `neo4j+s`, `neo4j+ssc`). Pairing it with a
+direct scheme (`bolt`, `bolt+s`, `bolt+ssc`) is rejected by `Config.Validate` at bind time: a
+direct driver builds one pool over one address and never consults discovery again, so the seed
+would be pinned forever. Direct addressing (VIP/sidecar/single instance) stays valid — it simply
+carries its address in the URI and leaves `service-name` unset.
+
+⚠ **Deliberately not wired to governed endpoint selection.** There is no per-query pick to
+govern: the seed is frozen into a URI string once, and afterwards the driver's routing table
+chooses nodes. `spring.governance.client.loadbalance.services[N].balancer` /
+`request-failures` therefore have no effect on neo4j; its governance stops at the
+protection policy (timeout / retries / breaker under the label `neo4j:<service-name|uri>`).
+Recorded here so the absence reads as a decision, not a gap. Note also that the driver balances
+only within a cluster (or a single 4.0+ instance, whose routing table names itself): independent
+instances published under one name are not balanced — front them with a VIP/L4 or join them into
+a cluster.
 
 ---
 
@@ -314,8 +322,8 @@ IndexArg(1)), not the absolute-property Pool rule.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `uri` | string | — | **required** (`expr:"$ != ''"`). Scheme selects routing+encryption: `bolt`/`neo4j` plain, `neo4j+s`/`bolt+s` TLS, `+ssc` self-signed. ⚠ Host is replaced by discovery output when `service-name` is set (example uses dummy `bolt://0.0.0.0:0` on purpose). | Missing → BindEach error naming the instance; bad scheme → driver error at ctor. |
-| `service-name` | string | — | Resolve the boot-time address through a discovery backend, and keep a live router set for `neo4j://` clients to recover with (§2.4). ⚠ Requires a matching named backend bean. | Unregistered backend → boot error "neo4j: resolve service …". |
+| `uri` | string | — | **required** (`expr:"$ != ''"`). Scheme selects routing+encryption: `bolt`/`neo4j` plain, `neo4j+s`/`bolt+s` TLS, `+ssc` self-signed. ⚠ Host is replaced by the discovery seed when `service-name` is set (example uses dummy `neo4j://0.0.0.0:0` on purpose). A routing scheme (`neo4j*`) is required with `service-name`. | Missing → BindEach error naming the instance; bad scheme → driver error at ctor; `bolt*` + `service-name` → bind-time Validate error. |
+| `service-name` | string | — | Resolve the routing seed through a discovery backend, and keep the resolver behind the driver's `AddressResolver` fallback (§2.4). ⚠ Requires a routing scheme and a matching named backend bean. | Unregistered backend → boot error "neo4j: resolve service …"; direct scheme → Validate error. |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name`. | — |
 | `discovery` | string | — | Which registered backend resolves `service-name`. Falls back to `${spring.neo4j.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 
@@ -402,10 +410,12 @@ with `.rate=0.5` and `.error=timeout` — the error breakdown moves without rest
 ### 4.4 Discovery drill
 
 Register a backend bean (see example/discovery.go), set
-`spring.neo4j.instances.graph.service-name=neo4j-cluster` with dummy `uri=bolt://0.0.0.0:0`. Boot logs
-`neo4j client initialized, uri=bolt://127.0.0.1:7687` — the spliced address, not the dummy.
-Kill that instance: queries keep failing — the address was resolved once (§2.4); restart the
-app (or let a platform do it) to re-resolve.
+`spring.neo4j.instances.graph.service-name=neo4j-cluster` with dummy `uri=neo4j://0.0.0.0:0`. Boot
+logs `neo4j client initialized, uri=neo4j://127.0.0.1:7687` — the spliced seed, not the dummy.
+With the static backend used by the example there is nowhere to recover to when that instance
+dies (it always reports the same address). With a real backend that republishes the cluster, the
+routing driver calls `AddressResolver` after the seeded router fails, re-reads the routing table,
+and continues without a restart (§2.4).
 
 ---
 

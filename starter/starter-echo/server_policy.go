@@ -53,7 +53,7 @@ func buildServerPolicy(cfg Config, center *governance.Runtime, prop traffic.Prop
 	if err != nil {
 		return nil, err
 	}
-	return resilienceServerPolicy(in, service, observeEnabled(cfg), prop), nil
+	return resilienceServerPolicy(in, observeEnabled(cfg), prop), nil
 }
 
 // resilienceServerPolicy is the inbound middleware: each request runs
@@ -65,7 +65,7 @@ func buildServerPolicy(cfg Config, center *governance.Runtime, prop traffic.Prop
 // effects cannot be replayed (inbound serving is not idempotent). Leave
 // [admission.Policy] has no retry field at all, so the executor built from the
 // server block has no retry stage; the committed guard also prevents reentry.
-func resilienceServerPolicy(in *inbound.Inbound, service string, observe bool, prop traffic.Propagator) echo.MiddlewareFunc {
+func resilienceServerPolicy(in *inbound.Inbound, observe bool, prop traffic.Propagator) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx := c.Request().Context()
@@ -113,8 +113,7 @@ func resilienceServerPolicy(in *inbound.Inbound, service string, observe bool, p
 			} else {
 				// Observability off: governance still runs, silently.
 				if gErr := in.GovernedRun(ctx, operation(c, prop), func(ctx context.Context) error { return run(ctx, nil) }); gErr != nil {
-					var ref *inbound.Refusal
-					if errors.As(gErr, &ref) {
+					if _, ok := errors.AsType[*inbound.Refusal](gErr); ok {
 						return renderInjectedOrRefusal(c, gErr)
 					}
 					// A handler error is already in handlerErr and is returned below.
@@ -135,32 +134,36 @@ func renderRefusal(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *inbound.Refusal
-	if errors.As(err, &ref) {
+	if ref, ok := errors.AsType[*inbound.Refusal](err); ok {
 		return echo.NewHTTPError(httpStatusFor(ref), ref.Error())
 	}
 	return err
 }
 
-// renderInjectedOrRefusal writes an injected fault as plain text and renders any
-// other refusal as an echo HTTP error. The status follows the fault's class: a
-// business failure is 400, anything else is 503.
+// renderInjectedOrRefusal writes an injected fault's declared response and
+// renders any other refusal as an echo HTTP error.
 func renderInjectedOrRefusal(c echo.Context, err error) error {
-	var ref *inbound.Refusal
-	if errors.As(err, &ref) && ref.Verdict() == admission.VerdictFaultInjected {
-		return c.String(httpStatusFor(ref), "service unavailable")
+	if ref, ok := errors.AsType[*inbound.Refusal](err); ok && ref.Verdict() == admission.VerdictFaultInjected {
+		status := httpStatusFor(ref)
+		if body := ref.Fault().Body; body != "" {
+			ct := ref.Fault().ContentType
+			if ct == "" {
+				ct = echo.MIMETextPlainCharsetUTF8
+			}
+			return c.Blob(status, ct, []byte(body))
+		}
+		return c.NoContent(status)
 	}
 	return renderRefusal(err)
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429; an injected fault follows the class the rule
-// declared — a business failure (the caller's mistake) is 400, anything else is
-// 503.
+// rate/bulkhead rejections are 429; an injected fault answers with the status
+// the rule declared.
 func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
-		if ref.Fault().Business() {
-			return http.StatusBadRequest
+		if s := ref.Fault().Status; s != 0 {
+			return s
 		}
 		return http.StatusServiceUnavailable
 	}

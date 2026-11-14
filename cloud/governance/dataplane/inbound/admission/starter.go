@@ -35,8 +35,10 @@ import (
 // stage state — so the bean declares it as the Destroy hook and the runtime does
 // not close it.
 func init() {
-	gs.Provide(func(factory *ratelimit.Factory) (*Manager, error) {
-		return NewManager(factory)
+	// The state-plane observer is a process default an application may replace.
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
+	gs.Provide(func(factory *ratelimit.Factory, obs Observer) (*Manager, error) {
+		return NewManager(factory, WithObserver(obs))
 	}, gs.IndexArg(0, gs.TagArg(""))).
 		Destroy((*Manager).Close).Caller(1)
 }

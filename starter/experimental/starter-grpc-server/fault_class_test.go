@@ -31,24 +31,26 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestMapServerPolicyError_FollowsFaultClass pins the RPC half of the business
-// classification: a class=business fault must reach the client as InvalidArgument
-// (the caller's mistake), while a transient one is Unavailable. The old behavior
-// passed the raw error through, so both crossed as codes.Unknown — a code no
-// retry policy or breaker can act on.
-func TestMapServerPolicyError_FollowsFaultClass(t *testing.T) {
+// TestMapServerPolicyError_FollowsDeclaredStatus pins the status-family
+// translation: a 4xx answer reaches the client as InvalidArgument (the caller's
+// mistake), a 5xx one as Unavailable. Passing the raw error through made
+// everything cross as codes.Unknown — a code no retry policy or breaker can act
+// on.
+func TestMapServerPolicyError_FollowsDeclaredStatus(t *testing.T) {
 	cases := []struct {
-		class string
-		want  codes.Code
+		status int
+		want   codes.Code
 	}{
-		{kfault.ClassBusiness, codes.InvalidArgument},
-		{kfault.ClassPermanent, codes.Unavailable},
-		{"", codes.Unavailable},
+		{400, codes.InvalidArgument},
+		{429, codes.InvalidArgument},
+		{503, codes.Unavailable},
+		{0, codes.Unavailable}, // unvalidated direct config
 	}
 	for _, tc := range cases {
 		inj := serverfault.NewManager()
-		inj.Refresh(kfault.Config{Rules: []kfault.Rule{{
-			Name: "fire", Service: "grpc", Rate: 1, Class: tc.class,
+		inj.Refresh(serverfault.ServerConfig{Rules: []serverfault.ServerRule{{
+			RuleCore: kfault.RuleCore{Name: "fire", Service: "grpc", Rate: 1},
+			Status:   tc.status,
 		}}})
 		fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 		if err != nil {
@@ -58,7 +60,7 @@ func TestMapServerPolicyError_FollowsFaultClass(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := inbound.Over("grpc", "grpc:test", gm, inj)
+		in, err := inbound.Over("grpc", "grpc:test", gm, nil, inj)
 		if err != nil {
 			gm.Close()
 			t.Fatal(err)
@@ -69,10 +71,46 @@ func TestMapServerPolicyError_FollowsFaultClass(t *testing.T) {
 
 		var ref *inbound.Refusal
 		if !errors.As(err, &ref) {
-			t.Fatalf("class %q: want a refusal, got %v", tc.class, err)
+			t.Fatalf("status %d: want a refusal, got %v", tc.status, err)
 		}
 		if got := status.Code(mapServerPolicyError(ref)); got != tc.want {
-			t.Fatalf("class %q: code %v, want %v", tc.class, got, tc.want)
+			t.Fatalf("status %d: code %v, want %v", tc.status, got, tc.want)
 		}
+	}
+}
+
+// TestMapServerPolicyError_UsesDeclaredBody: a declared body becomes the gRPC
+// status message, so a drill can answer with the same shape a real error has.
+func TestMapServerPolicyError_UsesDeclaredBody(t *testing.T) {
+	inj := serverfault.NewManager()
+	inj.Refresh(serverfault.ServerConfig{Rules: []serverfault.ServerRule{{
+		RuleCore: kfault.RuleCore{Name: "fire", Service: "grpc", Rate: 1},
+		Status:   503,
+		Body:     "downstream exploded",
+	}}})
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm, err := admission.NewManager(fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := inbound.Over("grpc", "grpc:test", gm, nil, inj)
+	if err != nil {
+		gm.Close()
+		t.Fatal(err)
+	}
+	err = in.Run(context.Background(), observe.ServerOperation{Action: "/pkg.Svc/Method"},
+		func(context.Context) error { return nil })
+	gm.Close()
+
+	var ref *inbound.Refusal
+	if !errors.As(err, &ref) {
+		t.Fatalf("want a refusal, got %v", err)
+	}
+	st, _ := status.FromError(mapServerPolicyError(ref))
+	if st.Message() != "downstream exploded" {
+		t.Fatalf("message = %q, want the declared body", st.Message())
 	}
 }

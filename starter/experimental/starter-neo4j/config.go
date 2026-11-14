@@ -20,10 +20,12 @@
 package StarterNeo4j
 
 import (
+	"net/url"
 	"time"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/security"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config defines Neo4j connection configuration.
@@ -70,16 +72,21 @@ type Config struct {
 	// plaintext "bolt"/"neo4j" schemes.
 	TLS security.TLSConfig `value:"${tls}"`
 
-	// ServiceName resolves the connection address through a registered discovery
-	// backend instead of relying solely on the URI host. When set, the endpoint
-	// is resolved once at startup and spliced into the URI host, so the driver
-	// connects to a live instance handed out by the company naming service.
+	// ServiceName resolves the routing driver's seed address through a registered
+	// discovery backend instead of the URI host, and keeps the resolver behind
+	// the driver's AddressResolver fallback so a routing client can re-find the
+	// cluster. It requires a routing URI scheme ("neo4j", "neo4j+s",
+	// "neo4j+ssc") — see [Config.Validate]: with a direct scheme the driver
+	// builds one pool over one address and never asks discovery again, so a
+	// service name there would silently pin the first resolved address.
 	//
-	// Limitation: unlike clients that accept a custom dialer, the neo4j driver
-	// builds its connection pool from the URI and exposes no dialer injection
-	// point, so this is a one-shot resolution at startup — address changes after
-	// startup are not picked up until the client is rebuilt. When empty, the URI
-	// host is used unchanged.
+	// Discovery here is not client-side load balancing: the driver owns server
+	// selection for the lifetime of the pool (routing table + its own
+	// least-penalty choice). For a cluster, or a single instance (which exposes
+	// a routing table since Neo4j 4.0), that is the right layer. Independent
+	// instances published under one name are NOT balanced by the driver; use a
+	// VIP/L4 in front of them or join them into a cluster.
+	//
 	// Addressing is the shared discovery-citation block (see discovery.Addressing
 	// for the shared contract); the family-specific caveats above the fields it
 	// replaced still apply. Discovery falls back to ${spring.neo4j.default.discovery} via
@@ -105,4 +112,32 @@ type Config struct {
 	// report, e.g. for a backend whose downtime must not pull the pod out of
 	// rotation.
 	Health bool `value:"${health:=true}"`
+}
+
+// Validate enforces the scheme × service-name contract at bind time. Discovery
+// keeps following the naming service only through the routing driver's
+// AddressResolver, so a service name is meaningful only with a routing URI
+// scheme ("neo4j", "neo4j+s", "neo4j+ssc"). A direct scheme ("bolt", "bolt+s",
+// "bolt+ssc") pins the one address the driver was built with and never
+// consults discovery again; pairing it with a service name would silently make
+// the resolved address permanent, so the pair is rejected here rather than
+// degraded.
+//
+// A direct address stays valid — a VIP, a sidecar, or a single instance just
+// carries its address in the URI and leaves service-name unset.
+func (c Config) Validate() error {
+	if c.ServiceName == "" {
+		return nil
+	}
+	u, err := url.Parse(c.URI)
+	if err != nil {
+		return errutil.Explain(err, "neo4j: parse uri %q", c.URI)
+	}
+	switch u.Scheme {
+	case "neo4j", "neo4j+s", "neo4j+ssc":
+		return nil
+	}
+	return errutil.Explain(nil,
+		"neo4j: service-name requires a routing uri scheme (neo4j, neo4j+s, neo4j+ssc), got %q; drop service-name to dial the configured address directly, or switch the scheme",
+		u.Scheme)
 }

@@ -47,7 +47,7 @@ func TestStarter_ManagerBeanIsInjected(t *testing.T) {
 			t.Fatal("the manager bean was not injected")
 		}
 		e := m.Wrap("res:1", nil)
-		if err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil }); err != nil {
+		if err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil }); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
 	})

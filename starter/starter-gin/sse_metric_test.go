@@ -29,13 +29,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel"
@@ -229,33 +229,6 @@ func (c *captureUpDownCounter) netValue() int64 {
 	return c.net
 }
 
-// captureHistogram records every value recorded against it (plus the count) so
-// a test can assert the size/interval distributions were populated per event. It
-// satisfies both metric.Int64Histogram and metric.Float64Histogram: the embedded
-// metricnoop.Int64Histogram covers the unexported interface marker and Enabled
-// (Float64Histogram needs the same Enabled, satisfied by the one promotion), and
-// Record is overridden to capture values.
-type captureHistogram struct {
-	metricnoop.Int64Histogram
-	name string
-	mu   sync.Mutex
-	vals []float64
-}
-
-func (h *captureHistogram) Record(_ context.Context, incr float64, _ ...metric.RecordOption) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.vals = append(h.vals, incr)
-}
-
-func (h *captureHistogram) values() []float64 {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]float64, len(h.vals))
-	copy(out, h.vals)
-	return out
-}
-
 // --- trace fake -------------------------------------------------------------
 //
 // captureTracerProvider returns a Tracer whose spans record their name, start
@@ -417,7 +390,7 @@ func runStream(t *testing.T, payloadEnabled, sseDistributions, activeRequests bo
 
 func writeSSE(c *gin.Context, n int, flush bool) {
 	c.Header("Content-Type", "text/event-stream")
-	for i := 0; i < n; i++ {
+	for range n {
 		_, _ = c.Writer.Write([]byte("data: x\n\n"))
 		if flush {
 			c.Writer.Flush()
@@ -449,9 +422,14 @@ func testCenter() *governance.Runtime {
 	if err != nil {
 		panic(err)
 	}
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		panic(err)
+	}
+	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 	ctr := &governance.Runtime{
 		Resilience:  res,
-		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		LoadBalance: lbMgr,
 		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
@@ -1110,7 +1088,11 @@ func TestApplyMiddlewares_ManualComposition(t *testing.T) {
 // instruments cannot be registered.
 func installObserve(t *testing.T, e *gin.Engine, cfg AccessLogConfig) {
 	t.Helper()
-	h, err := Observe(cfg)
+	obs, err := NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := Observe(cfg, obs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1121,7 +1103,11 @@ func installObserve(t *testing.T, e *gin.Engine, cfg AccessLogConfig) {
 // instruments cannot be registered.
 func installCapture(t *testing.T, e *gin.Engine, payload bool, limit int, dist bool) {
 	t.Helper()
-	h, err := ResponseCapture(payload, limit, dist)
+	obs, err := NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := ResponseCapture(payload, limit, dist, obs)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,10 +18,11 @@ package loadtest
 
 import (
 	"context"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/traffic"

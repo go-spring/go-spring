@@ -78,7 +78,7 @@ func RequestIDFromContext(ctx context.Context) string {
 // 403) are still logged. Body limiting is handled by the engine option
 // WithMaxRequestBodySize, not a middleware, so an over-limit 413 is likewise
 // logged.
-func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Runtime, prop traffic.Propagator) error {
+func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Runtime, prop traffic.Propagator, obs Observer) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
@@ -101,8 +101,8 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Runtime, p
 	if mw.Tracing.Enabled {
 		h.Use(tracingMiddleware())
 	}
-	if mw.Metrics.Enabled {
-		metrics, err := metricsMiddleware()
+	if mw.Metrics.Enabled && obs != nil {
+		metrics, err := obs.Metrics()
 		if err != nil {
 			return err
 		}
@@ -143,6 +143,13 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Runtime, p
 func buildServerPolicy(in *inbound.Inbound, prop traffic.Propagator) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		op := observability.NewServerOperation(ctx, prop, actionName(c))
+		// hertz owns its own http.server.* metrics, span and access log; the
+		// governance layer keeps its admission signals and stays out of the
+		// request family.
+		op.Observe = observability.ServerObserve{
+			Metric: observability.ServerMetric{Disabled: true},
+			Log:    observability.ServerLog{QuietSuccess: true},
+		}
 		err := in.Run(ctx, op, func(ctx context.Context) error {
 			c.Next(ctx)
 			if c.Response.StatusCode() >= 500 {
@@ -153,20 +160,29 @@ func buildServerPolicy(in *inbound.Inbound, prop traffic.Propagator) app.Handler
 		if err != nil {
 			var ref *inbound.Refusal
 			if errors.As(err, &ref) && !c.Response.IsBodyStream() && c.Response.StatusCode() == 0 {
-				c.AbortWithStatus(httpStatusFor(ref))
+				status := httpStatusFor(ref)
+				if ref.Verdict() == admission.VerdictFaultInjected {
+					if body := ref.Fault().Body; body != "" {
+						if ct := ref.Fault().ContentType; ct != "" {
+							c.SetContentType(ct)
+						}
+						c.String(status, body)
+						return
+					}
+				}
+				c.AbortWithStatus(status)
 			}
 		}
 	}
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429; an injected fault follows the class the rule
-// declared — a business failure (the caller's mistake) is 400, anything else is
-// 503.
+// rate/bulkhead rejections are 429; an injected fault answers with the status
+// the rule declared.
 func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
-		if ref.Fault().Business() {
-			return http.StatusBadRequest
+		if s := ref.Fault().Status; s != 0 {
+			return s
 		}
 		return http.StatusServiceUnavailable
 	}

@@ -44,10 +44,9 @@ type Manager struct {
 	// fault stage); each Guard starts from them and a caller may add more.
 	opts options
 
-	// instruments is the state plane shared by every guard this manager builds.
-	// The manager is one per process (a container bean), so it is the natural
-	// owner: construction either yields a usable set or fails.
-	instruments *stateInstrumentSet
+	// obs is the state plane shared by every guard this manager builds. The
+	// manager is one per process (a container bean), so it is the natural owner.
+	obs Observer
 }
 
 // NewManager returns an inbound manager with no document. Every Guard it
@@ -64,15 +63,11 @@ func NewManager(factory *ratelimit.Factory, opts ...Option) (*Manager, error) {
 	for _, f := range opts {
 		f(&o)
 	}
-	ins, err := buildStateInstruments()
-	if err != nil {
-		return nil, err
-	}
 	return &Manager{
-		guards:      make(map[*server]struct{}),
-		opts:        o,
-		instruments: ins,
-		settings:    Settings{Default: DefaultPolicy()},
+		guards:   make(map[*server]struct{}),
+		opts:     o,
+		obs:      o.observer,
+		settings: Settings{Default: DefaultPolicy()},
 	}, nil
 }
 
@@ -166,7 +161,7 @@ func (m *Manager) GuardFor(id Identity, opts ...Option) (Guard, error) {
 		return nil, err
 	}
 	s := &server{
-		id: id, opts: o, mgr: m, st: st, ins: m.instruments,
+		id: id, opts: o, mgr: m, st: st, obs: m.obs,
 		rate:     rate,
 		rateKind: st.kind,
 	}
@@ -192,6 +187,9 @@ func (m *Manager) Close() error {
 
 	for _, g := range guards {
 		g.closeLocal()
+	}
+	if m.obs != nil {
+		_ = m.obs.Close()
 	}
 	return nil
 }

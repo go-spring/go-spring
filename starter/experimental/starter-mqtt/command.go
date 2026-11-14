@@ -94,10 +94,11 @@ var clientGuards sync.Map // mqtt.Client -> *clientObserver
 // limiting the publish rate and short-circuiting (circuit breaker) when the
 // broker is unhealthy — and is driven through an opt-in call-site guard
 // ([GuardedPublish]).
-func AttachObserver(cl mqtt.Client, broker string, prop traffic.Propagator) {
+func AttachObserver(cl mqtt.Client, broker string, prop traffic.Propagator, obsFactory observability.Metrics) {
+
 	label := label.ServiceLabel("mqtt", broker)
 	clientGuards.Store(cl, &clientObserver{
-		obs:          observability.NewOperationObserver("mqtt", label),
+		obs:          observability.NewOperationObserver("mqtt", label, obsFactory),
 		serviceLabel: label,
 		prop:         prop,
 	})

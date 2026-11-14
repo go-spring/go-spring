@@ -32,8 +32,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/connpool"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 )
@@ -125,7 +126,11 @@ func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Ch
 	// is required — the container supplies it via the runtime — so a
 	// bundle without one is a construction error rather than a bare client.
 	c.serviceLabel = serviceLabel(c.cfg)
-	c.exec = center.ExecutorFor("redis", c.serviceLabel)
+	var picker *loadbalance.Chain
+	if c.lbChain != nil {
+		picker = c.lbChain
+	}
+	c.exec = center.ExecutorFor("redis", c.serviceLabel, picker)
 	// The resilience hook is the only hook we install: it builds each command's
 	// identity itself and emits the call's span, metrics and access log.
 	c.UniversalClient.AddHook(&resilienceHook{exec: c.exec, serviceLabel: c.serviceLabel, prop: center.Traffic})
@@ -184,11 +189,7 @@ func (h *resilienceHook) DialHook(next redis.DialHook) redis.DialHook {
 
 func (h *resilienceHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
-		op := chain.Operation{}
-		if _, skip := skipOps[cmd.FullName()]; !skip {
-			op = operation(ctx, h.prop, cmd)
-		}
-		return h.guard(ctx, op, cmd, func(ctx context.Context) error {
+		return h.guard(ctx, operationForCommand(ctx, h.prop, cmd), cmd, func(ctx context.Context) error {
 			return next(ctx, cmd)
 		})
 	}
@@ -240,8 +241,11 @@ func (h *resilienceHook) run(ctx context.Context, op chain.Operation, setErr fun
 	op.Service = h.serviceLabel
 	var callErr error
 	_, err := resilience.Run(ctx, h.exec, op,
-		func(actx context.Context) (struct{}, error) {
-			callErr = call(actx)
+		func(actx context.Context, peer chain.Peer) (struct{}, error) {
+			// Stage the round's peer on the ctx: the driver's Dialer reads it
+			// (connpool.DialAddrFrom) and dials exactly the endpoint the
+			// addressing stage picked for this round.
+			callErr = call(connpool.WithDialAddr(actx, peer.Addr))
 			return struct{}{}, callErr
 		}, resilience.Tolerate(redis.Nil), resilience.RetryOn(isTransientError))
 	if err != nil && callErr == nil {

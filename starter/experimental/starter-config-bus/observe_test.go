@@ -23,6 +23,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"go-spring.org/stdlib/testing/assert"
@@ -122,7 +123,7 @@ func hasHist(t *testing.T, name string, want map[string]string) bool {
 // metrics come from the package-wide instrument set (see observe.go). refresh
 // is the property-refresh seam, which onMessage calls.
 func newTestBus(refresh func(ctx context.Context) error) *ConfigBus {
-	ins, err := buildInstruments()
+	obs, err := NewOTelObserver()
 	if err != nil {
 		panic(err)
 	}
@@ -130,7 +131,7 @@ func newTestBus(refresh func(ctx context.Context) error) *ConfigBus {
 		Config:  Config{Subject: "t.subject", Origin: "test-origin"},
 		refresh: refresh,
 		origin:  "test-origin",
-		ins:     ins,
+		obs:     obs,
 	}
 }
 
@@ -259,4 +260,31 @@ func TestEventFieldsCarryTheMetricKeys(t *testing.T) {
 	// Only the keys are pinned: the value is the outcome handed straight to the
 	// counter alongside, so the key is the whole drift surface.
 	assert.That(t, keys).Equal([]string{"status"})
+}
+
+// recordingObserver captures the bus's events so the seam is tested without
+// OTel.
+type recordingObserver struct {
+	events    []string
+	publishes []string
+}
+
+func (o *recordingObserver) Event(_ context.Context, status, prefix string, _ time.Duration) {
+	o.events = append(o.events, status+":"+prefix)
+}
+
+func (o *recordingObserver) Publish(_ context.Context, status string) {
+	o.publishes = append(o.publishes, status)
+}
+
+func TestObserverSeam(t *testing.T) {
+	obs := &recordingObserver{}
+	b := &ConfigBus{
+		Config:  Config{Subject: "t.subject", Origin: "o"},
+		refresh: func(context.Context) error { return nil },
+		origin:  "o",
+		obs:     obs,
+	}
+	assert.Error(t, b.onMessage(context.Background(), msgFor(t, RefreshEvent{Prefix: "db", Origin: "peer"}))).Nil()
+	assert.Slice(t, obs.events).Equal([]string{"refreshed:db"})
 }

@@ -20,7 +20,8 @@ import (
 	"context"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	balancer "go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -41,7 +42,7 @@ var _ loadbalance.Provider = luohuaLoadBalancerProvider{}
 
 func (luohuaLoadBalancerProvider) Strategies() []string { return []string{luohuaStrategy} }
 
-func (luohuaLoadBalancerProvider) New(sel loadbalance.Selection) (loadbalance.Balancer, error) {
+func (luohuaLoadBalancerProvider) New(sel loadbalance.Selection) (balancer.Balancer, error) {
 	return newLuohuaBalancer(sel)
 }
 
@@ -50,7 +51,7 @@ func (luohuaLoadBalancerProvider) New(sel loadbalance.Selection) (loadbalance.Ba
 // seam, so a deployment can pin a service to a different zone without a new
 // strategy. The keys are this strategy's own: an unknown one is rejected here,
 // never silently dropped.
-func newLuohuaBalancer(sel loadbalance.Selection) (loadbalance.Balancer, error) {
+func newLuohuaBalancer(sel loadbalance.Selection) (balancer.Balancer, error) {
 	zone := LuohuaZone
 	if v, ok := sel.Params["zone"]; ok {
 		zone = v
@@ -75,8 +76,8 @@ type luohuaBalancer struct {
 // balancer must skip it even when the pool pre-filtering did not.
 func healthy(e discovery.Endpoint) bool { return !e.Disabled && e.Weight > 0 }
 
-// Pick implements [loadbalance.Balancer].
-func (b luohuaBalancer) Pick(eps []discovery.Endpoint, _ loadbalance.PickInfo) (discovery.Endpoint, error) {
+// Pick implements [balancer.Balancer].
+func (b luohuaBalancer) Pick(eps []discovery.Endpoint, _ balancer.PickInfo) (discovery.Endpoint, error) {
 	for _, e := range eps {
 		if healthy(e) && e.Metadata["zone"] == b.zone {
 			return e, nil
@@ -94,5 +95,5 @@ func (b luohuaBalancer) Pick(eps []discovery.Endpoint, _ loadbalance.PickInfo) (
 	return discovery.Endpoint{}, errutil.Explain(nil, "loadbalance: luohua balancer: no endpoints")
 }
 
-// Complete implements [loadbalance.Balancer]. The policy is stateless.
+// Complete implements [balancer.Balancer]. The policy is stateless.
 func (luohuaBalancer) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}

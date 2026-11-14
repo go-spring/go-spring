@@ -25,22 +25,11 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-func TestNewCoordinator_TracingToggle(t *testing.T) {
-	// Both variants must produce a usable coordinator; the tracing flag only
-	// controls whether an observer is attached.
-	coord, err := newCoordinator(Config{Tracing: true}, &transaction.MemoryStore{})
-	assert.That(t, err).Nil()
-	assert.That(t, coord).NotNil()
-	coord, err = newCoordinator(Config{Tracing: false}, &transaction.MemoryStore{})
-	assert.That(t, err).Nil()
-	assert.That(t, coord).NotNil()
-}
-
-func TestOtelObserver_DrivesSagaWithoutPanic(t *testing.T) {
-	// With no TracerProvider installed the otel global is a no-op, but the
-	// observer must still return a usable context and an end func that records the
+func TestCoordinator_DrivesSagaWithoutTracer(t *testing.T) {
+	// With no TracerProvider installed the otel global is a no-op; the span
+	// helpers must still return a usable context and an end func that records the
 	// outcome without panicking — exercised here through a real compensation path.
-	coord, err := transaction.NewCoordinator(transaction.WithObserver(transaction.SagaObserver{}))
+	coord, err := transaction.NewCoordinator()
 	assert.That(t, err).Nil()
 
 	compensated := false

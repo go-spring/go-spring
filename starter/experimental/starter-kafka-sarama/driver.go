@@ -27,6 +27,7 @@ import (
 
 	"github.com/IBM/sarama"
 	"go-spring.org/cloud/governance"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -60,7 +61,9 @@ type Driver interface {
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
-type DefaultDriver struct{}
+type DefaultDriver struct {
+	Observe observability.Metrics
+}
 
 // CreateClient creates a new sarama.Client from the provided configuration. It
 // owns full client assembly — the Kafka version negotiation, SASL mechanism,
@@ -68,7 +71,7 @@ type DefaultDriver struct{}
 // attaches its resilience executor from center (see AttachGovernance), so the driver
 // returns a client that is complete. The startup broker-validation is the
 // starter's lifecycle concern and runs afterwards (see newClient in client.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (sarama.Client, error) {
+func (d DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (sarama.Client, error) {
 	cfg := sarama.NewConfig()
 	if c.Version != "" {
 		v, err := sarama.ParseKafkaVersion(c.Version)
@@ -106,7 +109,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	}
 	// Assemble fully here: attach the resilience executor to the client we just
 	// built, so there is no later patching step for the container to remember.
-	AttachObserver(cl, c.Brokers)
+	AttachObserver(cl, c.Brokers, d.Observe)
 	return cl, nil
 }
 

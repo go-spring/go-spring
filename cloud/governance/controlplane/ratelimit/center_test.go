@@ -79,7 +79,7 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	}
 
 	e := mgr.Wrap("redis:cache", nil)
-	noop := func(context.Context) error { return nil }
+	noop := func(context.Context, *chain.Round) error { return nil }
 	slow := chain.Operation{Service: "redis:cache", Request: chain.Request{Action: "GET /slow/x"}}
 	other := chain.Operation{Service: "redis:cache", Request: chain.Request{Action: "GET /fast"}}
 

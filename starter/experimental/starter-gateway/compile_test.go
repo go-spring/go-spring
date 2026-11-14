@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 )
 
@@ -29,12 +28,12 @@ import (
 // recompile: direct http upstreams need no discovery or wrappers.
 func newTestTable(t *testing.T) *RouteTable {
 	t.Helper()
-	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	lbMgr := mustLbManager(t)
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	obs, err := newObserver()
+	obs, err := NewOTelObserver()
 	if err != nil {
 		t.Fatal(err)
 	}

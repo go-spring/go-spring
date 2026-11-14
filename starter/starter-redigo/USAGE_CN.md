@@ -70,7 +70,7 @@ import (
 )
 
 type Service struct {
-    // 始终注入包装 *StarterRedigo.Pool；它内嵌裸 *redis.Pool，
+    // 始终注入治理池 *StarterRedigo.Pool；Get() 交出虚拟 Conn，
     // Get/GetContext/Stats/... 都按原样提升。
     // 它交出的连接都是插桩过的 Conn。
     Main      *StarterRedigo.Pool `autowire:"main"`
@@ -163,29 +163,29 @@ import starter-redigo
 
 gs.Run()
   ├─ 构造 createPool [starter.go]：RequireAny(addr|service-name) → 查 driver
-  │   → d.CreateClient(ctx, c, center)（= NewPool）：TLS 构建 → discovery resolver → 原始池
-  │     → 构造期即应用治理：resilience executor + 端点选择绑定
-  │     → 装声明层 → setupDial（插桩过的 Dial 包裹）
+  │   → d.CreateClient(ctx, c, center)（= NewPool）：TLS 构建 → discovery resolver →
+  │     loadbalance 链（其 Picker 注入 executor 的寻址层）→ connpool.Pool
+  │     → 构造期即应用治理：resilience executor + 每轮寻址
   │   → HealthCheck 启动探测（仅 ping=true 时），在装配完成之后 [starter.go]
   │   注意：没有独立 InitMethod，且此后不再对池做任何补挂 [pool.go]
-  ├─ 你的 bean Init 可调用 UseCommandInterceptor（自此之后拨的连接生效）
-  └─ SIGTERM → destroyPool → Pool.Close：exec.Close → resolver.Stop → pool.Close [pool.go]
+  ├─ 你的 bean Init 可调用 UseCommandInterceptor（自此之后发出的命令生效）
+  └─ SIGTERM → destroyPool → Pool.Close：connpool.Close → exec.Close [pool.go]
 ```
 
-`Pool.Close` 覆盖了内嵌的 `(*redis.Pool).Close`，一次 Close 即同时拆掉
-绑定、executor 与连接池，确保不会泄漏 discovery resolver 的后台 watch [pool.go]。
+一次 `Pool.Close` 同时拆掉连接池与 executor；新鲜度存在 discovery 后端内部，
+没有每池的 watch 可泄漏 [pool.go]。
 
-### 2.2 命令洋葱 —— 在连接构造期折叠
+### 2.2 命令洋葱 —— 每条命令折叠一次
 
-池拨出的每条连接都在**拨号时**被 `Pool.wrapConn` 包装一次 [pool.go:212-222]。各层折叠成
-单个组合好的 `CommandInterceptor`（`NewConn` 从最内层折起，因此第一层最终在最外
-[conn.go:93-106]）：
+`Pool.Get()` 交出的是**虚拟** `*Conn`：它自己不持连接。每条命令运行当下从池组合的链
+（`NewConn` 从最内层折起，因此第一层最终在最外 [conn.go]）：
 
 ```
 用户拦截器（先注册的在外）
   → 声明层（把命令的语义身份挂到 ctx 上）
     → resilience executor（熔断/限流/重试/超时）
-      → 内层 Do 调用 → Redis
+      → 每轮寻址（选端点、排除已失败端点）［在重试循环内］
+        → 为选中的端点取池化连接 → 内层 Do → Redis
 ```
 
 理由（源码注释 [pool.go:205-211]、[conn.go:44-53]）：
@@ -194,11 +194,12 @@ gs.Run()
   也可以只观察结果。想让命令计入统计的观察型层必须调 `next`。
 - **span 在 executor 之外**：一次 Execute——含策略驱动的全部重试——共用一个 span 和
   一条访问日志。
-- **executor 最内**：由它派生每次尝试的 context，守在真实网络调用前。
+- **executor 最内**：由它派生每次尝试的 context，守在真实网络调用前。其寻址层为
+  **每一轮**选端点——重试即重选，排除本次调用已失败的端点——并把该轮结果恰一次地
+  回写给负载均衡的 tracker。
 
-因为折叠发生在每次拨号时，`UseCommandInterceptor` 在部分连接已拨出后注册的拦截器只对
-**之后**拨的连接生效；已拨出的连接保留它构建时的链 [pool.go:151-157]。请在流量到来前的
-bean Init 里注册。
+链按命令从池的实时状态读取，`UseCommandInterceptor` 注册后发出的命令即刻生效——
+不存在"旧连接带旧链"的窗口。
 
 ### 2.3 一条命令逐层走读：命中场景的 `DoContext(ctx, "GET", "key")`
 
@@ -216,22 +217,23 @@ bean Init 里注册。
    （每次尝试）记录，访问日志（tag `_app_redigo_access`）带时延/状态输出。
 
 `Do` / `DoWithTimeout` 不带 context：它们的 span 是根 span，timeout 打不断——
-两者任一要紧就用 `DoContext` [conn.go:74-79]。`Send`/`Flush`/`Receive`（pipeline）刻意不做
-插桩。
+两者任一要紧就用 `DoContext` [conn.go:74-79]。`Send`/`Flush`/`Receive`（pipeline）返回 `ErrPipelineUnsupported`（见 2.4）。
 
 ### 2.4 一条池化连接的生命周期
 
 ```
-pool.Get()（你的代码）
-  ├─ 有空闲连接？→ 复用（MaxConnLifetime=conn-max-lifetime 限定复用时长）
-  └─ 否则 Dial：凭据/TLS/SELECT db → 设置了 service-name 时 discovery
-     round-robin pool 选端点 [pool.go:104-120] → wrapConn 折叠洋葱
-  ├→ 你 Do/DoContext 命令（每条都走 用户 → 声明 → resilience → 网络）
-  └→ conn.Close()：归还空闲池（redigo 语义）
-停机：Pool.Close() —— executor、resolver watch，最后是池本身
+pool.Get()（你的代码）—— 虚拟连接，不持任何东西
+  └→ 每条命令：链 → 寻址为本轮选端点
+       └→ connpool.Acquire(peer.Addr)：该端点有空闲连接？复用
+            └─ 否则拨号（凭据/TLS/SELECT db）；失败带 ConnectError 标记
+       └→ 执行命令 → 归还（park）或丢弃（失败）
+  └→ conn.Close()：no-op —— 命令之间不持连接
+停机：Pool.Close() —— 连接池，然后是 executor
 ```
 
-`Wait: true` 是硬编码 [pool.go:86]：池耗尽时借连接方阻塞而非报错——请相应设置 `pool-size`。
+`pool-size` 是每**端点**的 MaxActive（N 个端点最多 N×pool-size 连接）；某端点预算耗尽时
+借连接方按其 context 的时限等待——请相应设置。`Send`/`Flush`/`Receive`（pipeline）返回
+`ErrPipelineUnsupported`：每命令取连接的模型没有可排队的载体。
 
 ---
 
@@ -247,7 +249,7 @@ pool.Get()（你的代码）
 | `discovery` | string | — | 用哪个发现后端。driver 自行解析：`center.Discovery().Get(c.Discovery)`；未配置时由构造器把家族级回退（${spring.redigo.default.discovery}）折叠进 `c.Discovery`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `password` / `username` | string | — | 拨号认证；username 非空才附加 [pool.go:94-96]。 | 配错 → 首次拨号（或 ping）失败。 |
 | `db` | int | 0 | 每条新连接执行 `SELECT`（仅非 0 时）[pool.go:125-131]。 | 越界 → 拨号失败。 |
-| `pool-size` | int | 10 | MaxActive。`Wait:true` → 耗尽时阻塞。 | 过小 → 时延而非报错。 |
+| `pool-size` | int | 10 | 每**端点**的 MaxActive（N 个端点最多 N×pool-size 连接）。 | 过小 → 时延而非报错。 |
 | `max-idle` | int | 5 | MaxIdle。 | 大于 pool-size 无意义。 |
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 拨号参数。 | — |
 | `conn-max-lifetime` | duration | 2m | MaxConnLifetime；较短值利于发现流量切换。 | 很大 + discovery → 老端点滞留。 |
@@ -297,9 +299,9 @@ curl -s :9370/metrics | grep -E 'redigo|db.client'   # 时延直方图 + 在途 
 `lbMgr.Chain(resolver, label)` 调用时注册到 `redigo:<service-name|addr>`
 （注入的 `*loadbalance.Manager` bean），所以该
 label 命中的 `spring.governance.client.loadbalance.services[N].balancer` /
-`outlier-threshold` / `outlier-suspend-for` 会**整条重建**——下一次拨号在全新的 balancer 与
+`request-failures` / `suspend-for` 会**整条重建**——下一次拨号在全新的 balancer 与
 suspension tracker 上走新策略。dialer 把拨号
-结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例；单条命令的失败归
+结果喂给 `Complete`，所以 `request-failures` 摘的是**反复连不上**的实例；单条命令的失败归
 resilience executor 管。直连（只配 `addr`）的池没有候选集，这些 key 对它无效。详见
 `cloud/governance/README.md` §3.1。
 

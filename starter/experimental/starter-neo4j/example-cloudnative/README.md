@@ -6,10 +6,11 @@ and **observability**.
 
 ## Capabilities
 
-- **Service discovery**: the neo4j address is resolved through a registered
-  discovery backend (`service-name`), not hardcoded config. Because the neo4j
-  driver exposes no dialer injection point, resolution happens once at startup —
-  a Cypher round-trip only succeeds if resolve → dial → serve works.
+- **Service discovery**: the neo4j routing seed is resolved through a registered
+  discovery backend (`service-name`), not hardcoded config. The driver reads its
+  routing table from that seed and owns server selection; the same resolver is
+  its router-refresh fallback. Requires a `neo4j://` (routing) scheme — a Cypher
+  round-trip only succeeds if resolve → route → serve works.
 - **Resilience**: with `resilience.enabled`, queries routed through
   `StarterNeo4j.Query` / `StarterNeo4j.RunWithResilience` run through the builtin
   `"default"` executor; a burst over `rate-limit` is rejected with

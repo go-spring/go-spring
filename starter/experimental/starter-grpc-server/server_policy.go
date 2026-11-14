@@ -66,7 +66,7 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 		return resilienceInterceptors{}, false, err
 	}
 	return resilienceInterceptors{
-		unary:  resilienceUnaryInterceptor(in, service, s.prop),
+		unary:  resilienceUnaryInterceptor(in, s.prop),
 		stream: resilienceStreamInterceptor(in, s.prop),
 	}, true, nil
 }
@@ -80,10 +80,22 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 // can tell "this client is being throttled" from an arbitrary handler failure:
 // rate/bulkhead rejections are ResourceExhausted. Without the mapping they cross the wire as codes.Unknown,
 // which no consumer can act on.
-func resilienceUnaryInterceptor(in *inbound.Inbound, service string, prop traffic.Propagator) grpc.UnaryServerInterceptor {
+// serverOperation declares an inbound gRPC call: this starter owns its own
+// rpc.server.* metrics, span and access log, so the governance layer keeps only
+// its admission signals and stays out of the request family.
+func serverOperation(ctx context.Context, prop traffic.Propagator, action string) observability.ServerOperation {
+	op := observability.NewServerOperation(ctx, prop, action)
+	op.Observe = observability.ServerObserve{
+		Metric: observability.ServerMetric{Disabled: true},
+		Log:    observability.ServerLog{QuietSuccess: true},
+	}
+	return op
+}
+
+func resilienceUnaryInterceptor(in *inbound.Inbound, prop traffic.Propagator) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		var resp any
-		op := observability.NewServerOperation(ctx, prop, info.FullMethod)
+		op := serverOperation(ctx, prop, info.FullMethod)
 		err := in.Run(ctx, op, func(ctx context.Context) error {
 			var e error
 			resp, e = handler(ctx, req)
@@ -99,7 +111,7 @@ func resilienceUnaryInterceptor(in *inbound.Inbound, service string, prop traffi
 // returns. Fault injection therefore lives inside the guard for streams too.
 func resilienceStreamInterceptor(in *inbound.Inbound, prop traffic.Propagator) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		op := observability.NewServerOperation(ss.Context(), prop, info.FullMethod)
+		op := serverOperation(ss.Context(), prop, info.FullMethod)
 		return in.Run(ss.Context(), op, func(ctx context.Context) error {
 			return handler(srv, &contextServerStream{ServerStream: ss, ctx: ctx})
 		})
@@ -122,23 +134,34 @@ func mapServerPolicyError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *inbound.Refusal
-	if !errors.As(err, &ref) {
+	ref, ok := errors.AsType[*inbound.Refusal](err)
+	if !ok {
 		return err
 	}
 	switch ref.Verdict() {
 	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return status.Error(codes.ResourceExhausted, ref.Error())
 	case admission.VerdictFaultInjected:
-		// The fault's class decides the wire code: a caller-mistake failure must
-		// not reach the client as "the downstream is unavailable", or its retry
-		// policy and breaker would act on a lie. Passing the raw error through
-		// (the old behavior) made it cross as codes.Unknown.
-		if ref.Fault().Business() {
-			return status.Error(codes.InvalidArgument, ref.Error())
+		// The declared status family decides the gRPC code: a 4xx answer is the
+		// caller's mistake (InvalidArgument), a 5xx one is an unavailable
+		// dependency. Passing the raw error through made everything cross as
+		// codes.Unknown, which no retry policy or breaker can act on.
+		msg := ref.Error()
+		if ref.Fault().Body != "" {
+			msg = ref.Fault().Body
 		}
-		return status.Error(codes.Unavailable, ref.Error())
+		return status.Error(grpcCodeFor(ref.Fault().Status), msg)
 	default:
 		return err
 	}
+}
+
+// grpcCodeFor maps the declared HTTP status family onto a gRPC code: a 4xx
+// answer is the caller's mistake, a 5xx one (and an unset status on a direct,
+// unvalidated config) is an unavailable dependency.
+func grpcCodeFor(httpStatus int) codes.Code {
+	if httpStatus >= 400 && httpStatus < 500 {
+		return codes.InvalidArgument
+	}
+	return codes.Unavailable
 }

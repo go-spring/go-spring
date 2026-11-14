@@ -22,6 +22,7 @@ import (
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -72,42 +73,68 @@ const (
 	outcomePublishError = "error"
 )
 
-// instrumentSet bundles the metrics the bus records. It is one per bus,
-// resolved by [ConfigBus.Init].
-type instrumentSet struct {
-	events     metric.Int64Counter
-	refreshDur metric.Float64Histogram
-	publishes  metric.Int64Counter
+// Observer receives the bus's observability events. A nil Observer disables
+// observation; implementations must not block.
+type Observer interface {
+	// Event records one received broadcast. status is the exclusive outcome;
+	// prefix is the configuration namespace; dur is meaningful only for outcomes
+	// that reached a refresh.
+	Event(ctx context.Context, status, prefix string, dur time.Duration)
+
+	// Publish records one published broadcast.
+	Publish(ctx context.Context, status string)
 }
 
-// buildInstruments resolves this starter's instruments against the meter
-// provider the otel starter installs before any bean is built. The bus owns the
-// set, so a failed registration fails Init instead of silently dropping the
-// whole metric family.
-func buildInstruments() (*instrumentSet, error) {
+// NewOTelObserver resolves the bus's instruments and returns the default
+// OTel-backed [Observer].
+func NewOTelObserver() (Observer, error) {
 	m := otel.Meter(componentName)
-	in := &instrumentSet{}
+	o := &otelObserver{}
 	var err error
-	in.events, err = m.Int64Counter("config.bus.events",
+	o.events, err = m.Int64Counter("config.bus.events",
 		metric.WithDescription("Configuration refresh broadcasts received, by outcome"),
 		metric.WithUnit("{event}"))
 	if err != nil {
 		return nil, errutil.Explain(err, "config-bus: register config.bus.events")
 	}
-	in.refreshDur, err = m.Float64Histogram("config.bus.refresh.duration",
+	o.refreshDur, err = m.Float64Histogram("config.bus.refresh.duration",
 		metric.WithDescription("Duration of the property refresh triggered by a broadcast"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	if err != nil {
 		return nil, errutil.Explain(err, "config-bus: register config.bus.refresh.duration")
 	}
-	in.publishes, err = m.Int64Counter("config.bus.publishes",
+	o.publishes, err = m.Int64Counter("config.bus.publishes",
 		metric.WithDescription("Configuration refresh broadcasts published, by outcome"),
 		metric.WithUnit("{event}"))
 	if err != nil {
 		return nil, errutil.Explain(err, "config-bus: register config.bus.publishes")
 	}
-	return in, nil
+	return o, nil
+}
+
+// otelObserver is the default [Observer].
+type otelObserver struct {
+	events     metric.Int64Counter
+	refreshDur metric.Float64Histogram
+	publishes  metric.Int64Counter
+}
+
+// Event implements [Observer].
+func (o *otelObserver) Event(ctx context.Context, status, prefix string, dur time.Duration) {
+	attrs := metric.WithAttributes(
+		attribute.String("status", status),
+		attribute.String("prefix", prefix),
+	)
+	o.events.Add(ctx, 1, attrs)
+	if status == outcomeRefreshed || status == outcomeRefreshError {
+		o.refreshDur.Record(ctx, dur.Seconds(), attrs)
+	}
+}
+
+// Publish implements [Observer].
+func (o *otelObserver) Publish(ctx context.Context, status string) {
+	o.publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", status)))
 }
 
 // record is the single sink for one received event: it counts the outcome,
@@ -118,27 +145,22 @@ func buildInstruments() (*instrumentSet, error) {
 func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent, dur time.Duration, err error) {
 	// prefix is a configuration NAMESPACE (e.g. "db"), not a property key: its
 	// cardinality is the number of namespaces the fleet publishes, which is
-	// bounded by configuration. It is on the metric so "which namespace's
-	// refresh is failing" can be selected directly, and on the log lines for the
-	// same outcome so that selection lands on the line explaining it.
-	attrs := metric.WithAttributes(
-		attribute.String("status", outcome),
-		attribute.String("prefix", ev.Prefix),
-	)
-	b.ins.events.Add(ctx, 1, attrs)
+	// bounded by configuration. It rides the event so "which namespace's refresh
+	// is failing" can be selected directly, and the log lines carry it too.
+	if b.obs != nil {
+		b.obs.Event(ctx, outcome, ev.Prefix, dur)
+	}
 
 	// The log line carries the same outcome the counter just counted, under the
 	// same key, so the two can never be read as disagreeing — and a dashboard
 	// selecting config.bus.events{outcome=...} lands on the line explaining it.
 	switch outcome {
 	case outcomeRefreshed:
-		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Info(ctx, starterTag, "config bus: refreshed properties on event", append(eventFields(outcome),
 			log.String("prefix", ev.Prefix),
 			log.String("origin", ev.Origin),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6))...)
 	case outcomeRefreshError:
-		b.ins.refreshDur.Record(ctx, dur.Seconds(), attrs)
 		log.Error(ctx, starterTag, err, "config bus: property refresh failed", append(eventFields(outcome),
 			log.String("prefix", ev.Prefix))...)
 	case outcomeIgnored:
@@ -165,7 +187,9 @@ func eventFields(outcome string) []log.Field {
 // recordPublish is the sending-direction sibling of record: one outcome per
 // broadcast, driving the counter and a log line at the same level.
 func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.Duration, err error) {
-	b.ins.publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
+	if b.obs != nil {
+		b.obs.Publish(ctx, outcome)
+	}
 	if err != nil {
 		log.Error(ctx, starterTag, err, "config bus: publish refresh event failed", append(eventFields(outcome),
 			log.String("subject", b.Config.Subject),
@@ -177,4 +201,10 @@ func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.
 			log.String("subject", b.Config.Subject),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6))
 	})
+}
+
+// The package's default [Observer] bean: an application that contributes its
+// own observer takes precedence.
+func init() {
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 }

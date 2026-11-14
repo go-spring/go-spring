@@ -90,6 +90,7 @@ type Relay struct {
 	db           *gorm.DB
 	drv          messaging.Driver
 	relay        *outbox.Relay
+	obs          outbox.MetricsObserver
 	cancel       context.CancelFunc
 	done         chan struct{}
 }
@@ -98,8 +99,8 @@ type Relay struct {
 // autowired messaging.Driver bean and the instance name. The driver is injected
 // like any client bean (empty config names the single messaging.Driver bean);
 // the container resolves it before Init runs.
-func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, drv messaging.Driver, name string) (*Relay, error) {
-	return &Relay{cfg: c, instanceName: name, db: db, drv: drv}, nil
+func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, drv messaging.Driver, name string, obs outbox.MetricsObserver) (*Relay, error) {
+	return &Relay{cfg: c, instanceName: name, db: db, drv: drv, obs: obs}, nil
 }
 
 // Init optionally migrates the table, then starts the relay loop in the
@@ -117,10 +118,7 @@ func (o *Relay) Init() error {
 			return err
 		}
 	}
-	relay, err := outbox.NewRelay(newStore(o.db), o.drv, o.cfg.relayConfig(), logObserver{instance: o.instanceName})
-	if err != nil {
-		return err
-	}
+	relay := outbox.NewRelay(newStore(o.db), o.drv, o.cfg.relayConfig(), o.obs, logObserver{instance: o.instanceName})
 	o.relay = relay
 	// The loop runs on a context derived from octx rather than a bare
 	// background one, so the relay's own lines name the instance too.

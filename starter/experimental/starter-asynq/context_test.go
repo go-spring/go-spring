@@ -68,7 +68,7 @@ func TestEnqueueSpanCarriesSpanAttributes(t *testing.T) {
 	}()
 
 	cp := &gs.ContextProvider{Context: context.Background()}
-	c, err := newClient(cp, Config{Addr: "127.0.0.1:1"}, nil, testCenter())
+	c, err := newClient(cp, Config{Addr: "127.0.0.1:1"}, nil, testCenter(), nil)
 	assert.Error(t, err).Nil()
 	defer func() { _ = c.Client.Close() }()
 

@@ -242,7 +242,7 @@ nacos（ListenConfig 推送）在 `starter-governance-nacos`，etcd（Watch 推�
   │      cloud/governance/controlplane/fault      → *fault.Center       （faultCenter）
   ├─ authority 包（任何 client starter 本来就链接了）：
   │      cloud/governance/dataplane/outbound/resilience → *resilience.Manager + 内置 driver
-  │      cloud/governance/capability/loadbalance  → *loadbalance.Manager
+  │      cloud/governance/dataplane/outbound/loadbalance  → *loadbalance.Manager
   │      cloud/governance/dataplane/{outbound,inbound}/fault → 两个独立的 fault manager
   ├─ 部署的 source starter 为它驱动的每个根注册一个 Source[T]
   │      （示例直接提供 Source bean；不需要任何 key）
@@ -332,6 +332,7 @@ source starter 自己决定 key 前缀，并把下面的字段绑定在那个前
 | `spring.governance.client.resilience.services[n].*` | []ResilienceService | 空 | `service` 的按调用策略，可用 `match`/`action` 进一步收窄；同一 (service, action, match) 重复即拒绝。⚠ 命中的条目 **整体替换**块级默认——不做字段级合并：零值 policy 字段意为"禁用"，部分合并无法区分"显式 0"与"未设"。 | 只设 `timeout` 的条目会静默关掉该服务的块级 retries。 |
 | `spring.governance.client.loadbalance.*` | loadbalance.Selection | round_robin | 没有条目匹配的服务的基础选点。按**连接**、接线期解析。 | — |
 | `spring.governance.client.loadbalance.services[n].*` | []LoadBalanceService | 空 | `service` 的**完整**选点（唯一；`balancer` 必填）。没有 `match`/`action`：一个服务只有一种选点。 | 省略 `balancer` 会被拒绝，而不是取默认。 |
+| `spring.governance.loadbalance.enable-suspend-metrics` | bool | false | 开启本进程**所有服务**的端点摘除计数与 gauge（opt-in）。**静态 app 配置键，不是文档键**：运维开关不能被逐服务推送。 | — |
 | `spring.fault.client.*` | fault.Config | 全 off | **出站**故障注入——烧的是本进程自己的 retry/breaker/timeout，见 §3.4。 | — |
 | `spring.governance.server.admission.*` | admission.Policy | 全 off | 没有 AdmissionService 匹配的路由的基础**入站**准入：限流、并发上限、处理预算。没有熔断器。 | — |
 | `spring.governance.server.services[n].*` | []AdmissionService | 空 | 按**入站 label** 逐路由覆盖（如 `gin::8080`、`grpc:/pkg.Svc/Method`），整体替换语义与出站规则一致。 | — |

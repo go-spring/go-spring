@@ -108,7 +108,7 @@ func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, ce
 		c.dyn = t
 	}
 	c.serviceLabel = label.ServiceLabel("s3", c.cfg.Endpoint)
-	c.exec = center.ExecutorFor("s3", c.serviceLabel)
+	c.exec = center.ExecutorFor("s3", c.serviceLabel, nil)
 	c.prop = center.Traffic
 	c.installTransport()
 	return c

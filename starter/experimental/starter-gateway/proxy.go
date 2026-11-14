@@ -25,8 +25,9 @@ import (
 	"net/url"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 )
 
@@ -53,7 +54,7 @@ func (t *RouteTable) buildPicker(routeID string, up *Upstream) (picker, error) {
 		return nil, err
 	}
 	return func(r *http.Request) (*url.URL, func(error), error) {
-		pick, err := chain.Pick(r.Context(), loadbalance.PickInfo{HashKey: clientIP(r)})
+		pick, err := chain.Pick(r.Context(), balancer.PickInfo{HashKey: clientIP(r)}, nil)
 		if err != nil {
 			return nil, nil, err
 		}

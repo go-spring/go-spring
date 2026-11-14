@@ -10,8 +10,8 @@
 
 - 编排可补偿业务步骤:`Action` 正向,后一步失败则按逆序跑 `Compensate`。
 - 通过 `Store` 持久化 saga 日志,让崩溃进程能续跑补偿;只做**后向恢复**。
-- 暴露 `Observer` 缝隙;父包自带 otel 观察者(`SagaObserver` / `TccObserver` /
-  `AtObserver`,见 observe.go),各模型子包保持不依赖 otel。
+- 父包用 `BeginSagaSpan` / `BeginTccSpan` / `BeginAtSpan` 直接开标准 OTel span
+  (见 observe.go),各模型子包保持不依赖 otel;唯一观察者缝隙是 `MetricsObserver`。
 - 拒绝隔离。saga 中间态对其他读者可见,业务代码自己防脏读(状态位 /
   `cloud/lock`)。
 - 拒绝 SQL 解析 / 生成 undo log:那是 AT,放在 `transaction/at`,是刻意分开

@@ -159,18 +159,22 @@ func (e retryableError) Retryable() bool { return true }
 //     error is nil but the executor still returns an injected error), the
 //     injected error is preferred so it is not silently swallowed as success.
 func Run[T any](ctx context.Context, exec chain.Executor, call chain.Operation,
-	fn func(context.Context) (T, error), opts ...Option) (T, error) {
+	fn func(context.Context, chain.Peer) (T, error), opts ...Option) (T, error) {
 
 	o := newOptions(opts)
 	nilErr, retryOn := o.nilErr, o.retryOn
 
 	var result T
 	if exec == nil {
-		return fn(ctx)
+		return fn(ctx, chain.Peer{})
 	}
 	var callErr error
-	execErr := exec.Execute(ctx, call, new(chain.Recorder), func(attemptCtx context.Context) error {
-		result, callErr = fn(attemptCtx)
+	execErr := exec.Execute(ctx, call, new(chain.Recorder), func(attemptCtx context.Context, rd *chain.Round) error {
+		var peer chain.Peer // the round's routing handoff; zero when no round ran
+		if rd != nil {
+			peer = rd.Peer
+		}
+		result, callErr = fn(attemptCtx, peer)
 		if callErr == nil || nilErr(callErr) {
 			return nil // success or a tolerated sentinel (cache miss / "no rows")
 		}

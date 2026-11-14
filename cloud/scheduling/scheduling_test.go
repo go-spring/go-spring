@@ -43,7 +43,7 @@ func TestConcurrencyPolicyString(t *testing.T) {
 func TestRunCarriesItsOwnTraceID(t *testing.T) {
 	withoutTracer(t)
 
-	s := scheduling.NewScheduler()
+	s := scheduling.NewScheduler(mustTestObserver(t))
 
 	var mu sync.Mutex
 	var runs []context.Context
@@ -77,4 +77,53 @@ func renderFields(fields []log.Field) string {
 	var buf bytes.Buffer
 	log.EncodeFields(log.NewTextEncoder(&buf, " "), fields)
 	return buf.String()
+}
+
+// mustTestObserver builds the default OTel observer for tests that assert its
+// metrics.
+func mustTestObserver(t *testing.T) scheduling.Observer {
+	t.Helper()
+	obs, err := scheduling.NewOTelObserver()
+	if err != nil {
+		t.Fatalf("NewOTelObserver: %v", err)
+	}
+	return obs
+}
+
+// recordingObserver captures the scheduler's events so the seam is tested
+// without OTel.
+type recordingObserver struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (o *recordingObserver) Run(_ context.Context, job, status string, _, _ time.Duration) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.events = append(o.events, "end:"+job+":"+status)
+}
+
+func (o *recordingObserver) Skipped(_ context.Context, job, reason string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.events = append(o.events, "skip:"+job+":"+reason)
+}
+
+func TestObserverSeam(t *testing.T) {
+	s := scheduling.NewScheduler(mustTestObserver(t))
+	obs := &recordingObserver{}
+	_, err := s.Schedule(mustJob(t, "observed", scheduling.FixedRate(20*time.Millisecond),
+		func(context.Context) error { return nil }, scheduling.WithObserver(obs)))
+	assert.Error(t, err).Nil()
+
+	assert.Error(t, s.Start(context.Background())).Nil()
+	time.Sleep(60 * time.Millisecond)
+	stopCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	assert.Error(t, s.Stop(stopCtx)).Nil()
+
+	obs.mu.Lock()
+	defer obs.mu.Unlock()
+	assert.That(t, len(obs.events) >= 1).True("expected at least one observed run")
+	assert.String(t, obs.events[0]).Equal("end:observed:ok")
 }

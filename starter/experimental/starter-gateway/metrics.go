@@ -35,29 +35,38 @@ const componentName = "go-spring.org/starter-gateway"
 // accessTag is the static log tag for the gateway access log.
 var accessTag = log.RegisterAppTag("gateway", "access")
 
-// instrumentSet holds the gateway's instruments. It is built once per process
-// (see instruments), so nothing is allocated or initialized per request.
-//
-// These used to be hand-rolled atomic counters rendered as Prometheus text on a
-// private /gateway/metrics endpoint. They now ride the OTel pipeline like every
-// other starter's, which is the whole point: the gateway's numbers appear in the
-// same scrape and the same OTLP stream as the rest of the application, instead
-// of a private subset that no other dashboard reads. The exposition that used to
-// be hand-written is served by starter-otel's Prometheus exporter — /metrics on
-// the actuator management port, or on metrics.port when that is set.
-type instrumentSet struct {
-	requests     metric.Int64Counter
-	active       metric.Int64UpDownCounter
-	reloadErrors metric.Int64Counter
+// Observer is the container bean the route table reaches its METRIC reporting
+// through. It is the seam: the default is OTel, and an application may
+// contribute its own adapter. Tracing is the STANDARD OTel capability (see
+// proxySpan) and is not part of this contract.
+type Observer interface {
+	// Active moves the in-flight gauge for one route.
+	Active(ctx context.Context, route string, delta int64)
+	// Request records one finished request.
+	Request(ctx context.Context, route string, code int)
+	// ReloadError records one failed route-table reload.
+	ReloadError(ctx context.Context)
 }
 
-// buildInstruments resolves this starter's instruments against the meter
-// provider the otel starter installs before the gateway starts. The observer
-// bean owns the set, so a failed registration fails startup instead of silently
-// dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
+// NewOTelObserver resolves the gateway's instruments and returns the default
+// OTel-backed [Observer]. It is registered as the process's default bean, and
+// builds the instruments once per process, so nothing is allocated or
+// initialized per request. A failed registration fails startup instead of
+// silently dropping the whole metric family.
+//
+// These metrics used to be hand-rolled atomic counters rendered as Prometheus
+// text on a private /gateway/metrics endpoint. They now ride the OTel pipeline
+// like every other starter's, which is the whole point: the gateway's numbers
+// appear in the same scrape and the same OTLP stream as the rest of the
+// application, instead of a private subset that no other dashboard reads. The
+// exposition that used to be hand-written is served by starter-otel's
+// Prometheus exporter — /metrics on the actuator management port, or on
+// metrics.port when that is set.
+func NewOTelObserver() (Observer, error) {
 	m := otel.Meter(componentName)
-	requests, err := m.Int64Counter(
+	o := &otelObserver{}
+	var err error
+	o.requests, err = m.Int64Counter(
 		"gateway.requests",
 		metric.WithDescription("Requests proxied by the gateway"),
 		metric.WithUnit("{request}"),
@@ -65,7 +74,7 @@ func buildInstruments() (*instrumentSet, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "gateway: register gateway.requests")
 	}
-	active, err := m.Int64UpDownCounter(
+	o.active, err = m.Int64UpDownCounter(
 		"gateway.active_requests",
 		metric.WithDescription("Requests currently being proxied by the gateway"),
 		metric.WithUnit("{request}"),
@@ -73,7 +82,7 @@ func buildInstruments() (*instrumentSet, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "gateway: register gateway.active_requests")
 	}
-	reloadErrors, err := m.Int64Counter(
+	o.reloadErrors, err = m.Int64Counter(
 		"gateway.route_reload_errors",
 		metric.WithDescription("Route table reloads that failed and kept the previous table"),
 		metric.WithUnit("{event}"),
@@ -81,22 +90,32 @@ func buildInstruments() (*instrumentSet, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "gateway: register gateway.route_reload_errors")
 	}
-	return &instrumentSet{requests: requests, active: active, reloadErrors: reloadErrors}, nil
+	return o, nil
 }
 
-// observer is the container bean the route table reaches its reporting through.
-// It owns the instrument set resolved at construction.
-type observer struct {
-	ins *instrumentSet
+// otelObserver is the default [Observer].
+type otelObserver struct {
+	requests     metric.Int64Counter
+	active       metric.Int64UpDownCounter
+	reloadErrors metric.Int64Counter
 }
 
-func newObserver() (*observer, error) {
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return &observer{ins: ins}, nil
+// Active implements [Observer].
+func (o *otelObserver) Active(ctx context.Context, route string, delta int64) {
+	o.active.Add(ctx, delta, metric.WithAttributes(attribute.String("gateway.route", route)))
 }
+
+// Request implements [Observer].
+func (o *otelObserver) Request(ctx context.Context, route string, code int) {
+	o.requests.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("gateway.route", route),
+		attribute.String("status", statusOf(code)),
+		attribute.Int("http.response.status_code", code),
+	))
+}
+
+// ReloadError implements [Observer].
+func (o *otelObserver) ReloadError(ctx context.Context) { o.reloadErrors.Add(ctx, 1) }
 
 // logAccess writes the per-request access log. Its identity keys are the ones
 // the metric carries (gateway.route, status), so selecting a failing route on a
@@ -136,9 +155,7 @@ func statusOf(code int) string {
 func (t *RouteTable) instrument(id string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := withRouteID(r.Context(), id)
-		attrs := metric.WithAttributes(attribute.String("gateway.route", id))
-
-		t.obs.ins.active.Add(ctx, 1, attrs)
+		t.obs.Active(ctx, id, 1)
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
 
@@ -146,19 +163,14 @@ func (t *RouteTable) instrument(id string, next http.Handler) http.Handler {
 
 		dur := time.Since(start)
 		status := statusOf(sw.status)
-		t.obs.ins.active.Add(ctx, -1, attrs)
-		t.obs.ins.requests.Add(ctx, 1, metric.WithAttributes(
-			attribute.String("gateway.route", id),
-			attribute.String("status", status),
-			attribute.Int("http.response.status_code", sw.status),
-		))
+		t.obs.Active(ctx, id, -1)
+		t.obs.Request(ctx, id, sw.status)
 		logAccess(ctx, id, r, sw.status, status, dur)
 	})
 }
 
 // reloadError counts one failed route-table reload. The previous table stays in
 // service, so this is the only signal that a config edit did not take effect.
-func (o *observer) reloadError(ctx context.Context) { o.ins.reloadErrors.Add(ctx, 1) }
 
 // newGatewayHealth reports the gateway as a health.Indicator. It stays UP as
 // long as the route table is loaded; a route whose lb:// upstream currently

@@ -181,7 +181,7 @@ func (g guardedConn) run(ctx context.Context, op chain.Operation, call func(cont
 	// Name the service on the operation: the fault layer matches its rules on it
 	// and sits outside this executor.
 	op.Service = g.slot.service
-	_, err := resilience.Run(ctx, g.slot.exec, op, func(attemptCtx context.Context) (struct{}, error) {
+	_, err := resilience.Run(ctx, g.slot.exec, op, func(attemptCtx context.Context, _ chain.Peer) (struct{}, error) {
 		return struct{}{}, call(attemptCtx)
 	})
 	return err

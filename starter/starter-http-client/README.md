@@ -39,7 +39,7 @@ abstractions, all behind the single `http.RoundTripper` seam:
 
 * [`discovery`](../../cloud/discovery) — when a `service-name` is set, a
   `Resolver` keeps a fresh endpoint snapshot;
-* [`loadbalance`](../../cloud/governance/capability/loadbalance) — a `Pool` picks one live endpoint
+* [`loadbalance`](../../cloud/governance/dataplane/outbound/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier suspension) and the
   transport rewrites the request host to it;
 * [`resilience`](../../cloud/governance/dataplane/outbound/resilience) — an optional executor wraps the whole
@@ -126,7 +126,7 @@ cloud/governance/controlplane/source's USAGE). The governance service label is `
 whenever `service-name` is set (either addressing mode), `http:<addr>` only when
 no service-name exists. Per-request timeout comes from
 `spring.governance.client.resilience.timeout`; the load-balancing strategy and outlier
-suspension come from `balancer` / `outlier-threshold` / `outlier-suspend-for` on
+suspension come from `balancer` / `request-failures` / `suspend-for` on
 the rule matching that label.
 
 The starter fails fast at wiring time: at least one of `addr` / `service-name`

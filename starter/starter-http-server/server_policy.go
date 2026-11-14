@@ -78,7 +78,18 @@ func serverPolicyWith(in *inbound.Inbound, prop traffic.Propagator) Middleware {
 			if err != nil {
 				var ref *inbound.Refusal
 				if errors.As(err, &ref) && !sw.written {
-					http.Error(w, ref.Error(), httpStatusFor(ref))
+					status := httpStatusFor(ref)
+					if ref.Verdict() == admission.VerdictFaultInjected && ref.Fault().Body != "" {
+						ct := ref.Fault().ContentType
+						if ct == "" {
+							ct = "text/plain; charset=utf-8"
+						}
+						w.Header().Set("Content-Type", ct)
+						w.WriteHeader(status)
+						_, _ = w.Write([]byte(ref.Fault().Body))
+					} else {
+						http.Error(w, ref.Error(), status)
+					}
 				}
 				return
 			}
@@ -107,13 +118,12 @@ func serverPolicyWith(in *inbound.Inbound, prop traffic.Propagator) Middleware {
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429; an injected fault follows the class the rule
-// declared — a business failure (the caller's mistake) is 400, anything else is
-// 503.
+// rate/bulkhead rejections are 429; an injected fault answers with the status
+// the rule declared.
 func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
-		if ref.Fault().Business() {
-			return http.StatusBadRequest
+		if s := ref.Fault().Status; s != 0 {
+			return s
 		}
 		return http.StatusServiceUnavailable
 	}

@@ -18,20 +18,24 @@ package transaction
 
 import (
 	"context"
+	"sync"
 
+	"go-spring.org/cloud/observability/instrument"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // observerTracerName identifies spans emitted by the observers below.
 const observerTracerName = "go-spring.org/cloud/experimental/transaction"
 
-// beginObserverSpan opens a span named name as a child of ctx, tagged with
-// attrs, and returns an end func that records err on the span (setting error
-// status) and ends it. Shared by the saga/tcc/at observers below.
-func beginObserverSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, func(error)) {
+// BeginSpan opens the standard OTel span for one transaction phase. Span
+// handling is the STANDARD OTel capability, not part of an observability seam:
+// the core packages call it directly. The returned func records err on the span
+// (setting error status) and ends it.
+func BeginSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, func(error)) {
 	ctx, span := otel.GetTracerProvider().Tracer(observerTracerName).Start(ctx, name, trace.WithAttributes(attrs...))
 	return ctx, func(err error) {
 		if err != nil {
@@ -42,22 +46,10 @@ func beginObserverSpan(ctx context.Context, name string, attrs ...attribute.KeyV
 	}
 }
 
-// SagaObserver implements [Observer] for the Saga model by opening one child
-// span per step phase: "saga.action <step>" or "saga.compensate <step>",
-// tagged with the saga id, step name and phase.
-//
-// A starter installs it at coordinator construction:
-//
-//	opts = append(opts, transaction.WithObserver(transaction.SagaObserver{}))
-type SagaObserver struct{}
-
-var _ Observer = SagaObserver{}
-
-// Begin starts a span for one saga step phase. The returned function ends the
-// span, recording the error when the phase failed so a compensated (or failed)
-// saga is visible in the trace.
-func (SagaObserver) Begin(ctx context.Context, txID, step string, phase Phase) (context.Context, func(error)) {
-	return beginObserverSpan(ctx, sagaSpanName(phase, step),
+// BeginSagaSpan opens the span for one saga step phase: "saga.action <step>" or
+// "saga.compensate <step>", tagged with the saga id, step name and phase.
+func BeginSagaSpan(ctx context.Context, txID, step string, phase Phase) (context.Context, func(error)) {
+	return BeginSpan(ctx, sagaSpanName(phase, step),
 		attribute.String("saga.id", txID),
 		attribute.String("saga.step", step),
 		attribute.String("saga.phase", phase.String()),
@@ -71,19 +63,11 @@ func sagaSpanName(phase Phase, step string) string {
 	return "saga.action " + step
 }
 
-// TccObserver implements [Observer] for the TCC model (it is what
-// [tcc.Observer] aliases) by opening one child span per participant phase:
+// BeginTccSpan opens the span for one TCC participant phase:
 // "tcc.try/confirm/cancel <participant>", tagged with the transaction id,
 // participant name and phase.
-type TccObserver struct{}
-
-var _ Observer = TccObserver{}
-
-// Begin starts a span for one participant phase. The returned function ends
-// the span, recording the error when the phase failed so a cancelled (or
-// failed) transaction is visible in the trace.
-func (TccObserver) Begin(ctx context.Context, txID, participant string, phase Phase) (context.Context, func(error)) {
-	return beginObserverSpan(ctx, tccSpanName(phase, participant),
+func BeginTccSpan(ctx context.Context, txID, participant string, phase Phase) (context.Context, func(error)) {
+	return BeginSpan(ctx, tccSpanName(phase, participant),
 		attribute.String("tcc.id", txID),
 		attribute.String("tcc.participant", participant),
 		attribute.String("tcc.phase", phase.String()),
@@ -101,19 +85,11 @@ func tccSpanName(phase Phase, participant string) string {
 	}
 }
 
-// AtObserver implements [Observer] for the AT model (it is what [at.Observer]
-// aliases) by opening one child span per branch second-phase operation:
+// BeginAtSpan opens the span for one AT branch second-phase operation:
 // "at.commit <branch>" or "at.rollback <branch>", tagged with the global
 // transaction id, branch id and phase.
-type AtObserver struct{}
-
-var _ Observer = AtObserver{}
-
-// Begin starts a span for one branch phase. The returned function ends the
-// span, recording the error when the phase failed so a failed commit/rollback
-// is visible in the trace.
-func (AtObserver) Begin(ctx context.Context, txID, branch string, phase Phase) (context.Context, func(error)) {
-	return beginObserverSpan(ctx, atSpanName(phase, branch),
+func BeginAtSpan(ctx context.Context, txID, branch string, phase Phase) (context.Context, func(error)) {
+	return BeginSpan(ctx, atSpanName(phase, branch),
 		attribute.String("at.xid", txID),
 		attribute.String("at.branch", branch),
 		attribute.String("at.phase", phase.String()),
@@ -125,4 +101,68 @@ func atSpanName(phase Phase, branch string) string {
 		return "at.rollback " + branch
 	}
 	return "at.commit " + branch
+}
+
+// outcomeMeta names each model's terminal-outcome counter: the metric scope,
+// description and unit it had before the observers were separated, kept
+// byte-for-byte so dashboards continue to read it.
+var outcomeMeta = map[string]struct {
+	scope string
+	desc  string
+	unit  string
+}{
+	"saga": {
+		scope: componentName,
+		desc:  "Saga terminal states, by status",
+		unit:  "{saga}",
+	},
+	"tcc": {
+		scope: "go-spring.org/cloud/experimental/transaction/tcc",
+		desc:  "TCC terminal states, by status",
+		unit:  "{transaction}",
+	},
+}
+
+// outcomeObserver is the default [MetricsObserver]: one counter per model,
+// resolved lazily on first outcome so it binds to whichever OTel provider is
+// current then.
+type outcomeObserver struct {
+	mu       sync.Mutex
+	counters map[string]metric.Int64Counter
+}
+
+// Outcome implements [MetricsObserver].
+func (o *outcomeObserver) Outcome(ctx context.Context, model, status string) {
+	o.mu.Lock()
+	counter, ok := o.counters[model]
+	if !ok {
+		meta, named := outcomeMeta[model]
+		if !named {
+			o.mu.Unlock()
+			return
+		}
+		var err error
+		counter, err = otel.Meter(meta.scope).Int64Counter("transaction."+model+".outcome.total",
+			metric.WithDescription(meta.desc),
+			metric.WithUnit(meta.unit))
+		if err != nil {
+			reportOutcomeInstrumentError(model, err)
+		}
+		o.counters[model] = counter
+	}
+	o.mu.Unlock()
+	if counter != nil {
+		counter.Add(ctx, 1, metric.WithAttributes(attribute.String("status", status)))
+	}
+}
+
+// NewMetricsOTelObserver returns the default OTel-backed [MetricsObserver].
+func NewMetricsOTelObserver() (MetricsObserver, error) {
+	return &outcomeObserver{counters: map[string]metric.Int64Counter{}}, nil
+}
+
+// reportOutcomeInstrumentError surfaces a failed outcome-counter registration;
+// the model's metric degrades to a no-op rather than dropping the transaction.
+func reportOutcomeInstrumentError(model string, err error) {
+	instrument.ReportInstrumentError("transaction."+model, err)
 }

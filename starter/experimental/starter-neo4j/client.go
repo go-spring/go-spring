@@ -98,7 +98,7 @@ func NewClient(client neo4j.DriverWithContext, cfg Config, center *governance.Ru
 		DriverWithContext: client,
 	}
 	c.serviceLabel = label.ServiceLabel("neo4j", cfg.ServiceName, cfg.URI)
-	c.exec = center.ExecutorFor("neo4j", c.serviceLabel)
+	c.exec = center.ExecutorFor("neo4j", c.serviceLabel, nil)
 	c.prop = center.Traffic
 	return c
 }

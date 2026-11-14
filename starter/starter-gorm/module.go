@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 )
@@ -35,6 +36,13 @@ type Spec struct {
 	Service        string // governance service label (precomputed label.ServiceLabel)
 	ObserveEnabled bool
 	Closers        []func()
+
+	// Picker is the addressing face of the discovery chain the dialect built,
+	// nil when the entry dials a fixed address (or the mesh owns routing). It
+	// travels to [Open], which injects it into the governance executor so every
+	// ROUND of a statement picks its endpoint — a retry re-picks, excluding the
+	// peers the call already failed against.
+	Picker *loadbalance.Chain
 }
 
 // NewDB assembles the client for one configured entry from the dialect's [Spec]:
@@ -60,6 +68,7 @@ func NewDB(ctx context.Context, engine string, spec Spec, center *governance.Run
 		Service:        spec.Service,
 		ObserveEnabled: spec.ObserveEnabled,
 		Closers:        spec.Closers,
+		Picker:         spec.Picker,
 		Center:         center,
 	})
 	if err != nil {

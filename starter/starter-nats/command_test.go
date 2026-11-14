@@ -107,7 +107,7 @@ func newInstrumentedConn(t *testing.T) *Conn {
 }
 
 func newInstrumentedConnErr(err error) *Conn {
-	obs := observability.NewOperationObserver("nats", "nats:test")
+	obs := observability.NewOperationObserver("nats", "nats:test", nil)
 	return &Conn{InnerConn: NewObsConn(injectTail{err: err}, obs, testProp), obs: obs, prop: testProp}
 }
 

@@ -214,10 +214,11 @@ var clientGuards sync.Map // pulsar.Client -> *clientObserver
 // Producer.Send path. A pulsar client has no seam for the resilience executor,
 // so there is no governance: the observer emits the span, metrics and access
 // log, and nothing throttles or retries.
-func AttachObserver(cl pulsar.Client, url string) {
+func AttachObserver(cl pulsar.Client, url string, obsFactory observability.Metrics) {
+
 	label := label.ServiceLabel(pulsarSystem, url)
 	clientGuards.Store(cl, &clientObserver{
-		obs:          observability.NewOperationObserver(pulsarSystem, label),
+		obs:          observability.NewOperationObserver(pulsarSystem, label, obsFactory),
 		serviceLabel: label,
 	})
 }

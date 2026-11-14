@@ -77,8 +77,9 @@ type Conn struct {
 // half-assembled. A nats client has no seam for the resilience executor, so
 // there is no governance: the observer emits the span, metrics and access log,
 // and nothing throttles or retries.
-func NewConn(raw *nats.Conn, url string, prop traffic.Propagator) *Conn {
-	obs := observability.NewOperationObserver("nats", label.ServiceLabel("nats", url))
+func NewConn(raw *nats.Conn, url string, prop traffic.Propagator, obsFactory observability.Metrics) *Conn {
+
+	obs := observability.NewOperationObserver("nats", label.ServiceLabel("nats", url), obsFactory)
 	return &Conn{Conn: raw, InnerConn: NewObsConn(NewRawConn(raw), obs, prop), obs: obs, prop: prop}
 }
 

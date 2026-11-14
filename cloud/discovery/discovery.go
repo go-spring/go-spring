@@ -48,25 +48,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// Reserved metadata keys. The dimensions consumers route on (version, zone,
-// scheme) travel inside [Endpoint.Metadata] (and the registration side's
-// Instance metadata) so backends store them without per-backend mapping. These
-// keys are the single source of truth for that convention: the write side
-// (the registration Server) folds the ${spring.discovery} identity fields in under
-// these keys, and the read side (backends restoring [Endpoint.Scheme],
-// zone-aware balancing) reads them back.
-const (
-	// MetaKeyVersion carries the application version of the instance.
-	MetaKeyVersion = "version"
-
-	// MetaKeyZone carries the availability zone of the instance.
-	MetaKeyZone = "zone"
-
-	// MetaKeyScheme carries the transport hint, restored to
-	// [Endpoint.Scheme] by discovery backends.
-	MetaKeyScheme = "scheme"
-)
-
 // Endpoint is a single connectable instance returned by a [Discovery] backend.
 type Endpoint struct {
 	// Addr is the connectable "host:port".
@@ -108,7 +89,13 @@ type Endpoint struct {
 	// then treat all non-disabled endpoints as eligible.
 	Healthy bool
 
-	// Metadata carries backend-specific attributes (zone, unit, version, ...),
+	// Zone is the availability zone / unit this instance sits in; empty means
+	// the backend does not report one. Consumers may prefer same-zone
+	// instances (zone-aware balancing). It mirrors the registration side's
+	// [Instance.Zone].
+	Zone string
+
+	// Metadata carries backend-specific attributes (unit, version, ...),
 	// passed through untouched for the caller to route on. It is owned by the
 	// backend's cache and is READ-ONLY: a consumer must not write to it, since
 	// the same map is shared by every reader of the snapshot.

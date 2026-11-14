@@ -1,6 +1,6 @@
 # starter-redigo 使用指南
 
-`starter-redigo` 把 [redigo](https://github.com/gomodule/redigo)（`gomodule/redigo`）的连接池接入 Go-Spring：配置文件里每个 `${spring.redigo.instances.<name>}` 条目就是一个连接池 bean，注入即用。它在原生 `*redis.Pool` 之上叠了两层横切能力——**可观测**（trace/metric/log）和**弹性**（限流/熔断/重试/超时），并对每条命令自动生效。
+`starter-redigo` 把 [redigo](https://github.com/gomodule/redigo)（`gomodule/redigo`）的连接池接入 Go-Spring：配置文件里每个 `${spring.redigo.instances.<name>}` 条目就是一个连接池 bean，注入即用。它在自有连接池（`connpool`，按端点分子池）之上叠了三层横切能力——**可观测**（trace/metric/log）、**弹性**（限流/熔断/重试/超时）与**寻址**（每轮选端点、重试换点、失败摘除），并对每条命令自动生效。
 
 > 本文面向实际使用：配置怎么写、类型怎么注入、扩展点在哪。内部实现细节见源码注释。
 
@@ -31,7 +31,7 @@
 
 | 类型 | 是什么 | 你需要知道什么 |
 |---|---|---|
-| **`Pool`** | `*redis.Pool` 的包装 bean | 你注入的就是它。它**内嵌**裸 `*redis.Pool`，`Get()`/`GetContext()`/`Stats()`/`Close()` 等 redigo 原生方法按原样提升（`Close` 被覆盖以一并拆除绑定与执行器）；额外承载 resilience / observability 的配置字段。每个 `${spring.redigo.instances.<name>}` 条目产出一个 `*Pool` bean，名字是 `<name>`。 |
+| **`Pool`** | 治理连接池 bean | 你注入的就是它。`Get()` 交出虚拟 `*Conn`（每条命令走 用户拦截器→声明→resilience→每轮寻址→取连接 的完整链）；`Stats()` 报实时账目，`Close()` 一并拆掉连接池与 executor。每个 `${spring.redigo.instances.<name>}` 条目产出一个 `*Pool` bean，名字是 `<name>`。 |
 | **`Conn`** | `redis.Conn` 的插桩包装 | `pool.Get()` 拿到的连接其实是 `*Conn`。它对每条命令（`Do` / `DoContext` / `DoWithTimeout`）自动套上 trace span、metric、访问日志，并在开启 resilience 时套上执行器。**对调用方完全透明**——你照常用 redigo 的 `conn.Do(...)`，插桩在背后发生。 |
 | **`Driver`** | 创建连接池的扩展接口 | 默认实现 `DefaultDriver` 满足绝大多数场景。需要自定义拨号逻辑（公司内部寻址、特殊鉴权、代理…）时实现它并作为可选容器 bean 提供，详见[第七节](#七扩展自定义-driver)。 |
 
@@ -371,7 +371,7 @@ spring.actuator.addr=:9370
 
 ### 连接池运行时计数
 
-`Pool` 内嵌了裸 `*redis.Pool`，其 `Stats()` 直接可用：
+`Pool.Stats()` 报告连接池实时账目（持有/空闲/端点数）：
 
 ```go
 stats := s.Redis.Stats()

@@ -225,8 +225,8 @@ redisotel（连接池指标）→ operationHook（声明身份）→ resilienceH
 **链的策略归治理管，不是写死的。** 它挂着 suspension tracker，由 Driver 交给 `NewClient`（包装体持有）；
 建链这一步（`center.Loadbalance().Chain(resolver, label)`）本身就是注册到
 `redis:<service-name|master-name|addr>` 的动作，所以 Driver 拿已有的治理中心（center）就能完成注册、不需要额外步骤，该 label 命中的
-`spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**整条重建**——下一次拨号
-在全新的 balancer 与 suspension tracker 上走新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
+`spring.governance.client.loadbalance.services[N].balancer` / `request-failures` / `suspend-for` 会**整条重建**——下一次拨号
+在全新的 balancer 与 suspension tracker 上走新策略。dialer 把拨号结果喂给 `Complete`，所以 `request-failures` 摘的是**反复连不上**的实例。
 sentinel 与 cluster 客户端自己发现节点、没有链路，这些 key 到不了它们。详见
 `cloud/governance/README.md` §3.1。
 

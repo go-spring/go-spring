@@ -24,6 +24,7 @@ import (
 
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -58,11 +59,11 @@ func TestInterceptorRetriesTransient(t *testing.T) {
 	interceptor := resilienceInterceptor(m.Wrap("svc", nil), "svc", testProp)
 	boom := &net.OpError{Op: "read", Net: "tcp", Err: errors.New("reset")}
 	var calls int
-	handler := interceptor(func(context.Context, string, []interface{}) (interface{}, error) {
+	handler := interceptor(func(_ context.Context, _ chain.Peer, _ string, _ []interface{}) (interface{}, error) {
 		calls++
 		return nil, boom
 	})
-	_, seen := handler(context.Background(), "GET", []interface{}{"k"})
+	_, seen := handler(context.Background(), chain.Peer{}, "GET", []interface{}{"k"})
 	assert.Error(t, seen).Is(boom)
 	assert.Number(t, calls).Equal(3)
 }

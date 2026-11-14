@@ -17,9 +17,11 @@
 // Command example is a flagship for starter-neo4j that composes the cloud-
 // native capability set around a graph client:
 //
-//   - DISCOVERY: the neo4j address is resolved through a registered discovery
-//     backend (service-name), not hardcoded config. Because the neo4j driver
-//     exposes no dialer injection point, resolution happens once at startup.
+//   - DISCOVERY: the neo4j routing seed is resolved through a registered
+//     discovery backend (service-name), not hardcoded config. The driver then
+//     reads the routing table from that seed and owns server selection; the
+//     same resolver is its router-refresh fallback, so discovery keeps working
+//     after the seed goes away. Requires a neo4j:// (routing) scheme.
 //   - RESILIENCE: with resilience.enabled, queries routed through
 //     StarterNeo4j.Query / RunWithResilience run through the builtin "default"
 //     executor; a burst is rejected with ErrRateLimited.
@@ -123,8 +125,8 @@ func runTest(s *Service, c *Config) {
 	fmt.Println("health: actuator probes UP (neo4j health.Indicator aggregated)")
 
 	// --- 2. Discovery -----------------------------------------------------
-	// The instance's address comes from the discovery backend, not config. A
-	// successful Cypher round-trip proves resolve -> dial -> serve.
+	// The instance's seed address comes from the discovery backend, not config. A
+	// successful Cypher round-trip proves resolve -> route -> serve.
 	if err := queryAge(ctx, s, "MERGE (p:Person {name: $name}) SET p.age = $age RETURN p",
 		map[string]any{"name": "alice", "age": 30}); err != nil {
 		fail("neo4j via discovery (write): %v", err)

@@ -193,7 +193,7 @@ gs.Run()
 
 下游,loadbalance `Pool` 消费这些快照并在每次 Pick 做 **weight-0 过滤**:
 `excludeDrained` 丢弃 `Weight == 0` 端点,全部摘流时回退全集,防未归一化
-快照把池打黑洞(cloud/governance/capability/loadbalance/pool.go:97-99,122-135)。
+快照把池打黑洞(cloud/governance/dataplane/outbound/loadbalance/pool.go:97-99,122-135)。
 
 ### 2.4 DRAIN 链路 —— UpdateWeight(0)
 

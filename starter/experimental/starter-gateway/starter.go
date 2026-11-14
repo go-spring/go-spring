@@ -23,7 +23,7 @@ import (
 func init() {
 	// Shared instrument set for the route table. Its metrics ride the OTel
 	// pipeline; there is no private endpoint to keep in sync with it.
-	gs.Provide(newObserver)
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 
 	// The compiled, hot-reloadable route table. Its ${spring.gateway} config
 	// and optional FilterWrapper beans (jwt-auth, lua) are populated by field

@@ -22,6 +22,7 @@ import (
 	"slices"
 	"time"
 
+	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -29,14 +30,7 @@ import (
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
-
-// componentName is the instrumentation componentName name every meter and tracer in this
-// package reports under.
-const componentName = "go-spring.org/cloud/experimental/transaction/tcc"
 
 // Option configures the in-process [Coordinator] built by [NewCoordinator].
 type Option func(*coordinator)
@@ -46,9 +40,9 @@ type Option func(*coordinator)
 // Store in production.
 func WithStore(s Store) Option { return func(c *coordinator) { c.store = s } }
 
-// WithObserver sets the [Observer] used to instrument every participant phase,
-// e.g. a starter that opens otel spans.
-func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
+// WithMetrics sets the [transaction.MetricsObserver] used to record the
+// transaction's terminal outcome. A nil observer disables the metric.
+func WithMetrics(o transaction.MetricsObserver) Option { return func(c *coordinator) { c.metrics = o } }
 
 // WithTraffic sets the process traffic convention used to stamp each phase's
 // operation, so a fault rule can target match.traffic.exact. Without it the
@@ -57,55 +51,28 @@ func WithTraffic(prop traffic.Propagator) Option {
 	return func(c *coordinator) { c.prop = prop }
 }
 
-// instrumentSet bundles the metrics a TCC transaction records: one per
-// coordinator, resolved when the coordinator is constructed. It holds no
-// per-transaction state.
-type instrumentSet struct {
-	// outcomes counts TCC terminal states — the event counter of the metrics
-	// rules, named after the event itself. The transaction ID is unbounded
-	// cardinality and stays out of the attributes.
-	outcomes metric.Int64Counter
-}
-
-// buildInstruments resolves this package's instruments against the meter
-// provider the otel starter installs before any bean is constructed. The
-// coordinator owns the set, so a failed registration fails construction instead
-// of silently dropping the metric family.
-func buildInstruments() (*instrumentSet, error) {
-	outcomes, err := otel.Meter(componentName).
-		Int64Counter("transaction.tcc.outcome.total",
-			metric.WithDescription("TCC terminal states, by status"),
-			metric.WithUnit("{transaction}"))
-	if err != nil {
-		return nil, errutil.Explain(err, "tcc: register transaction.tcc.outcome.total")
-	}
-	return &instrumentSet{outcomes: outcomes}, nil
-}
-
 // NewCoordinator returns the bundled in-process [Coordinator]: it tries every
 // participant in order and then confirms all (on success) or cancels the tried
-// ones in reverse (on any try failure). With no options it uses no store and no
-// observer, which is a valid transparent setup for tests and development.
+// ones in reverse (on any try failure). With no options it uses no store, which
+// is a valid transparent setup for tests and development.
 func NewCoordinator(opts ...Option) (Coordinator, error) {
-	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding())}
-	for _, opt := range opts {
-		opt(c)
-	}
-	ins, err := buildInstruments()
+	metrics, err := transaction.NewMetricsOTelObserver()
 	if err != nil {
 		return nil, err
 	}
-	c.ins = ins
+	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding()), metrics: metrics}
+	for _, opt := range opts {
+		opt(c)
+	}
 	return c, nil
 }
 
 type coordinator struct {
-	store    Store
-	observer Observer
-	prop     traffic.Propagator
+	store Store
+	prop  traffic.Propagator
 
-	// ins is this coordinator's instrument set, resolved at construction.
-	ins *instrumentSet
+	// metrics records the transaction's terminal outcome; nil disables it.
+	metrics transaction.MetricsObserver
 }
 
 // triedParticipant records a participant whose Try ran, with the value it
@@ -260,19 +227,16 @@ func (c *coordinator) cancel(ctx context.Context, t Transaction, tried []triedPa
 	}
 }
 
-// runPhase runs one participant phase under its retry policy and observer. The
-// observer end func always fires with the phase's final error so failures are
-// observable.
+// runPhase runs one participant phase under its retry policy and its standard
+// span. The span's end func always fires with the phase's final error so
+// failures are visible in the trace.
 func (c *coordinator) runPhase(ctx context.Context, txID string, p Participant, phase Phase,
 	fn func(context.Context) (any, error)) (any, error) {
 
-	end := func(error) {}
-	if c.observer != nil {
-		ctx, end = c.observer.Begin(ctx, txID, p.Name, phase.TxPhase())
-	}
+	ctx, end := transaction.BeginTccSpan(ctx, txID, p.Name, phase.TxPhase())
 
 	var result any
-	err := runWithPolicy(ctx, c.prop, p.Retry, p.Name, func(ctx context.Context) error {
+	err := runWithPolicy(ctx, c.prop, p.Retry, p.Name, func(ctx context.Context, _ *chain.Round) error {
 		var e error
 		result, e = fn(ctx)
 		return e
@@ -297,9 +261,9 @@ func (c *coordinator) persist(ctx context.Context, t Transaction, status Status,
 // deleted (the work is done and needs no recovery); a cancelled or failed
 // transaction's log is kept so operators and recovery can inspect it.
 func (c *coordinator) finish(ctx context.Context, t Transaction, res *Result, tried []triedParticipant) {
-	c.ins.outcomes.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("status", res.Status.String()),
-	))
+	if c.metrics != nil {
+		c.metrics.Outcome(ctx, "tcc", res.Status.String())
+	}
 	if res.Status == StatusCommitted {
 		log.Info(ctx, log.TagAppDef, "transaction: tcc committed",
 			log.String("transaction", t.ID),
@@ -373,9 +337,9 @@ func isTerminal(s Status) bool {
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
 // reuses [resilience.TimeoutRetry] so TCC phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
-func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn chain.RoundFunc) error {
 	if p.IsZero() {
-		return fn(ctx)
+		return fn(ctx, new(chain.Recorder).NewRound())
 	}
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {

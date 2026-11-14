@@ -37,6 +37,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 )
 
@@ -57,10 +58,12 @@ type callbackProcessor interface {
 // its identity, built where the operation's kind and its dialect are known (see
 // the observe plugin's Plugin.Operation). It is asked once per call, at the
 // wrap point, and the result is passed EXPLICITLY to the executor rather than
-// carried on the context. A nil opFor (observe disabled) runs every call with
-// the zero Operation, so the resilience layer falls back to its generic
-// signals.
+// carried on the context. It is REQUIRED: every call declares an identity, so a
+// nil builder is a wiring error rather than a "no signals" shorthand.
 func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func(*gorm.DB, string) chain.Operation) error {
+	if opFor == nil {
+		return errutil.Explain(nil, "gorm resilience: an operation builder is required")
+	}
 	// The dialect's own error translator answers "is this a constraint verdict"
 	// without gorm's global TranslateError: we call Translate for CLASSIFICATION
 	// only, so the error returned to the caller stays the driver's own. A custom
@@ -89,14 +92,15 @@ func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func
 		wrapped := func(tx *gorm.DB) {
 			// Build the call's identity where the processor (and so its kind and
 			// dialect) is known, then pass it explicitly to the executor.
-			var op chain.Operation
-			if opFor != nil {
-				op = opFor(tx, kind)
-			}
+			op := opFor(tx, kind)
 			// The service is this executor's label; the operation states it so a
 			// layer outside the executor (the fault layer) can match on it too.
 			op.Service = service
-			err := runGuard(tx.Statement.Context, exec, op, translator, func() error {
+			err := runGuard(tx.Statement.Context, exec, op, translator, func(actx context.Context) error {
+				// Stage the round's peer on the statement context: the dialect's
+				// registered dialer reads it (connpool.DialAddrFrom) and dials
+				// exactly the endpoint the addressing stage picked for this round.
+				tx.Statement.Context = actx
 				fn(tx)
 				return tx.Error
 			})
@@ -135,7 +139,7 @@ func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func
 // internally. A retry schedule configured for a gorm label therefore still runs
 // once, which the document owner controls.
 func runGuard(ctx context.Context, exec chain.Executor, op chain.Operation,
-	translator gorm.ErrorTranslator, call func() error) error {
+	translator gorm.ErrorTranslator, call func(context.Context) error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -146,7 +150,9 @@ func runGuard(ctx context.Context, exec chain.Executor, op chain.Operation,
 		}))
 	}
 	_, err := resilience.Run(ctx, exec, op,
-		func(context.Context) (struct{}, error) { return struct{}{}, call() },
+		func(actx context.Context, peer chain.Peer) (struct{}, error) {
+			return struct{}{}, call(actx)
+		},
 		opts...)
 	return err
 }

@@ -241,7 +241,7 @@ type GuardMailer struct {
 // scope by.
 func NewGuardMailer(next InnerMailer, instanceName, host string, center *governance.Runtime) *GuardMailer {
 	label := label.ServiceLabel("mail", instanceName, host)
-	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next, prop: center.Traffic}
+	return &GuardMailer{exec: center.ExecutorFor("mail", label, nil), service: label, next: next, prop: center.Traffic}
 }
 
 // Release hands releaseRaw to the layer under it, and on the FULL teardown
@@ -266,7 +266,7 @@ func (g *GuardMailer) Send(ctx context.Context, msgs ...*Message) error {
 	// Name the service on the operation: the fault layer matches its rules on it
 	// and sits outside this executor.
 	op.Service = g.service
-	_, err := resilience.Run(ctx, g.exec, op, func(attemptCtx context.Context) (struct{}, error) {
+	_, err := resilience.Run(ctx, g.exec, op, func(attemptCtx context.Context, _ chain.Peer) (struct{}, error) {
 		return struct{}{}, g.next.Send(attemptCtx, msgs...)
 	}, resilience.TolerateFunc(isNormalSendError))
 	return err

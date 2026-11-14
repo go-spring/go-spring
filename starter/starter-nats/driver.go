@@ -27,6 +27,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go-spring.org/cloud/governance"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -59,8 +60,12 @@ type Driver interface {
 	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Conn, error)
 }
 
-// DefaultDriver is the default implementation of the Driver interface.
-type DefaultDriver struct{}
+// DefaultDriver is the default implementation of the Driver interface. Observe
+// is the observability adapter the starter injects; nil uses the package default.
+type DefaultDriver struct {
+	Observe Observer
+	Ops     observability.Metrics
+}
 
 // CreateClient dials NATS from the provided configuration and wraps the
 // connection into a [Conn]. It owns the raw connection assembly — the
@@ -72,10 +77,10 @@ type DefaultDriver struct{}
 // A custom Driver that omits the handlers therefore reports no connection-layer
 // events at all, rather than losing them to a starter-side override: nats.Conn's
 // Set*Handler methods replace a slot, so the two cannot be layered.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Conn, error) {
+func (d DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Conn, error) {
 	// Connection-layer events are counted as well as logged, from this one
 	// place (see connStateCounter for why the pair cannot be split).
-	connState, err := newConnStateCounter()
+	connState, err := newConnStateCounterWith(d.Observe)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +145,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// NewConn is the only way to build a Conn: identity and the governance
 	// executor are both applied here, so the driver returns a connection that is
 	// complete (see [Driver]).
-	conn := NewConn(nc, c.URL, center.Traffic)
+	conn := NewConn(nc, c.URL, center.Traffic, d.Ops)
 	// JetStream is derived from the same connection rather than opening a second
 	// one, and it is part of the assembled client: a failure here discards the
 	// connection rather than leaking it.
@@ -170,7 +175,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 // resilience manager required: the container supplies it via the governance
 // center, so a center without one fails at construction.
 func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	center *governance.Runtime) (*Conn, error) {
+	center *governance.Runtime, obs Observer, ops observability.Metrics) (*Conn, error) {
 	// The connection's identity rides on a context derived here: every line
 	// below carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -185,7 +190,7 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
-		d = DefaultDriver{}
+		d = DefaultDriver{Observe: obs, Ops: ops}
 	}
 	conn, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {

@@ -43,7 +43,7 @@ import (
 
 // newConsulDiscovery builds a Discovery backed by a Consul client. tag is the
 // service tag narrowing every query (empty spans all tags).
-func newConsulDiscovery(client *api.Client, tag string, obs *discovery.Observer) *consulDiscovery {
+func newConsulDiscovery(client *api.Client, tag string, obs discovery.Observer) *consulDiscovery {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	return &consulDiscovery{
 		client:   client,
@@ -70,7 +70,7 @@ type consulDiscovery struct {
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported sync and log line is labelled with.
-	obs *discovery.Observer
+	obs discovery.Observer
 
 	mu      sync.Mutex // guards entries
 	entries map[string]*serviceEntry
@@ -219,7 +219,7 @@ func serviceEntriesToEndpoints(entries []*api.ServiceEntry) []discovery.Endpoint
 		}
 		eps = append(eps, discovery.Endpoint{
 			Addr:     fmt.Sprintf("%s:%d", host, svc.Port),
-			Scheme:   svc.Meta[discovery.MetaKeyScheme],
+			Scheme:   svc.Meta[metaKeyScheme],
 			Weight:   svc.Weights.Passing,
 			Healthy:  true,
 			Metadata: svc.Meta,

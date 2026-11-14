@@ -25,12 +25,6 @@ type Config struct {
 	// is enough; set it to false to import the module without contributing beans.
 	Enabled bool `value:"${enabled:=true}"`
 
-	// Tracing wires the otel [Observer] so each participant phase emits a child
-	// span (try, confirm, cancel) on the globals installed by starter-otel. It
-	// defaults to true and costs almost nothing without starter-otel, since the
-	// global tracer is then a no-op.
-	Tracing bool `value:"${tracing:=true}"`
-
 	// RecoverOnStart makes the starter scan the durable Store at startup and drive
 	// any transaction left in flight by a crash to its decided outcome (confirm if
 	// a commit decision was recorded, otherwise cancel). It defaults to true. With

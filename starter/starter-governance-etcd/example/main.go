@@ -124,8 +124,8 @@ func main() {
 func resolvedTimeout(exec chain.Executor) time.Duration {
 	rec := new(chain.Recorder)
 	_ = exec.Execute(context.Background(), chain.Operation{Service: "demo:service"}, rec,
-		func(context.Context) error { return nil })
-	return rec.Timeout
+		func(context.Context, *chain.Round) error { return nil })
+	return rec.LastRound().Timeout
 }
 
 // runTest self-asserts the push chain: the cold-loaded 100ms policy, then the

@@ -95,7 +95,8 @@ type Notifier struct {
 // A webhook delivery is emitted by this starter's own observer rather than
 // routed through the resilience executor (see observe.go) — a delivery has no
 // seam for one — so no runtime is injected here.
-func newNotifier(ctx *gs.ContextProvider, name string, c Config, prop traffic.Propagator) (*Notifier, error) {
+func newNotifier(ctx *gs.ContextProvider, name string, c Config, prop traffic.Propagator, obsFactory observability.Metrics) (*Notifier, error) {
+
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
@@ -109,7 +110,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config, prop traffic.Pr
 	// A webhook delivery does not route through the resilience executor — its
 	// transport has no seam for one — so it emits its own signals. This is the
 	// single composition point that builds that observer.
-	obs := observability.NewOperationObserver("webhook", label.ServiceLabel("webhook", c.Channel, name))
+	obs := observability.NewOperationObserver("webhook", label.ServiceLabel("webhook", c.Channel, name), obsFactory)
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},

@@ -36,13 +36,13 @@ import (
 // not package init — so an SDK installed after this package's init still
 // receives the spans and records. The tracer is not held at all; see
 // [observingExecutor.Execute].
-func WrapClientExecutor(next chain.Executor, system, service string) chain.Executor {
+func WrapClientExecutor(next chain.Executor, system, service string, m Metrics) chain.Executor {
 	return &observingExecutor{
 		next: next,
 		callEmitter: &callEmitter{
 			system:  system,
 			service: service,
-			ins:     clientInstruments(),
+			metrics: m,
 		},
 	}
 }
@@ -65,11 +65,10 @@ type observingExecutor struct {
 // emit runs after the loop, so it reads the attempts the loop recorded. The
 // governance layer emits nothing itself; it only writes facts.
 //
-// A call that declared no operation (a zero [chain.Operation]) takes the
-// fallback path below, which reproduces this layer's historical signals verbatim,
-// down to their names — migrating a client to the declared-operation path is what
-// switches its signals over, one client at a time.
-func (w *observingExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+// The operation is the call's DECLARATION — every adapter builds one, including
+// for a call it only wants quieted — so this layer emits exactly the signals the
+// declaration describes and has no second vocabulary to fall back to.
+func (w *observingExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	return w.call(ctx, op, rec, func(c context.Context) error {
 		return chain.Next(w.next, c, op, rec, fn)
 	}, w.next == nil)

@@ -21,7 +21,7 @@
 | [fault](governance/capability/fault/) | 平面中立的故障注入能力：规则文档、匹配词汇、注入序列。两个壳分别在 [outbound/fault](governance/dataplane/outbound/fault/)（包装 `Executor`）与 [inbound/fault](governance/dataplane/inbound/fault/)（admission 阶段）；各自持有自己的文档。 |
 | [governance](governance/) | 服务治理运行时：各策略域（超时重试、熔断、限流、寻址选择、入站准入）与故障注入各自是一个控制面根，共用 source 传输；包内同时持有组装好的数据面与组合根。进程唯一注入点是 `governance.Runtime`。 |
 | [label](governance/capability/label/) | 服务 label 拼接（`ServiceLabel`）——治理规则与 manager 匹配用的键。 |
-| [loadbalance](governance/capability/loadbalance/) | 「给定存活实例集合，这一发请求给谁？」——客户端负载均衡，附带失败摘除。 |
+| [loadbalance](governance/dataplane/outbound/loadbalance/) | 「给定存活实例集合，这一发请求给谁？」——客户端负载均衡，附带失败摘除。 |
 | [lock](lock/) | 「这个副本现在可以跑这件独占的工作吗？」——分布式锁与 leader 选举，一个契约。 |
 | [mesh](mesh/) | 「我在不在 service mesh sidecar 后面？」——在的话，应用自己的发现/负载均衡让位。 |
 | [messaging](messaging/) | 通过一对 `Publisher`/`Subscriber` 收发 `Message` 信封；换消息中间件只是换接线。 |

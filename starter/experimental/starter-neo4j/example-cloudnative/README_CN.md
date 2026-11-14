@@ -5,9 +5,10 @@
 
 ## 能力
 
-- **服务发现**：neo4j 地址通过已注册的 discovery 后端（`service-name`）解析，
-  而非硬编码配置。由于 neo4j 驱动没有 dialer 注入点，解析在启动时一次性完成——
-  Cypher 往返仅当 resolve → dial → serve 全部成功时才成立。
+- **服务发现**：neo4j 的**路由种子**通过已注册的 discovery 后端（`service-name`）解析，
+  而非硬编码配置。驱动从种子读取 routing table 并自行选择服务器，同一个 resolver 还作为
+  路由表重建的兜底。要求 `neo4j://`（routing）scheme——Cypher 往返仅当
+  resolve → route → serve 全部成功时才成立。
 - **弹性容错**：开启 `resilience.enabled` 后，经由 `StarterNeo4j.Query` /
   `StarterNeo4j.RunWithResilience` 的查询会经过内置 `"default"` executor；
   超过 `rate-limit` 的突发流量以 `ErrRateLimited` 拒绝。容错配置为 `gs.Dync`

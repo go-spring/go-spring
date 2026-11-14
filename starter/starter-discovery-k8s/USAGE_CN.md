@@ -175,7 +175,7 @@ Kubernetes 没有 `UpdateWeight`；摘流是平台的事，走的是同一份快
   dns 模式则是记录直接消失（headless DNS 只发布就绪地址，`dns.go:82-89`），滞后一个
   `refresh-interval`。
 - Weight 语义：只有 SRV 记录带 weight（`dns.go:140`）；那里的 `Weight == 0` 受池的软摘流过滤影响
-  （`cloud/governance/capability/loadbalance/pool.go:93-134`）。
+  （`cloud/governance/dataplane/outbound/loadbalance/pool.go:93-134`）。
 
 ---
 

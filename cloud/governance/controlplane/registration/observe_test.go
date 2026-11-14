@@ -160,7 +160,7 @@ func TestObserveReporting(t *testing.T) {
 // newObserver builds the observer for one scenario. Its gauge callbacks are
 // dropped at the end of the test: an observer that outlived its scenario would
 // keep reporting into the next scenario's collection.
-func newObserver(t *testing.T, system, center string) *Observer {
+func newObserver(t *testing.T, system, center string) Observer {
 	t.Helper()
 	o, err := NewObserver(system, center)
 	require.NoError(t, err)
@@ -201,16 +201,16 @@ func testTwoCentersStayDistinct(t *testing.T, rdr sdkmetric.Reader) {
 // reportRegister / reportDeregister / reportWeight run one reported operation to
 // completion with the given outcome: these tests assert on the instruments, and
 // the span-context correlation is covered by the backends' own tests.
-func reportRegister(o *Observer, svc, reason string, err error) {
-	_ = o.RegisterAttempt(context.Background(), svc, reason, func(context.Context) error { return err })
+func reportRegister(o Observer, svc, reason string, err error) {
+	_ = RegisterAttempt(context.Background(), o, svc, reason, func(context.Context) error { return err })
 }
 
-func reportDeregister(o *Observer, svc string, err error) {
-	_ = o.DeregisterAttempt(context.Background(), svc, func(context.Context) error { return err })
+func reportDeregister(o Observer, svc string, err error) {
+	_ = DeregisterAttempt(context.Background(), o, svc, func(context.Context) error { return err })
 }
 
-func reportWeight(o *Observer, svc string, err error) {
-	_ = o.WeightChange(context.Background(), svc, func(context.Context) error { return err })
+func reportWeight(o Observer, svc string, err error) {
+	_ = WeightChange(context.Background(), o, svc, func(context.Context) error { return err })
 }
 
 // testRegistryLifecycle asserts each registration outcome's span, duration,

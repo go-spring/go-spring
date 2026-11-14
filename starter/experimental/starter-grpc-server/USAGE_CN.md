@@ -272,7 +272,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 - 仅靠 service config 选策略：`grpc.WithDefaultServiceConfig(
   StarterGrpc.LoadBalancingConfig(strategy))`。balancer 名为 `gs_round_robin`、`gs_least_conn`、
   `gs_consistent_hash`、`gs_weighted`、`gs_zone_aware`。它们在 init 预注册，**初始不启用驱逐**；
-  用一条治理规则统一配置：`spring.governance.client.loadbalance.outlier-threshold` / `.outlier-suspend-for`
+  用一条治理规则统一配置：`spring.governance.client.loadbalance.request-failures` / `.suspend-for`
   （它们解析的是进程级默认；要显式定向就写 `spring.governance.client.loadbalance.services[N].service=grpc:client`）。
   规则里的 `balancer` 会**覆盖**所有内置 `gs_*` 名字的 service config 选择——picker 每次挑选都重读，
   所以 push 完下一笔 RPC 就走新策略，不用重连。`balancer` 留空 = 仍由 service config 决定；写错

@@ -17,15 +17,26 @@
 package observe
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+// renderFields encodes fields the way the access log would, so a test can read
+// what a line actually carries.
+func renderFields(fields []log.Field) string {
+	var buf bytes.Buffer
+	log.EncodeFields(log.NewTextEncoder(&buf, " "), fields)
+	return buf.String()
+}
 
 // dbOperation is a declared client operation in the db family: the vocabulary
 // a gorm-style client would declare.
@@ -48,31 +59,26 @@ func dbOperation() chain.Operation {
 	}
 }
 
-// TestSuccessQuiet pins the access-log levelling, including the case the
-// refactor got wrong: an UNDECLARED call must stay at Debug, as it always was —
-// otherwise every skipped operation (redigo's PING on every health probe) turns
-// into an Info line, which is exactly the noise declaring nothing was meant to
-// avoid.
+// TestSuccessQuiet pins the access-log levelling: it is the operation's own
+// declaration that decides, which is how a high-frequency call (a cache GET, a
+// health PING) stays out of the operator's log.
 func TestSuccessQuiet(t *testing.T) {
-	// Undeclared: quiet, whatever the (zero) operation says.
-	assert.That(t, successQuiet(false, chain.Operation{})).True()
-	// Declared with per-call detail: quiet.
+	// Per-call detail: quiet.
 	withDetail := dbOperation()
 	withDetail.Observe.Log.QuietSuccess = true
-	assert.That(t, successQuiet(true, withDetail)).True()
-	// Declared with none: a line at Info.
-	assert.That(t, successQuiet(true, dbOperation())).False()
+	assert.That(t, successQuiet(withDetail)).True()
+	// None: a line at Info.
+	assert.That(t, successQuiet(dbOperation())).False()
 }
 
 // TestCallLabelsDoNotAlias proves the labels are built on a fresh slice: the
 // attributes come off the context and are shared, so writing through them would
 // corrupt a sibling call's labels.
 func TestCallLabelsDoNotAlias(t *testing.T) {
-	w := &callEmitter{system: "memcached", service: "memcached.cache"}
 	attrs := make([]attribute.KeyValue, 1, 4) // spare capacity: an in-place append would fit
 	attrs[0] = attribute.String("db.system", "memcached")
 
-	out := w.callLabels("memcached.cache", attrs, "ok", "")
+	out := callLabels("memcached.cache", attrs, "ok", "")
 
 	assert.Number(t, len(attrs)).Equal(1)
 	assert.Number(t, len(out)).Equal(3)
@@ -85,21 +91,45 @@ func TestCallLabelsDoNotAlias(t *testing.T) {
 
 	// An outcome is an extra label, and an empty one is dropped rather than
 	// emitted with a meaningless value.
-	assert.Number(t, len(w.callLabels("memcached.cache", attrs, "error", "rate_limited"))).Equal(4)
+	assert.Number(t, len(callLabels("memcached.cache", attrs, "error", "rate_limited"))).Equal(4)
 }
 
-// TestSpanNameAndAttrs pins the naming split: the declared path names the span
-// after the operation and carries its attributes — plus the TARGET, which none
-// of the protocol's own attributes says — while the undeclared path keeps the
-// service label and this layer's own attributes.
+// TestRetryFields proves the access line carries the runtime retry facts: the
+// ceiling the plan allowed and the retries actually attempted. A call with no
+// retry plan that never retried contributes nothing, so ordinary single-attempt
+// lines stay unchanged.
+func TestRetryFields(t *testing.T) {
+	// A single attempt under no retry plan: unchanged line.
+	plain := &chain.Recorder{}
+	plain.NewRound()
+	assert.That(t, retryFields(plain) == nil).True()
+
+	// One attempt that was ALLOWED retries but did not need them.
+	single := &chain.Recorder{}
+	single.NewRound().MaxRetries = 2
+	assert.String(t, renderFields(retryFields(single))).Equal("retry_max=2 retry_count=0")
+
+	// Three rounds under a two-retry ceiling: the budget was fully used.
+	used := &chain.Recorder{}
+	for range 3 {
+		used.NewRound()
+	}
+	used.LastRound().MaxRetries = 2
+	assert.String(t, renderFields(retryFields(used))).Equal("retry_max=2 retry_count=2")
+}
+
+// TestSpanNameAndAttrs pins the naming: the span takes the operation's action
+// word (falling back to the service label when it has none) and carries the
+// declared attributes — plus the TARGET, which none of the protocol's own
+// attributes says.
 func TestSpanNameAndAttrs(t *testing.T) {
 	w := &callEmitter{system: "memcached", service: "memcached.svc"}
 
 	op := dbOperation()
-	assert.String(t, w.spanName(op, true)).Equal("get")
-	assert.String(t, w.spanName(op, false)).Equal("memcached.svc")
+	assert.String(t, w.spanName(op)).Equal("get")
+	assert.String(t, w.spanName(chain.Operation{})).Equal("memcached.svc")
 
-	declared := w.spanAttrs(op, true)
+	declared := w.spanAttrs(op)
 	assert.Number(t, len(declared)).Equal(3)
 	assert.String(t, string(declared[0].Key)).Equal("peer.service")
 	assert.String(t, declared[0].Value.AsString()).Equal("memcached.svc")
@@ -108,19 +138,15 @@ func TestSpanNameAndAttrs(t *testing.T) {
 	// A declaration that names its own target wins over the emitter's label.
 	named := op
 	named.Service = "redis:cache"
-	namedAttrs := w.spanAttrs(named, true)
+	namedAttrs := w.spanAttrs(named)
 	assert.String(t, namedAttrs[0].Value.AsString()).Equal("redis:cache")
-
-	fallback := w.spanAttrs(chain.Operation{}, false)
-	assert.Number(t, len(fallback)).Equal(2)
-	assert.String(t, string(fallback[0].Key)).Equal("resilience.system")
 }
 
 // TestFactsAreWrittenBack proves the emitter writes the call's outcome onto the
 // per-call Recorder, so the caller that built the declaration can read what
 // happened without re-deriving it — the write-back half the chain now carries.
 func TestFactsAreWrittenBack(t *testing.T) {
-	ob := NewOperationObserver("memcached", "cache:1")
+	ob := NewOperationObserver("memcached", "cache:1", NewOTelMetrics())
 
 	// The caller owns the record and hands it in, exactly as it would to
 	// [chain.Executor.Execute] — the no-governance call's one try IS the call,
@@ -149,7 +175,9 @@ func TestFactsAreWrittenBack(t *testing.T) {
 // status classification without wiring a real driver.
 type fakeExecutor struct{ err error }
 
-func (f fakeExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+func (f fakeExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
+	// A compliant executor records the attempt it made, even one it refuses.
+	rec.NewRound().SetError(f.err)
 	return f.err
 }
 func (fakeExecutor) Close() error { return nil }
@@ -158,11 +186,11 @@ func (fakeExecutor) Close() error { return nil }
 // observer the last layer: the call is fn itself, and with no governance loop
 // below the observer records the call's single try as its own round.
 func TestWrapClientExecutor_NilNextIsTerminal(t *testing.T) {
-	exec := WrapClientExecutor(nil, "sys", "svc")
+	exec := WrapClientExecutor(nil, "sys", "svc", NewOTelMetrics())
 	assert.That(t, exec).NotNil()
 	called := false
 	rec := &chain.Recorder{}
-	err := exec.Execute(context.Background(), chain.Operation{}, rec, func(context.Context) error {
+	err := exec.Execute(context.Background(), dbOperation(), rec, func(context.Context, *chain.Round) error {
 		called = true
 		return nil
 	})
@@ -177,14 +205,14 @@ func TestWrapClientExecutor_NilNextIsTerminal(t *testing.T) {
 // `resilience.error_type` is what protection decided about the call.
 //
 // The round and call vocabularies differ on purpose: a round that simply ran
-// says nothing about a gate (ClassifyErrorType is empty), while a finished call
-// that failed always has a reason — ClassifyOutcome names the downstream.
+// still classifies a downstream failure, while the call level additionally
+// resolves caller deadlines (context needed).
 func TestClassifyStatusAndOutcome(t *testing.T) {
 	type want struct {
 		err     error
 		status  string
-		gate    string // ClassifyErrorType: per round
-		outcome string // ClassifyOutcome: per call
+		gate    chain.ErrorType // RoundErrorType: per round
+		outcome chain.ErrorType // CallErrorType: per call
 	}
 	downstream := errutil.Explain(nil, "boom")
 	cases := []want{
@@ -193,17 +221,21 @@ func TestClassifyStatusAndOutcome(t *testing.T) {
 		{chain.ErrCircuitOpen, "error", "circuit_open", "circuit_open"},
 		{chain.ErrBulkheadFull, "error", "bulkhead_full", "bulkhead_full"},
 		{chain.ErrRetryExceeded, "error", "retry_exceeded", "retry_exceeded"},
-		{context.DeadlineExceeded, "error", "timeout", "timeout"},
+		{context.DeadlineExceeded, "error", chain.ErrorTypeUnknown, chain.ErrorTypeUnknown},
+		{fmt.Errorf("%w: %w", chain.ErrCallTimeout, context.DeadlineExceeded), "error", chain.ErrorTypeCallTimeout, chain.ErrorTypeCallTimeout},
 		// A plain downstream failure is an error; no gate word applies, but the
 		// CALL still has a reason.
-		{downstream, "error", "", chain.ErrorTypeDownstream},
+		{downstream, "error", chain.ErrorTypeUnknown, chain.ErrorTypeUnknown},
+		{chain.ConnectError(errors.New("refused")), "error", chain.ErrorTypeConnectFailed, chain.ErrorTypeConnectFailed},
+		{chain.ResourceError(errors.New("pool exhausted")), "error", chain.ErrorTypeResourceExhausted, chain.ErrorTypeResourceExhausted},
+		{context.Canceled, "error", chain.ErrorTypeContextCanceled, chain.ErrorTypeContextCanceled},
 		// wrapped sentinels must still classify by errors.Is.
 		{errors.Join(chain.ErrCircuitOpen, errutil.Explain(nil, "detail")), "error", "circuit_open", "circuit_open"},
 	}
 	for _, c := range cases {
 		assert.That(t, chain.ClassifyStatus(c.err)).Equal(c.status)
-		assert.That(t, chain.ClassifyErrorType(c.err)).Equal(c.gate)
-		assert.That(t, chain.ClassifyOutcome(context.Background(), c.err)).Equal(c.outcome)
+		assert.That(t, chain.RoundErrorType(c.err)).Equal(c.gate)
+		assert.That(t, chain.CallErrorType(context.Background(), c.err)).Equal(c.outcome)
 	}
 }
 
@@ -220,8 +252,8 @@ func TestWrapClientExecutor_PassesErrorThrough(t *testing.T) {
 		context.DeadlineExceeded,
 		errutil.Explain(nil, "downstream"),
 	} {
-		exec := WrapClientExecutor(fakeExecutor{err: err}, "redis", "svc")
-		got := exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(ctx context.Context) error { return nil })
+		exec := WrapClientExecutor(fakeExecutor{err: err}, "redis", "svc", NewOTelMetrics())
+		got := exec.Execute(context.Background(), dbOperation(), new(chain.Recorder), func(ctx context.Context, _ *chain.Round) error { return nil })
 		assert.That(t, errors.Is(got, err)).True()
 	}
 	_ = chain.ErrBulkheadFull // keep import even if slice above changes

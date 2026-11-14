@@ -30,20 +30,20 @@ import (
 // observe.enabled=false get the bare locker. When starter-otel is not imported
 // the global OTel providers are no-ops, so the wrapper adds negligible
 // overhead.
-func newLocker(ctx *gs.ContextProvider, c Config, client *redis.Client) (lock.Locker, error) {
+func newLocker(ctx *gs.ContextProvider, c Config, client *redis.Client, obs lock.Observer) (lock.Locker, error) {
 	inner, err := newRedisLocker(ctx, c, client)
 	if err != nil {
 		return nil, err
 	}
-	return wrapIfObserved(c, inner)
+	return wrapIfObserved(c, obs, inner)
 }
 
 // wrapIfObserved is the transparent-default decision: bound configs default
 // observe.enabled=true, so the primary bean is the wrapped locker; an explicit
 // opt-out returns the bare inner locker unchanged.
-func wrapIfObserved(c Config, inner lock.Locker) (lock.Locker, error) {
+func wrapIfObserved(c Config, obs lock.Observer, inner lock.Locker) (lock.Locker, error) {
 	if !c.ObserveEnabled {
 		return inner, nil
 	}
-	return lock.Observe(inner, "redis")
+	return lock.ObserveWith(inner, "redis", obs), nil
 }

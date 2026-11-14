@@ -70,7 +70,7 @@ func TestDelegations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bigcache.New: %v", err)
 	}
-	c, err := NewCache(raw, "hot")
+	c, err := NewCache(raw, "hot", nil)
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestDoubleClosePanics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bigcache.New: %v", err)
 	}
-	c, err := NewCache(raw, "hot")
+	c, err := NewCache(raw, "hot", nil)
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}

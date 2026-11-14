@@ -102,9 +102,9 @@ type captureExecutor struct {
 	has bool
 }
 
-func (c *captureExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+func (c *captureExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn chain.RoundFunc) error {
 	c.op, c.has = op, true
-	return fn(ctx)
+	return fn(ctx, rec.NewRound())
 }
 func (c *captureExecutor) Close() error { return nil }
 
@@ -123,7 +123,7 @@ func newProbeDB(t *testing.T, system string) (*gorm.DB, *captureExecutor) {
 		t.Fatalf("use plugin: %v", err)
 	}
 	inner := &captureExecutor{}
-	exec := observability.WrapClientExecutor(inner, "gorm", "svc")
+	exec := observability.WrapClientExecutor(inner, "gorm", "svc", nil)
 	if err := gormresilience.ApplyCallbacks(db, exec, "svc", plugin.Operation); err != nil {
 		t.Fatalf("apply callbacks: %v", err)
 	}

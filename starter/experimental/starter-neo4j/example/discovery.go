@@ -24,7 +24,8 @@ import (
 // backend bean under the "default" name. Here it is a fixed-address static
 // backend (a real adapter would talk to Consul/Nacos/an internal registry and
 // push fresh snapshots when instances come and go); the client configured with
-// `service-name` (see conf/app.properties) resolves its address through it.
+// `service-name` (see conf/app.properties) takes its routing seed from it and
+// keeps it as the driver's router-refresh fallback.
 
 func init() {
 	gs.Provide(func() (discovery.Discovery, error) {

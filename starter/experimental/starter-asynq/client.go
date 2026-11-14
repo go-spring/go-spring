@@ -64,13 +64,14 @@ type Client struct {
 // asynq client has no seam for the resilience executor, so there is no
 // governance: the observer emits the span, metrics and access log, and nothing
 // throttles or retries.
-func NewClient(connOpt asynq.RedisConnOpt, addr string, prop traffic.Propagator) *Client {
+func NewClient(connOpt asynq.RedisConnOpt, addr string, prop traffic.Propagator, obsFactory observability.Metrics) *Client {
+
 	o := &Client{
 		Client:       asynq.NewClient(connOpt),
 		serviceLabel: label.ServiceLabel("asynq", addr),
 		prop:         prop,
 	}
-	o.obs = observability.NewOperationObserver("asynq", o.serviceLabel)
+	o.obs = observability.NewOperationObserver("asynq", o.serviceLabel, obsFactory)
 	return o
 }
 

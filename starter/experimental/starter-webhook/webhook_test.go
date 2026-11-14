@@ -99,7 +99,7 @@ func TestNotifierSendRoundTrip(t *testing.T) {
 	n := &Notifier{
 		cfg:    Config{URL: srv.URL, Channel: "generic", Timeout: 2 * time.Second},
 		client: &http.Client{Timeout: 2 * time.Second},
-		obs:    observability.NewOperationObserver("webhook", "test"),
+		obs:    observability.NewOperationObserver("webhook", "test", nil),
 		prop:   testProp,
 	}
 	assert.Error(t, n.Send(context.Background(), &Notification{Title: "deploy", Text: "ok"})).Nil()
@@ -118,7 +118,7 @@ func TestNotifierSendBadStatus(t *testing.T) {
 	n := &Notifier{
 		cfg:    Config{URL: srv.URL, Channel: "generic", Timeout: 2 * time.Second},
 		client: &http.Client{Timeout: 2 * time.Second},
-		obs:    observability.NewOperationObserver("webhook", "test"),
+		obs:    observability.NewOperationObserver("webhook", "test", nil),
 		prop:   testProp,
 	}
 	assert.That(t, n.Send(context.Background(), &Notification{Title: "x"}) != nil).True()
@@ -153,7 +153,7 @@ func TestNotifierSendBusinessError(t *testing.T) {
 			n := &Notifier{
 				cfg:    Config{URL: srv.URL, Channel: c.channel, Timeout: 2 * time.Second},
 				client: &http.Client{Timeout: 2 * time.Second},
-				obs:    observability.NewOperationObserver("webhook", "test"),
+				obs:    observability.NewOperationObserver("webhook", "test", nil),
 				prop:   testProp,
 			}
 			err := n.Send(context.Background(), &Notification{Title: "x"})

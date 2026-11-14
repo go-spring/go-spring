@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
@@ -33,6 +32,7 @@ import (
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
@@ -49,10 +49,10 @@ func timeoutOf(t *testing.T, m *resilience.Manager, label string, op chain.Opera
 	t.Helper()
 	rec := new(chain.Recorder)
 	if err := m.Wrap(label, nil).Execute(context.Background(), op, rec,
-		func(context.Context) error { return nil }); err != nil {
+		func(context.Context, *chain.Round) error { return nil }); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	return rec.Timeout
+	return rec.LastRound().Timeout
 }
 
 // managerProbe is a placeholder bean: its only job is to be constructed with
@@ -153,9 +153,10 @@ func TestRuntime_HandsOutDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	lb := mustLbManager(t)
 	rt := &Runtime{
 		Resilience:  res,
-		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		LoadBalance: lb,
 		Admission:   adm,
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
@@ -175,4 +176,14 @@ func TestRuntime_HandsOutDiscovery(t *testing.T) {
 	if !ok || got != backend {
 		t.Fatalf("discovery lookup: ok=%v backend=%v", ok, got)
 	}
+}
+
+// mustLbManager builds the load-balancing authority the test's runtime needs.
+func mustLbManager(t *testing.T) *loadbalance.Manager {
+	t.Helper()
+	obs, err := loadbalance.NewOTelObserver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}), obs, loadbalance.ManagerConfig{})
 }

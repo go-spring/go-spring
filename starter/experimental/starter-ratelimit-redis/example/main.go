@@ -77,7 +77,7 @@ func init() {
 // the observe layer and resolves the backing executor lazily, on each Execute, so
 // the policy is read after the runtime has gone live.
 func executor(center *governance.Runtime) chain.Executor {
-	return center.ExecutorFor("ratelimit-redis", service)
+	return center.ExecutorFor("ratelimit-redis", service, nil)
 }
 
 // serve runs one protected call per request. The executor's rate-limit stage
@@ -85,7 +85,7 @@ func executor(center *governance.Runtime) chain.Executor {
 func serve(exec chain.Executor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		op := chain.Operation{Request: chain.Request{Action: "serve"}}
-		err := exec.Execute(r.Context(), op, new(chain.Recorder), func(context.Context) error { return nil })
+		err := exec.Execute(r.Context(), op, new(chain.Recorder), func(context.Context, *chain.Round) error { return nil })
 		switch {
 		case err == nil:
 			_, _ = w.Write([]byte("ok"))

@@ -68,19 +68,22 @@ res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
 
 * **支持多 Neo4j 实例**：可以在配置文件中定义多个 Neo4j 实例，并在项目中使用 name 进行引用。
 * **支持 Neo4j 扩展**：可以通过实现 `Driver` 接口来扩展 Neo4j 功能，参见示例中的 `AnotherNeo4jDriver` 实现。
-* **服务发现**：在实例上设置 `service-name` 后，地址将通过已注册的 discovery 后端解析，
-  而非直接使用 URI 中的 host。端点在启动时解析一次，并拼接进 URI 的 host。
-  用 `discovery` 选择后端（必填，无默认后端）；公司通过 `discovery.Register` 注册一次自己的命名服务即可。
+* **服务发现**：在实例上设置 `service-name` 后，将通过已注册的 discovery 后端解析**路由种子地址**，
+  而非直接使用 URI 中的 host。种子在构造期拼接进 URI 的 host；随后驱动从它读取 routing table
+  并自行选择服务器，同一个 resolver 继续作为驱动的 `AddressResolver` 兜底，用于路由表重建。
+  用 `discovery` 选择后端；公司只需贡献一个 `discovery.Discovery` bean（见 `example/discovery.go`）。
 
   ```properties
-  spring.neo4j.instances.disc.uri=bolt://0.0.0.0:0
+  spring.neo4j.instances.disc.uri=neo4j://0.0.0.0:0
   spring.neo4j.instances.disc.username=neo4j
   spring.neo4j.instances.disc.password=password
   spring.neo4j.instances.disc.service-name=neo4j-cluster
   ```
 
-  局限：与支持自定义 dialer 的客户端不同，neo4j 驱动基于 URI 构建连接池，且未暴露 dialer 注入点，
-  因此这是**启动时的一次性解析**——启动之后的地址变更需重建客户端才会生效。
+  `service-name` 要求 routing scheme（`neo4j`、`neo4j+s`、`neo4j+ssc`）；与直连 scheme
+  （`bolt`、`bolt+s`、`bolt+ssc`）组合会在绑定期被拒绝，因为直连驱动会把种子固化成唯一地址。
+  这不是客户端负载均衡：集群（或 Neo4j 4.0+ 单机，同样提供 routing table）的均衡由驱动完成；
+  同一名字下互相独立的实例**不会**被驱动均衡——应在其前面放 VIP/L4，或将它们组成集群。
 
 ## 可观测
 

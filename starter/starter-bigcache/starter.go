@@ -58,8 +58,8 @@ func init() {
 			// this package's bytecache.go). Named "bigcache:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the
 			// (name, type) key unique. Un-injected, the bean never instantiates.
-			r.Provide(func(c *Cache) (*cache.Cache, error) {
-				return cache.New(NewByteCache(c))
+			r.Provide(func(c *Cache, obs cache.Observer) (*cache.Cache, error) {
+				return cache.New(NewByteCache(c), cache.WithObserver(obs))
 			}, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
 			return nil
 		})
@@ -69,10 +69,10 @@ func init() {
 // newClient creates a new BigCache instance from the provided configuration. The
 // Driver returns it complete — identity fixed and observability installed, by
 // [NewCache] — so nothing here patches it afterwards.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver) (*Cache, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, obs Observer) (*Cache, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
-		d = DefaultDriver{}
+		d = DefaultDriver{Observe: obs}
 	}
 	// The error is returned as the driver produced it: attribution belongs to
 	// the layer that ran the failing step (see [Driver]), and the container

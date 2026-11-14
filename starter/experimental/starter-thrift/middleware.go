@@ -22,6 +22,7 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/cloud/observability/attrs"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -39,62 +40,90 @@ const componentName = "go-spring.org/starter-thrift"
 // frameworks has nothing else to join on.
 const rpcSystem = "thrift"
 
-// instrumentSet holds this starter's RPC instruments. It is built once per
-// middleware (see [Observe]), so nothing is allocated or initialized on the hot
-// path.
-type instrumentSet struct {
+// Observer emits one Thrift method call's server signals. A nil Observer
+// disables observation; implementations must not block.
+type Observer interface {
+	// Inflight moves the in-flight request gauge for method by delta: +1 when a
+	// request arrives, -1 when it finishes.
+	Inflight(ctx context.Context, method string, delta int64)
+
+	// Request records one finished request. status is ok | error.
+	Request(ctx context.Context, method, status string, duration time.Duration)
+}
+
+// NewOTelObserver resolves the starter's RPC instruments and returns the
+// default OTel-backed [Observer].
+func NewOTelObserver() (Observer, error) {
+	m := otel.Meter(componentName)
+	o := &otelObserver{}
+	var err error
+	o.requestCount, err = m.Int64Counter(
+		"rpc.server.request_count",
+		metric.WithDescription("Number of Thrift RPC requests received"),
+		metric.WithUnit("{request}"))
+	if err != nil {
+		return nil, errutil.Explain(err, "thrift: register rpc.server.request_count")
+	}
+	o.requestDuration, err = m.Float64Histogram(
+		"rpc.server.duration",
+		metric.WithDescription("Duration of Thrift RPC requests"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
+	if err != nil {
+		return nil, errutil.Explain(err, "thrift: register rpc.server.duration")
+	}
+	o.requestInflight, err = m.Int64UpDownCounter(
+		"rpc.server.active_requests",
+		metric.WithDescription("Number of Thrift RPC requests currently in-flight"),
+		metric.WithUnit("{request}"))
+	if err != nil {
+		return nil, errutil.Explain(err, "thrift: register rpc.server.active_requests")
+	}
+	return o, nil
+}
+
+// otelObserver is the default [Observer].
+type otelObserver struct {
 	requestCount    metric.Int64Counter
 	requestDuration metric.Float64Histogram
 	requestInflight metric.Int64UpDownCounter
 }
 
-// buildInstruments resolves this starter's instruments against the meter
-// provider the otel starter installs before the server is built. The observer
-// owns the set, so a failed registration fails construction instead of silently
-// dropping the whole metric family.
-func buildInstruments() (*instrumentSet, error) {
-	m := otel.Meter(componentName)
-	requestCount, err := m.Int64Counter(
-		"rpc.server.request_count",
-		metric.WithDescription("Number of Thrift RPC requests received"),
-		metric.WithUnit("{request}"),
-	)
-	if err != nil {
-		return nil, errutil.Explain(err, "thrift: register rpc.server.request_count")
-	}
-	requestDuration, err := m.Float64Histogram(
-		"rpc.server.request.duration",
-		metric.WithDescription("Duration of Thrift RPC requests"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
-	)
-	if err != nil {
-		return nil, errutil.Explain(err, "thrift: register rpc.server.request.duration")
-	}
-	requestInflight, err := m.Int64UpDownCounter(
-		"rpc.server.active_requests",
-		metric.WithDescription("Number of Thrift RPC requests currently in-flight"),
-		metric.WithUnit("{request}"),
-	)
-	if err != nil {
-		return nil, errutil.Explain(err, "thrift: register rpc.server.active_requests")
-	}
-	return &instrumentSet{
-		requestCount:    requestCount,
-		requestDuration: requestDuration,
-		requestInflight: requestInflight,
-	}, nil
+// Inflight implements [Observer].
+func (o *otelObserver) Inflight(ctx context.Context, method string, delta int64) {
+	o.requestInflight.Add(ctx, delta, metric.WithAttributes(
+		attribute.String("rpc.system", rpcSystem),
+		attribute.String("rpc.method", method),
+	))
 }
 
-// observer carries the instrument set its middleware publishes through.
-type observer struct {
-	ins *instrumentSet
+// Request implements [Observer]. status is the family's shared result axis
+// (ok|error); the transport-specific detail is thrift.error_code, on the span —
+// not a second metric label carrying the same two words under a different name.
+func (o *otelObserver) Request(ctx context.Context, method, status string, duration time.Duration) {
+	done := metric.WithAttributes(
+		attribute.String("rpc.system", rpcSystem),
+		attribute.String("rpc.method", method),
+		attribute.String("status", status),
+	)
+	o.requestCount.Add(ctx, 1, done)
+	o.requestDuration.Record(ctx, duration.Seconds(), done)
 }
 
-// Observe returns the middleware that wraps every method call with an OTel
-// span and request metrics. The per-call access log is a separate middleware
-// ([AccessLog]) because it is always installed, while this one is behind
-// [ObserverConfig].
+// startSpan opens the standard OTel span for one request. Span handling is the
+// STANDARD OTel capability, not part of the metric seam.
+func startSpan(ctx context.Context, method string) (context.Context, trace.Span) {
+	return otel.Tracer(componentName).Start(ctx, method,
+		trace.WithSpanKind(trace.SpanKindServer),
+		trace.WithAttributes(
+			attribute.String("rpc.system", rpcSystem),
+			attribute.String("rpc.method", method),
+		),
+	)
+}
+
+// Observe returns the middleware that wraps every method call with a span and
+// request metrics, using the package's default OTel observer.
 //
 // It is a [thrift.ProcessorMiddleware] rather than a TProcessor wrapper because
 // the library hands a middleware the METHOD NAME as its first argument. That is
@@ -110,15 +139,17 @@ type observer struct {
 //
 //	admit, err := Admit(label, system, mgr)
 //	if err != nil { return err }
-//	mw, err := Observe()
-//	if err != nil { return err }
-//	proc = thrift.WrapProcessor(proc, mw, AccessLog(), admit)
-func Observe() (thrift.ProcessorMiddleware, error) {
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return (&observer{ins: ins}).observe, nil
+//	proc = thrift.WrapProcessor(proc, ObserveWith(obs), AccessLog(), admit)
+//
+// ObserveWith is the injection point for a custom observability adapter. A nil
+// observer disables observation; the access log is a separate middleware.
+func ObserveWith(obs Observer) thrift.ProcessorMiddleware {
+	return (&observer{obs: obs}).observe
+}
+
+// observer carries the adapter its middleware publishes through.
+type observer struct {
+	obs Observer
 }
 
 // observe wraps one method's TProcessorFunction.
@@ -136,42 +167,18 @@ func (o *observer) observe(name string, next thrift.TProcessorFunction) thrift.T
 				ctx = otel.GetTextMapPropagator().Extract(ctx, tHeaderCarrier{m: hp.GetReadHeaders()})
 			}
 
-			inflight := metric.WithAttributes(
-				attribute.String("rpc.system", rpcSystem),
-				attribute.String("rpc.method", name),
-			)
-			o.ins.requestInflight.Add(ctx, 1, inflight)
+			ctx, span := startSpan(ctx, name)
 			start := time.Now()
-
-			ctx, span := otel.Tracer(componentName).Start(ctx, name,
-				trace.WithSpanKind(trace.SpanKindServer),
-				trace.WithAttributes(
-					attribute.String("rpc.system", rpcSystem),
-					attribute.String("rpc.method", name),
-				),
-			)
-
+			if o.obs != nil {
+				o.obs.Inflight(ctx, name, 1)
+			}
 			ok, ex := next.Process(ctx, seqID, in, out)
-
-			dur := time.Since(start)
-			status := statusOf(ex)
-			o.ins.requestInflight.Add(ctx, -1, inflight)
-			// status is the family's shared result axis (ok|error). The
-			// transport-specific detail is thrift.error_code, on the span —
-			// not a second metric label carrying the same two words under a
-			// different name.
-			done := metric.WithAttributes(
-				attribute.String("rpc.system", rpcSystem),
-				attribute.String("rpc.method", name),
-				attribute.String("status", status),
-			)
-			o.ins.requestCount.Add(ctx, 1, done)
-			o.ins.requestDuration.Record(ctx, dur.Seconds(), done)
-
+			if o.obs != nil {
+				o.obs.Inflight(ctx, name, -1)
+				o.obs.Request(ctx, name, statusOf(ex), time.Since(start))
+			}
 			if ex != nil {
-				span.SetAttributes(
-					attribute.Int("thrift.error_code", int(ex.TExceptionType())),
-				)
+				span.SetAttributes(attribute.Int("thrift.error_code", int(ex.TExceptionType())))
 				span.SetStatus(codes.Error, ex.Error())
 				span.RecordError(ex)
 			}
@@ -198,4 +205,10 @@ func (c tHeaderCarrier) Keys() []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// The package's default [Observer] bean: an application that contributes its
+// own observer takes precedence.
+func init() {
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 }

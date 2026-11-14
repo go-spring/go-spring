@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
-	"go-spring.org/stdlib/singleton"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -46,7 +45,6 @@ import (
 func TestGaugesReportEveryInstance(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
-	resetInstruments()
 
 	hot := newTestCache(t, "hot")
 	cold := newTestCache(t, "cold")
@@ -127,7 +125,6 @@ func TestObserveEmitsMetrics(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	prevMeter := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
-	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	// The helper seeds "k" on the raw client, so it emits nothing itself.
@@ -170,7 +167,6 @@ func TestObserveMarksFailures(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	prevMeter := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
-	resetInstruments()
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	c := newTestCache(t, "hot")
@@ -232,22 +228,17 @@ func labelsOf(attrs attribute.Set) string {
 func TestInstrumentFailureIsAnError(t *testing.T) {
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(errMeterProvider{})
-	resetInstruments()
 	t.Cleanup(func() {
 		otel.SetMeterProvider(prev)
-		resetInstruments()
 	})
 
-	if _, err := buildInstruments(); !errors.Is(err, errInstrument) {
-		t.Fatalf("buildInstruments() error = %v, want %v", err, errInstrument)
+	if _, err := NewOTelObserver(); !errors.Is(err, errInstrument) {
+		t.Fatalf("NewOTelObserver() error = %v, want %v", err, errInstrument)
 	}
 
 	raw, err := bigcache.New(context.Background(), bigcache.DefaultConfig(time.Minute))
 	if err != nil {
 		t.Fatalf("bigcache.New: %v", err)
-	}
-	if _, err := NewCache(raw, "hot"); !errors.Is(err, errInstrument) {
-		t.Fatalf("NewCache() error = %v, want %v", err, errInstrument)
 	}
 	// The failed construction owns the raw cache it was handed: the caller has no
 	// Cache to close, so leaving it open would strand the eviction goroutine.
@@ -255,16 +246,6 @@ func TestInstrumentFailureIsAnError(t *testing.T) {
 		t.Fatalf("raw.Close: %v", err)
 	}
 }
-
-// resetInstruments makes the next use of instruments resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-//
-// The zero value IS the reset — [singleton.Singleton] is ready to use as
-// declared. Tests run sequentially in one package, so the plain assignment needs
-// no lock. It lives here, with the tests it serves, so the two cannot drift.
-func resetInstruments() { instruments = singleton.Singleton[*instrumentSet]{} }
 
 // errInstrument is what the refusing meter below reports.
 var errInstrument = errors.New("instrument refused")
@@ -294,7 +275,11 @@ func newTestCache(t *testing.T, name string) *Cache {
 	if err := client.Set("k", []byte("v")); err != nil {
 		t.Fatalf("Set(%q): %v", name, err)
 	}
-	c, err := NewCache(client, name)
+	obs, err := NewOTelObserver()
+	if err != nil {
+		t.Fatalf("NewOTelObserver: %v", err)
+	}
+	c, err := NewCache(client, name, obs)
 	if err != nil {
 		t.Fatalf("NewCache(%q): %v", name, err)
 	}
@@ -328,4 +313,48 @@ func gaugeCacheNames(t *testing.T, r *sdkmetric.ManualReader, instrument string)
 	}
 	slices.Sort(names)
 	return names
+}
+
+// recordingObserver captures bigcache's events so the seam is tested without
+// OTel.
+type recordingObserver struct {
+	ops      []string
+	statsSet bool
+}
+
+func (o *recordingObserver) Operation(_ context.Context, instance, operation, status string) {
+	o.ops = append(o.ops, instance+":"+operation+":"+status)
+}
+
+func (o *recordingObserver) ObserveStats(_ string, _ func() Stats) (func(), error) {
+	o.statsSet = true
+	return func() {}, nil
+}
+
+func TestObserverSeam(t *testing.T) {
+	raw, err := bigcache.New(context.Background(), bigcache.DefaultConfig(time.Minute))
+	if err != nil {
+		t.Fatalf("bigcache.New: %v", err)
+	}
+	obs := &recordingObserver{}
+	c, err := NewCacheWithObserver(raw, "hot", obs)
+	if err != nil {
+		t.Fatalf("NewCacheWithObserver: %v", err)
+	}
+	if err := c.Set(context.Background(), "k", []byte("v")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if _, err := c.Get(context.Background(), "k"); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if !obs.statsSet {
+		t.Fatal("expected the statistics reader to be registered")
+	}
+	if len(obs.ops) != 2 || obs.ops[0] != "hot:set:ok" || obs.ops[1] != "hot:get:ok" {
+		t.Fatalf("unexpected operations: %v", obs.ops)
+	}
 }

@@ -122,7 +122,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, center *governanc
 	// resolves its backing implementation per call, so the order of this setup
 	// relative to the container's wiring is irrelevant.
 	service := label.ServiceLabel("oauth2", c.ClientID)
-	exec := center.ExecutorFor("oauth2", service)
+	exec := center.ExecutorFor("oauth2", service, nil)
 	client.Transport = resilience.NewRoundTripper(client.Transport, exec, service, nil)
 	return client, nil
 }

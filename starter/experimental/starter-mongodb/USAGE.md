@@ -298,11 +298,11 @@ policy manifests as rejected *connections*; a fault injection fires per dial, no
 built with a suspension tracker and registered under `mongodb:<service-name|uri>` as
 `lbMgr.Chain(resolver, label)` is called (the `*loadbalance.Manager` bean injected into
 `newClient`), so `spring.governance.client.loadbalance.services[N].balancer` (round_robin / least_conn /
-consistent_hash / weighted / random / p2c), the `zone-aware` / `zone-key` switch, and
-`outlier-threshold` / `outlier-suspend-for` **rebuild the chain from scratch** — the next dial runs the new strategy on a
+consistent_hash / weighted / random / p2c), the `zone-aware` switch, and
+`request-failures` / `suspend-for` **rebuild the chain from scratch** — the next dial runs the new strategy on a
 fresh balancer and suspension tracker, no restart and no re-dial of existing connections. Direct
 (URI-only) instances have no candidate set, so these keys
-are inert for them. ⚠ The dialer's only outcome signal is the dial itself, so `outlier-threshold`
+are inert for them. ⚠ The dialer's only outcome signal is the dial itself, so `request-failures`
 evicts instances that keep refusing *connections*; per-command failures belong to the resilience
 executor above. See `cloud/governance/README.md` §3.1.
 

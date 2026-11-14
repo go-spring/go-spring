@@ -203,7 +203,7 @@ TTL removes dead keys "self-healing without a reaper" (`starter.go`).
 Downstream, a loadbalance `Pool` consumes these snapshots and applies **weight-0 filtering** on
 every Pick: `excludeDrained` drops `Weight == 0` endpoints, falling back to the full set when
 every endpoint is drained so an unnormalized snapshot cannot blackhole the pool
-(`cloud/governance/capability/loadbalance/pool.go:97-99,122-135`).
+(`cloud/governance/dataplane/outbound/loadbalance/pool.go:97-99,122-135`).
 
 ### 2.4 DRAIN path — UpdateWeight(0)
 

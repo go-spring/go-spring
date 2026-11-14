@@ -114,15 +114,21 @@ type consulBackend struct {
 	// obs and regObs are this block's two observability layers: the read-side
 	// sync observer (data plane) and the registration observer (control plane).
 	// They are independent by design and both are closed by the bean destructor.
-	obs    *discovery.Observer
-	regObs *registration.Observer
+	obs    discovery.Observer
+	regObs registration.Observer
 }
 
 // newConsulBackend builds the client and, when Ping is set, probes the agent.
 // The probe is the fail-fast: a misconfigured or unreachable agent fails
 // startup here, once per block. With Ping off (the default) construction skips
 // it.
-func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
+func newConsulBackend(c ConsulConfig, name string, discFactory discovery.ObserverFactory, regFactory registration.ObserverFactory) (*consulBackend, error) {
+	if discFactory == nil {
+		return nil, errutil.Explain(nil, "discovery: observer factory is required")
+	}
+	if regFactory == nil {
+		return nil, errutil.Explain(nil, "registration: observer factory is required")
+	}
 	if c.Address == "" {
 		return nil, errutil.Explain(nil, "discovery-consul: address is required")
 	}
@@ -137,11 +143,11 @@ func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
 			return nil, errutil.Explain(err, "discovery-consul: startup probe failed for %s", c.Address)
 		}
 	}
-	obs, err := discovery.NewObserver(obsSystem, name)
+	obs, err := discFactory.New(obsSystem, name)
 	if err != nil {
 		return nil, err
 	}
-	regObs, err := registration.NewObserver(obsSystem, name)
+	regObs, err := regFactory.New(obsSystem, name)
 	if err != nil {
 		return nil, err
 	}

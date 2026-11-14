@@ -55,14 +55,14 @@
 // The global lock and undo log are process-local: this is a single-process AT
 // equivalent, not a distributed Seata TC/TM/RM deployment.
 //
-// Observability is on by default: when Config.Tracing is true the coordinator
-// emits an otel child span per branch phase on the globals starter-otel installs.
+// Spans are standard OTel: the coordinator emits a child span per branch phase on
+// the globals starter-otel installs; without starter-otel the global tracer is
+// a no-op.
 package StarterTransactionATGorm
 
 import (
 	"context"
 
-	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/cloud/experimental/transaction/at"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -77,10 +77,10 @@ func init() {
 		Condition(enabled, gs.OnMissingBean[at.GlobalLock]()).
 		Export(gs.As[at.GlobalLock]())
 
-	// The in-process coordinator, built from the bound configuration (for the
-	// tracing toggle) and the autowired GlobalLock. Exported as the at.Coordinator
+	// The in-process coordinator, built from the bound configuration and the
+	// autowired GlobalLock. Exported as the at.Coordinator
 	// interface so business code depends on the abstraction, not this construction.
-	gs.Provide(newCoordinator, gs.TagArg("${spring.transaction.at}"), gs.TagArg("")).
+	gs.Provide(newCoordinator, gs.IndexArg(0, gs.TagArg("${spring.transaction.at}")), gs.IndexArg(1, gs.TagArg(""))).
 		Condition(enabled).
 		Export(gs.As[at.Coordinator]())
 
@@ -100,12 +100,9 @@ var enabled = gs.OnProperty("spring.transaction.at.enabled").HavingValue("true")
 var recoverOnStart = gs.OnProperty("spring.transaction.at.recover-on-start").HavingValue("true").MatchIfMissing()
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
-// global lock and, when tracing is enabled, the otel observer.
+// global lock.
 func newCoordinator(c Config, lock at.GlobalLock) at.Coordinator {
 	opts := []at.Option{at.WithGlobalLock(lock)}
-	if c.Tracing {
-		opts = append(opts, at.WithObserver(transaction.AtObserver{}))
-	}
-	log.Info(context.Background(), log.TagAppDef, "create at coordinator success", log.Bool("tracing", c.Tracing))
+	log.Info(context.Background(), log.TagAppDef, "create at coordinator success", log.Bool("enabled", c.Enabled))
 	return at.NewCoordinator(opts...)
 }

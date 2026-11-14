@@ -36,7 +36,7 @@ import (
 // newTestObserver builds the observation layer a test's backend block would own.
 // The identity is fixed (center "test"): what these tests exercise is the
 // reporting, not the labelling.
-func newTestObserver() *discovery.Observer {
+func newTestObserver() discovery.Observer {
 	o, err := discovery.NewObserver(obsSystem, "test")
 	if err != nil {
 		panic(err)
@@ -275,7 +275,7 @@ func TestConsulDiscoveryNoClientPanics(t *testing.T) {
 
 // newTestRegObserver is the write-side counterpart: registration owns its own
 // observer so the two planes stay independent in tests too.
-func newTestRegObserver() *registration.Observer {
+func newTestRegObserver() registration.Observer {
 	o, err := registration.NewObserver(obsSystem, "test")
 	if err != nil {
 		panic(err)

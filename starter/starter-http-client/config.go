@@ -63,8 +63,9 @@ type Config struct {
 // Resilience, fault and endpoint-selection policy are NOT bound here: they live
 // in the governance rules document (the governance center), matched by this
 // entry's service label. That includes the load-balancing strategy
-// (`balancer`) and outlier suspension (`outlier-threshold` /
-// `outlier-suspend-for`) — write them under client.loadbalance.services[N], not here.
+// (`balancer`) and endpoint suspension (`request-failures` / `dial-failures` /
+// `suspend-for` / `max-suspend-for` / `interval` / `max-ejection-percent` /
+// `min-healthy-percent`) — write them under client.loadbalance.services[N], not here.
 //
 // Keep governance retry counts at 0 unless requests are idempotent: the client may
 // issue POSTs and other non-idempotent verbs, and a retry re-sends them.

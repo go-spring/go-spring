@@ -26,6 +26,10 @@ import (
 	"go-spring.org/cloud/experimental/transaction"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func act(v any) func(context.Context) (any, error) {
@@ -191,19 +195,14 @@ func TestExecute_StorePersistenceLifecycle(t *testing.T) {
 	assert.That(t, snap.ID).Equal("bad")
 }
 
-type recordObserver struct {
-	begins []string
-	ends   []bool // true when the phase ended with an error
-}
+func TestExecute_SpansEveryPhase(t *testing.T) {
+	sr := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() { otel.SetTracerProvider(prev) })
 
-func (o *recordObserver) Begin(ctx context.Context, sagaID, step string, phase transaction.Phase) (context.Context, func(error)) {
-	o.begins = append(o.begins, step+":"+phase.String())
-	return ctx, func(err error) { o.ends = append(o.ends, err != nil) }
-}
-
-func TestExecute_ObserverSeesEveryPhase(t *testing.T) {
-	obs := &recordObserver{}
-	coord, err := transaction.NewCoordinator(transaction.WithObserver(obs))
+	coord, err := transaction.NewCoordinator()
 	assert.That(t, err).Nil()
 
 	saga := transaction.Saga{ID: "s6", Steps: []transaction.Step{
@@ -212,9 +211,16 @@ func TestExecute_ObserverSeesEveryPhase(t *testing.T) {
 	}}
 	_, err = coord.Execute(context.Background(), saga)
 	assert.Error(t, err).NotNil()
-	// a.Action, b.Action, then a.Compensate.
-	assert.Slice(t, obs.begins).Equal([]string{"a:Action", "b:Action", "a:Compensate"})
-	assert.Slice(t, obs.ends).Equal([]bool{false, true, false})
+
+	// a.Action, b.Action, then a.Compensate — each in its own standard span.
+	var names []string
+	var failed []bool
+	for _, span := range sr.Ended() {
+		names = append(names, span.Name())
+		failed = append(failed, span.Status().Code == codes.Error)
+	}
+	assert.Slice(t, names).Equal([]string{"saga.action a", "saga.action b", "saga.compensate a"})
+	assert.Slice(t, failed).Equal([]bool{false, true, false})
 }
 
 func TestGlobalTransactional_RunsRegisteredSaga(t *testing.T) {
@@ -530,4 +536,29 @@ func TestStepRegistry_RegisterCopiesAndLookup(t *testing.T) {
 
 	_, ok = reg.Lookup("Other")
 	assert.That(t, ok).False()
+}
+
+// recordingMetrics captures the family's terminal-outcome events so the metric
+// seam is tested without OTel.
+type recordingMetrics struct {
+	outcomes []string
+}
+
+func (o *recordingMetrics) Outcome(_ context.Context, model, status string) {
+	o.outcomes = append(o.outcomes, model+":"+status)
+}
+
+func TestMetricsObserverSeam(t *testing.T) {
+	metrics := &recordingMetrics{}
+	coord, err := transaction.NewCoordinator(transaction.WithMetrics(metrics))
+	assert.That(t, err).Nil()
+
+	saga := transaction.Saga{ID: "s", Steps: []transaction.Step{
+		{Name: "a", Action: act(1), Compensate: func(context.Context, any) error { return nil }},
+	}}
+	res, err := coord.Execute(context.Background(), saga)
+	assert.Error(t, err).Nil()
+	assert.That(t, res.Status).Equal(transaction.StatusCommitted)
+
+	assert.Slice(t, metrics.outcomes).Equal([]string{"saga:Committed"})
 }

@@ -71,7 +71,12 @@ func (HookingBigCacheDriver) CreateClient(ctx context.Context, name string,
 	// NewCache is the only way to build the wrapper: it fixes the instance's
 	// identity and its observability in one step. The raw cache is running by now,
 	// so it is this branch's to close if the wrapping fails.
-	cache, err := StarterBigCache.NewCache(client, name)
+	obs, err := StarterBigCache.NewOTelObserver()
+	if err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	cache, err := StarterBigCache.NewCache(client, name, obs)
 	if err != nil {
 		_ = client.Close()
 		return nil, err

@@ -28,8 +28,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
-
 	"go-spring.org/cloud/governance/capability/bulkhead"
 	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/ratelimit"
@@ -41,14 +39,21 @@ import (
 type Option func(*options)
 
 type options struct {
-	fault   chain.Fault
-	factory *ratelimit.Factory
+	fault    chain.Fault
+	factory  *ratelimit.Factory
+	observer Observer
 }
 
 // WithFault installs the inbound fault-injection stage. A nil Fault means no
 // injection.
 func WithFault(f chain.Fault) Option {
 	return func(o *options) { o.fault = f }
+}
+
+// WithObserver overrides the state-plane observer. A nil observer disables the
+// bulkhead metrics; spans and admission outcomes are unaffected.
+func WithObserver(o Observer) Option {
+	return func(opts *options) { opts.observer = o }
 }
 
 // state is one materialized policy generation. A request captures the pointer
@@ -78,14 +83,14 @@ type server struct {
 	closed bool
 	st     *state
 
-	// ins is the state instrument set this guard publishes on. The manager owns
-	// one set for every guard it builds; a standalone [New] builds its own.
-	ins *stateInstrumentSet
+	// obs publishes this guard's bulkhead state. The manager injects one for
+	// every guard it builds; a standalone [New] resolves its own (nil disables).
+	obs Observer
 
-	// observeOnce and observeReg are this instance's own state plane (see
-	// observe.go): registered lazily on the first Admit, unregistered by Close.
+	// observeOnce and observeOff are this instance's own state registration (see
+	// observe.go): registered lazily on the first Admit, removed by Close.
 	observeOnce sync.Once
-	observeReg  metric.Registration
+	observeOff  func()
 }
 
 // New builds a standalone Guard with a fixed policy. It is not connected to a
@@ -111,12 +116,8 @@ func New(id Identity, p Policy, factory *ratelimit.Factory, opts ...Option) (Gua
 	if err != nil {
 		return nil, err
 	}
-	ins, err := buildStateInstruments()
-	if err != nil {
-		return nil, err
-	}
 	return &server{
-		id: id, opts: o, st: st, ins: ins,
+		id: id, opts: o, st: st, obs: o.observer,
 		rate:     rate,
 		rateKind: st.kind,
 	}, nil

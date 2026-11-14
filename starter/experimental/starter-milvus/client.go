@@ -95,7 +95,7 @@ func NewClient(ctx context.Context, cfg Config, center *governance.Runtime) (*Cl
 	}
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = label.ServiceLabel("milvus", cfg.Addr)
-	o.exec = center.ExecutorFor("milvus", o.serviceLabel)
+	o.exec = center.ExecutorFor("milvus", o.serviceLabel, nil)
 	slot.apply(o.exec, o.serviceLabel, center.Traffic)
 	return o, nil
 }

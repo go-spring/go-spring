@@ -18,12 +18,13 @@ package governance
 
 import (
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	serverobserve "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/mesh"
@@ -77,6 +78,18 @@ type Runtime struct {
 	// server adapter. Required: the traffic package registers a default when the
 	// application contributes none.
 	Traffic traffic.Propagator `autowire:""`
+
+	// ClientMetrics receives the outbound call's metric events; spans and the
+	// access log are standard and emitted by the executor wrapper itself. The
+	// container injects the observe package's default bean; nil disables the
+	// outbound metrics for a hand-built runtime.
+	ClientMetrics observe.Metrics `autowire:""`
+
+	// ServerMetrics receives the inbound request's metric events; spans and the
+	// access log are standard and emitted by the observer itself. The container
+	// injects the inbound observe package's default bean; nil disables the
+	// inbound metrics for a hand-built runtime.
+	ServerMetrics serverobserve.Metrics `autowire:""`
 }
 
 // The authorities above are the Runtime's whole vocabulary: a starter reads the
@@ -106,19 +119,28 @@ func (r *Runtime) UsesDiscovery(serviceName string) bool {
 }
 
 // ExecutorFor returns the executor a client of the given system, labelled
-// service, runs its calls on. It is the ONE place the three outbound layers are
-// composed — the runtime names observability and fault, the resilience authority
-// names neither of the others, so the packages stay independent and this
-// composition is all that ties them. It is the composition a client's
-// constructor needs in one call, so no driver repeats it, on the one object a
-// client already injects.
+// service, runs its calls on. It is the ONE place the outbound layers are
+// composed — the runtime names observability, addressing and fault, the
+// resilience authority names neither of the others, so the packages stay
+// independent and this composition is all that ties them. It is the composition
+// a client's constructor needs in one call, so no driver repeats it, on the one
+// object a client already injects.
 //
 // Each layer holds its own next and delegates through [chain.Next], so the
 // stack is written in the order it runs:
 //
-//	fault        innermost — next is nil, so it fires just before fn
-//	resilience   middle    — its retry loop calls the next layer per attempt
+//	loadbalance  in the retry loop — picks the peer each round runs against,
+//	             excluding the peers this call already failed against; the
+//	             round's outcome settles the peer here, exactly once
+//	fault        innermost — next is nil, so it fires just after the pick,
+//	             just before fn: an injected error is not peer evidence
+//	resilience   middle    — its retry loop calls the layers below per attempt
 //	observe      outermost — the span covers every attempt, gate and fire
+//
+// lbChain is the client's addressing chain: nil for a client with a fixed
+// target — a call without discovery, a mesh sidecar, a driver that routes by
+// itself — whose rounds then all run against a fixed peer. A nil-chain executor
+// is the historical three-layer stack.
 //
 // Fault's next is nil because it is the last layer: it wraps the fn it hands
 // down, and [chain.Next] calls that fn directly. Placing it BEFORE resilience
@@ -130,10 +152,13 @@ func (r *Runtime) UsesDiscovery(serviceName string) bool {
 // "system" is the client's backend name ("memcached", "redigo", ...), which
 // clients also declare in their operations; it is a parameter rather than state
 // because one runtime serves every kind of client.
-func (r *Runtime) ExecutorFor(system, label string) chain.Executor {
+func (r *Runtime) ExecutorFor(system, label string, lbChain *loadbalance.Chain) chain.Executor {
 	var exec chain.Executor = r.ClientFault.WrapClientExecutor(nil)
+	if lbChain != nil {
+		exec = loadbalance.Wrap(lbChain, exec)
+	}
 	exec = r.Resilience.Wrap(label, exec)
-	return observe.WrapClientExecutor(exec, system, label)
+	return observe.WrapClientExecutor(exec, system, label, r.ClientMetrics)
 }
 
 // InboundFor returns the pair of inbound objects one route's middleware drives,
@@ -144,5 +169,5 @@ func (r *Runtime) ExecutorFor(system, label string) chain.Executor {
 // it fixes, live in the data plane:
 // [go-spring.org/cloud/governance/dataplane/inbound].
 func (r *Runtime) InboundFor(system, label string) (*inbound.Inbound, error) {
-	return inbound.Over(system, label, r.Admission, r.ServerFault)
+	return inbound.Over(system, label, r.Admission, r.ServerMetrics, r.ServerFault)
 }

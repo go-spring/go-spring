@@ -25,7 +25,8 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
+	balancer "go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -100,7 +101,7 @@ func init() {
 // read from it; its loadbalance authority additionally binds the discovery pick
 // pool this constructor builds, which is where the pool first exists.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
-	center *governance.Runtime) (*Client, error) {
+	center *governance.Runtime, obs Observer) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -171,7 +172,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 		// The discovery dialer ignores the URI address and picks a live
 		// endpoint from the chain's CURRENT generation on each new connection.
 		baseDial = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			pick, err := chain.Pick(ctx, loadbalance.PickInfo{})
+			pick, err := chain.Pick(ctx, balancer.PickInfo{}, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -201,7 +202,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	// NewClient resolves the executor off the governance bundle and stores the
 	// service label; the client's identity, observe and governance all come from
 	// this one call.
-	w, err := NewClient(raw, c)
+	w, err := NewClientWithObserver(raw, c, obs)
 	if err != nil {
 		return nil, err
 	}

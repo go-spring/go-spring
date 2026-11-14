@@ -72,8 +72,8 @@
 // The only pluggable seam is [Store], the persistence of the transaction log:
 // the bundled [MemoryStore] keeps the framework standalone, while a starter may
 // register a durable Store for crash recovery — without changing the
-// [Coordinator]. Observability is contributed through the [Observer] seam so a
-// starter can attach otel spans without pulling otel into stdlib.
+// [Coordinator]. Spans are standard OTel, opened through the family's span
+// helpers in the parent package, so no starter injects them.
 package tcc
 
 import (
@@ -213,7 +213,7 @@ func (s Status) String() string {
 }
 
 // Phase distinguishes a participant's three operations, used by [ParticipantError]
-// and [Observer] to label what was running.
+// and the phase span to label what was running.
 type Phase int
 
 const (
@@ -240,7 +240,7 @@ func (p Phase) String() string {
 }
 
 // TxPhase converts this phase to the shared [transaction.Phase] so the
-// coordinator can report it through the family-wide [transaction.Observer].
+// coordinator can name the family-wide phase span.
 func (p Phase) TxPhase() transaction.Phase {
 	switch p {
 	case PhaseConfirm:
@@ -312,11 +312,3 @@ type Coordinator interface {
 	// be idempotent.
 	Recover(ctx context.Context, t Transaction) (Result, error)
 }
-
-// Observer is the observability seam, shared with the whole transaction family
-// via [transaction.Observer]: the coordinator calls Begin around every
-// participant phase, passing the transaction ID, the participant's name and the
-// phase converted with [Phase.TxPhase]. The parent package ships a ready
-// implementation, transaction.TccObserver (see observe.go there), that opens
-// one otel span per phase. A nil Observer disables observation entirely.
-type Observer = transaction.Observer

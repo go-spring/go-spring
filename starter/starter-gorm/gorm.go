@@ -31,7 +31,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"

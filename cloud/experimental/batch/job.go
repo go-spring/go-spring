@@ -19,48 +19,10 @@ package batch
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"go-spring.org/stdlib/errutil"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
-
-// componentName is the instrumentation componentName name every meter and tracer in this
-// package reports under.
-const componentName = "go-spring.org/cloud/experimental/batch"
-
-// instrumentSet bundles the metrics a job run records: one per process,
-// resolved lazily on first use so the set binds to whichever OTel global
-// provider is current then, and immutable afterwards. It holds no per-run
-// state.
-type instrumentSet struct {
-	total    metric.Int64Counter
-	duration metric.Float64Histogram
-}
-
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-func buildInstruments() *instrumentSet {
-	m := otel.Meter(componentName)
-	in := &instrumentSet{}
-	in.total, _ = m.Int64Counter("batch.job.total",
-		metric.WithDescription("Batch job runs reaching a terminal state, by status"),
-		metric.WithUnit("{run}"))
-	in.duration, _ = m.Float64Histogram("batch.job.duration",
-		metric.WithDescription("Duration of one batch job run"),
-		metric.WithUnit("s"))
-	return in
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // StepContext carries the state a [Step] needs to run and to record progress. A
 // step reads its resume point from StepExecution and commits progress by saving
@@ -95,6 +57,16 @@ type Job struct {
 	Name string
 	// Steps run in order.
 	Steps []Step
+
+	// observer receives this job's run events; nil disables observation.
+	observer Observer
+}
+
+// WithObserver injects the observability adapter for this job. Passing nil
+// disables observation.
+func (j *Job) WithObserver(obs Observer) *Job {
+	j.observer = obs
+	return j
 }
 
 // Run executes the job against repo for the (Name, params) instance. If a prior
@@ -122,14 +94,9 @@ func (j *Job) Run(ctx context.Context, repo JobRepository, params Params) (je *J
 			err != nil && je.Status != StatusFailed && je.Status != StatusStopped:
 			return // no terminal status was reached
 		}
-		status := je.Status.String()
-		attrs := metric.WithAttributes(
-			attribute.String("job", j.Name),
-			attribute.String("status", status),
-		)
-		in := instruments()
-		in.total.Add(ctx, 1, attrs)
-		in.duration.Record(ctx, time.Since(runStart).Seconds(), attrs)
+		if obs := j.observer; obs != nil {
+			obs.JobRun(ctx, j.Name, je.Status.String(), time.Since(runStart))
+		}
 	}()
 
 	je.Status = StatusStarted

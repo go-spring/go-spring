@@ -93,15 +93,19 @@ func init() {
 // and unguarded, a documented gap driven by upstream driver support, not an
 // oversight.
 //
-// When in-process discovery applies (a service name is set and the process is not in mesh mode), the driver builds a Resolver
-// against the backend the entry's ${discovery} label names, looked up in the
-// center's discovery directory, picks one endpoint, and splices its address into
-// the URI host. That pick is a seed: the driver exposes no dialer injection
-// point, so a running client does not re-pick per query. What does keep
-// following the naming service is the driver's AddressResolver hook, installed
-// by CreateClient over the same resolver — it is how a neo4j:// (routing) client
-// re-finds the cluster after the seeded host disappears. In mesh mode the
-// sidecar owns discovery+LB, so the URI is used unchanged. See Config.ServiceName.
+// When in-process discovery applies (a service name is set and the process is
+// not in mesh mode), the driver builds a Resolver against the backend the
+// entry's ${discovery} label names, looked up in the center's discovery
+// directory, picks one eligible endpoint, and splices its address into the URI
+// host. That is seed resolution, not client-side load balancing: the driver
+// builds one pool over the seed and owns every later server choice through its
+// routing table. What does keep following the naming service is the driver's
+// AddressResolver hook — consulted as a fallback after the seeded router fails
+// — installed by CreateClient over the same resolver, which is how a routing
+// client re-finds the cluster after the seeded host disappears. In mesh mode
+// the sidecar owns discovery+LB, so the URI is used unchanged.
+// Config.Validate rejects service-name with a direct (bolt) scheme, where the
+// seed would be pinned forever. See Config.ServiceName.
 //
 // discoveryLabel is the entry's ${discovery} label (already carrying the family
 // default). It is folded into the config so the driver resolves the backend

@@ -41,7 +41,7 @@ func TestMemoryStore(t *testing.T) {
 // under a store, returning the recorder so the caller can inspect the cookie.
 func TestMiddlewareCreatesAndReuses(t *testing.T) {
 	store := session.NewMemory()
-	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute}, nil)
 	assert.That(t, err).Nil()
 
 	// First request sets an attribute -> a cookie is issued and the session is
@@ -75,7 +75,7 @@ func TestMiddlewareCreatesAndReuses(t *testing.T) {
 
 func TestMiddlewareAnonymousNoCookie(t *testing.T) {
 	store := session.NewMemory()
-	mgr, err := session.NewManager(store, session.Options{})
+	mgr, err := session.NewManager(store, session.Options{}, nil)
 	assert.That(t, err).Nil()
 
 	h := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,9 +90,9 @@ func TestMiddlewareAnonymousNoCookie(t *testing.T) {
 func TestCrossManagerSharing(t *testing.T) {
 	// Two managers over one store model two replicas. What A writes, B reads.
 	store := session.NewMemory()
-	a, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	a, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute}, nil)
 	assert.That(t, err).Nil()
-	b, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	b, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute}, nil)
 	assert.That(t, err).Nil()
 
 	write := a.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +119,7 @@ func TestCrossManagerSharing(t *testing.T) {
 
 func TestRenewIDPreventsFixation(t *testing.T) {
 	store := session.NewMemory()
-	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute}, nil)
 	assert.That(t, err).Nil()
 
 	set := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +153,7 @@ func TestRenewIDPreventsFixation(t *testing.T) {
 
 func TestInvalidateDestroys(t *testing.T) {
 	store := session.NewMemory()
-	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute}, nil)
 	assert.That(t, err).Nil()
 
 	set := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +181,7 @@ func TestInvalidateDestroys(t *testing.T) {
 
 func TestSlidingRenewalAndExpiry(t *testing.T) {
 	store := session.NewMemory()
-	mgr, err := session.NewManager(store, session.Options{IdleTimeout: 40 * time.Millisecond})
+	mgr, err := session.NewManager(store, session.Options{IdleTimeout: 40 * time.Millisecond}, nil)
 	assert.That(t, err).Nil()
 
 	set := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +221,7 @@ func TestSlidingRenewalAndExpiry(t *testing.T) {
 func TestFromByteStoreRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	store := session.FromByteStore(newMapByteStore())
-	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute}, nil)
 	assert.That(t, err).Nil()
 
 	set := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -263,7 +263,7 @@ type testUser struct {
 func newTestSession(t *testing.T) *session.Session {
 	t.Helper()
 	store := session.NewMemory()
-	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute})
+	mgr, err := session.NewManager(store, session.Options{IdleTimeout: time.Minute}, nil)
 	assert.That(t, err).Nil()
 	set := mgr.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s, _ := session.FromContext(r.Context())

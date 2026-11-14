@@ -116,6 +116,20 @@ type TimeoutRetry struct {
 	//
 	// 0 means no bound of its own, beyond whatever the caller's context carries.
 	Timeout time.Duration `value:"${timeout:=0}" expr:"int($) >= 0"`
+
+	// ConnectTimeout bounds ESTABLISHING the connection within a round — the
+	// dial and the pool wait that precedes it — independently of Timeout. It is
+	// the fast-fail knob for a blackholed peer (a refused connection answers
+	// immediately; only dropped packets eat the whole budget) and the transport
+	// counterpart mainstream drivers carry beside their call timeout
+	// (connectTimeout vs socketTimeout). It travels to the dial site on the
+	// round's context ([chain.RoundFrom]) and applies as
+	// min(connect-timeout, the site's own static cap, the remaining round
+	// budget) — it can only tighten, never widen.
+	//
+	// 0 means no bound of its own: the dial runs under the site's static cap
+	// and the round's remaining Timeout budget.
+	ConnectTimeout time.Duration `value:"${connect-timeout:=0}" expr:"int($) >= 0"`
 }
 
 // IsZero reports whether these limits configure nothing — no deadline and no

@@ -131,6 +131,7 @@ type SimpleGrpcServer struct {
 	// one, go-spring.s default otherwise — the LoadTest interceptors read the inbound marker
 	// through it.
 	prop traffic.Propagator
+	obs  Observer
 	svr  *grpc.Server
 }
 
@@ -148,7 +149,7 @@ type SimpleGrpcServer struct {
 // otherwise — handed to the LoadTest interceptors.
 func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
 	userUnary []grpc.UnaryServerInterceptor, userStream []grpc.StreamServerInterceptor,
-	center *governance.Runtime, prop traffic.Propagator) *SimpleGrpcServer {
+	center *governance.Runtime, prop traffic.Propagator, obs Observer) *SimpleGrpcServer {
 	log.Debug(context.Background(), log.TagAppDef, "create grpc server success", func() []log.Field {
 		return []log.Field{log.String("addr", cfg.Addr)}
 	})
@@ -159,6 +160,7 @@ func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
 		userStream: userStream,
 		center:     center,
 		prop:       prop,
+		obs:        obs,
 	}
 }
 
@@ -220,6 +222,7 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 		unary = append(unary, LoadTestUnaryInterceptor(s.prop))
 		stream = append(stream, LoadTestStreamInterceptor(s.prop))
 	}
+	obs := s.obs
 	if s.cfg.Observer.Tracing.Enabled {
 		unary = append(unary, TracingUnaryInterceptor())
 		stream = append(stream, TracingStreamInterceptor())
@@ -231,12 +234,12 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	// recovery (so it reports what the caller actually got).
 	unary = append(unary, AccessLogUnaryInterceptor())
 	stream = append(stream, AccessLogStreamInterceptor())
-	if s.cfg.Observer.Metrics.Enabled {
-		um, err := MetricsUnaryInterceptor()
+	if s.cfg.Observer.Metrics.Enabled && obs != nil {
+		um, err := obs.MetricsUnary()
 		if err != nil {
 			return nil, err
 		}
-		sm, err := MetricsStreamInterceptor()
+		sm, err := obs.MetricsStream()
 		if err != nil {
 			return nil, err
 		}

@@ -64,7 +64,7 @@ type zkRegistry struct {
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported attempt and log line is labelled with.
-	obs *registration.Observer
+	obs registration.Observer
 
 	// backoffBase/backoffCap pace the re-register retry loop after a session
 	// recovery: 1s doubling up to 1min. Fields (not constants) so tests shrink
@@ -97,7 +97,7 @@ func (r *zkRegistry) Close() {
 // newZookeeperRegistry returns a registry writing through conn (the shared
 // center connection; the ensemble was already probed when conn was built)
 // with c's base path. It does NOT close conn — the owner (zkCenter) does.
-func newZookeeperRegistry(c ZookeeperConfig, conn *zk.Conn, obs *registration.Observer) (*zkRegistry, error) {
+func newZookeeperRegistry(c ZookeeperConfig, conn *zk.Conn, obs registration.Observer) (*zkRegistry, error) {
 	if conn == nil {
 		return nil, errutil.Explain(nil, "discovery-zookeeper: nil zookeeper connection")
 	}
@@ -152,7 +152,7 @@ func (r *zkRegistry) Register(ctx context.Context, reg discovery.Instance) error
 		return errutil.Explain(nil, "discovery-zookeeper: addr is required")
 	}
 	reg.Weight = normalizeWeight(reg.Weight)
-	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
+	if err := registration.RegisterAttempt(ctx, r.obs, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
 		return r.createNode(reg)
 	}); err != nil {
 		return err
@@ -225,7 +225,7 @@ func (r *zkRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance, w
 	} else if stat == nil {
 		return errutil.Explain(nil, "discovery-zookeeper: update weight for unregistered instance %q", path)
 	}
-	if err := r.obs.WeightChange(ctx, reg.ServiceName, func(context.Context) error {
+	if err := registration.WeightChange(ctx, r.obs, reg.ServiceName, func(context.Context) error {
 		_, err := r.conn.Set(path, val, -1)
 		return err
 	}); err != nil {
@@ -248,7 +248,7 @@ func (r *zkRegistry) Deregister(ctx context.Context, reg discovery.Instance) err
 	r.mu.Lock()
 	delete(r.regs, path)
 	r.mu.Unlock()
-	return r.obs.DeregisterAttempt(ctx, reg.ServiceName, func(context.Context) error {
+	return registration.DeregisterAttempt(ctx, r.obs, reg.ServiceName, func(context.Context) error {
 		err := r.conn.Delete(path, -1)
 		if errors.Is(err, zk.ErrNoNode) {
 			return nil // already gone: the desired end state holds, so this is a success
@@ -363,7 +363,7 @@ func (r *zkRegistry) reRegisterAll() (string, error) {
 		// Each re-creation is a registration attempt of its own: it reports as
 		// self_heal so a dashboard can tell "the ensemble lost my node" from the
 		// initial publish, and healAll retrying the whole pass reports again.
-		if err := r.obs.RegisterAttempt(context.Background(), reg.ServiceName, registration.ReasonSelfHeal, func(context.Context) error {
+		if err := registration.RegisterAttempt(context.Background(), r.obs, reg.ServiceName, registration.ReasonSelfHeal, func(context.Context) error {
 			return r.reRegister(reg)
 		}); err != nil {
 			return reg.ServiceName, err

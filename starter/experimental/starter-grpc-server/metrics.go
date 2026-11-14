@@ -108,7 +108,7 @@ func buildInstruments() (*instrumentSet, error) {
 // "rpc.server.request.duration" (dotted). request_count and active_requests are
 // kept as starter-specific extras (the stable convention only standardizes the
 // duration histogram).
-func MetricsUnaryInterceptor() (grpc.UnaryServerInterceptor, error) {
+func (otelObserver) MetricsUnary() (grpc.UnaryServerInterceptor, error) {
 	ins, err := buildInstruments()
 	if err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ func MetricsUnaryInterceptor() (grpc.UnaryServerInterceptor, error) {
 // here; instead a starter-specific "rpc.server.stream.duration" (dotted) is
 // emitted alongside stream_count. Both histograms use the family-wide duration
 // bucket boundaries.
-func MetricsStreamInterceptor() (grpc.StreamServerInterceptor, error) {
+func (otelObserver) MetricsStream() (grpc.StreamServerInterceptor, error) {
 	ins, err := buildInstruments()
 	if err != nil {
 		return nil, err

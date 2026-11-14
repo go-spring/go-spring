@@ -34,6 +34,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -93,19 +94,16 @@ func operation(ctx context.Context, prop traffic.Propagator, word opWord, subjec
 	return op
 }
 
-// instrumentSet is this starter's instrument set: one per connection-state
-// counter, resolved when the driver builds it. It holds only the
-// connection-state counter; the per-call signals are the resilience layer's,
-// built from the operation this starter declares (see [operation]).
-type instrumentSet struct {
-	connChanges metric.Int64Counter
+// Observer receives the starter's connection-state events. A nil Observer
+// disables the counter; implementations must not block.
+type Observer interface {
+	// ConnectionStateChanged records one connection-state transition.
+	ConnectionStateChanged(ctx context.Context, state string)
 }
 
-// buildInstruments resolves this starter's instruments against the meter
-// provider the otel starter installs before any bean is built. The driver owns
-// the set, so a failed registration fails client construction instead of
-// silently dropping the metric family.
-func buildInstruments() (*instrumentSet, error) {
+// NewOTelObserver resolves the connection-state counter and returns the default
+// OTel-backed [Observer].
+func NewOTelObserver() (Observer, error) {
 	connChanges, err := otel.Meter(componentName).Int64Counter(
 		"messaging.client.connection.state_changes",
 		metric.WithDescription("Connection-state transitions reported by the messaging client"),
@@ -113,7 +111,20 @@ func buildInstruments() (*instrumentSet, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "nats: register messaging.client.connection.state_changes")
 	}
-	return &instrumentSet{connChanges: connChanges}, nil
+	return &otelObserver{connChanges: connChanges}, nil
+}
+
+// otelObserver is the default [Observer].
+type otelObserver struct {
+	connChanges metric.Int64Counter
+}
+
+// ConnectionStateChanged implements [Observer].
+func (o *otelObserver) ConnectionStateChanged(ctx context.Context, state string) {
+	o.connChanges.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("messaging.system", natsSystem),
+		attribute.String("state", state),
+	))
 }
 
 // connStateCounter counts the connection-state transitions the NATS client's own
@@ -126,17 +137,15 @@ func buildInstruments() (*instrumentSet, error) {
 // from the starter's lifecycle would silently displace whatever handlers a
 // custom Driver had set. Keeping the pair in one place is what lets both survive.
 type connStateCounter struct {
-	ins *instrumentSet
+	obs Observer
 }
 
-// newConnStateCounter resolves its instrument set — invoked at wiring time
+// newConnStateCounter resolves the default observer — invoked at wiring time
 // (inside the driver), so a registration failure fails client construction.
-func newConnStateCounter() (*connStateCounter, error) {
-	ins, err := buildInstruments()
-	if err != nil {
-		return nil, err
-	}
-	return &connStateCounter{ins: ins}, nil
+// newConnStateCounterWith is the injection point: a nil observer disables the
+// metric.
+func newConnStateCounterWith(obs Observer) (*connStateCounter, error) {
+	return &connStateCounter{obs: obs}, nil
 }
 
 // record counts one transition and returns the fields its log line carries.
@@ -144,12 +153,17 @@ func newConnStateCounter() (*connStateCounter, error) {
 // being spelled twice — the drift this pairing exists to prevent, and a drifted
 // key is silent: the line still looks right and joins nothing.
 func (c *connStateCounter) record(ctx context.Context, state string) []log.Field {
-	c.ins.connChanges.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("messaging.system", natsSystem),
-		attribute.String("state", state),
-	))
+	if c.obs != nil {
+		c.obs.ConnectionStateChanged(ctx, state)
+	}
 	return []log.Field{
 		log.String("messaging.system", natsSystem),
 		log.String("state", state),
 	}
+}
+
+// The package's default [Observer] bean: an application that contributes its
+// own observer takes precedence.
+func init() {
+	gs.Provide(NewOTelObserver).Condition(gs.OnMissingBean[Observer]()).Caller(1)
 }

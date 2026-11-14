@@ -17,7 +17,6 @@
 package fault
 
 import (
-	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -38,15 +37,15 @@ import (
 //
 // With no source bean the default below keeps the root armed with an empty
 // document — a process with no fault source runs ungoverned instead of failing.
-// Exactly one Source[kfault.Document] must exist; gs rejects the ambiguous injection
+// Exactly one Source[Document] must exist; gs rejects the ambiguous injection
 // rather than picking one.
 func init() {
 	// Default source: the center needs a source to arm from even when the process
 	// configures no transport. This bean steps aside when a company-level starter
-	// provides its own Source[kfault.Document] (the condition runs after modules).
-	gs.Provide(func() source.Source[kfault.Document] {
-		return source.NewPushSource(kfault.Document{})
-	}).Condition(gs.OnMissingBean[source.Source[kfault.Document]]()).Caller(1)
+	// provides its own Source[Document] (the condition runs after modules).
+	gs.Provide(func() source.Source[Document] {
+		return source.NewPushSource(Document{})
+	}).Condition(gs.OnMissingBean[source.Source[Document]]()).Caller(1)
 
 	// The CENTER is constructor-injected: gs hands it the two authority beans and
 	// this root's source, and [NewCenter] arms it on the spot. A bad document
@@ -55,7 +54,7 @@ func init() {
 	// it even when nothing injects it: no other bean holds it — the runtime only
 	// DependsOn it, deliberately.
 	gs.Provide(func(cp *gs.ContextProvider, client *clientfault.Manager, server *serverfault.Manager,
-		src source.Source[kfault.Document]) (*Center, error) {
+		src source.Source[Document]) (*Center, error) {
 		return NewCenter(cp.Context, client, server, src)
 	}).
 		Name("faultCenter").

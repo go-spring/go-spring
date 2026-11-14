@@ -69,7 +69,7 @@ func TestGinServer_MTLS(t *testing.T) {
 	}
 	svr, err := NewSimpleGinServer(func(e *gin.Engine) {
 		e.GET("/ping", func(c *gin.Context) { c.String(http.StatusOK, "pong") })
-	}, nil, cfg, nil, nil)
+	}, nil, cfg, nil, nil, nil)
 	assert.That(t, err).Nil()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -94,7 +94,7 @@ func TestGinServer_MTLS(t *testing.T) {
 
 	// Wait for the listener to come up so a "connection refused" is never
 	// mistaken for the handshake failure asserted below.
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		c, derr := net.DialTimeout("tcp", addr, 100*time.Millisecond)
 		if derr == nil {
 			_ = c.Close()

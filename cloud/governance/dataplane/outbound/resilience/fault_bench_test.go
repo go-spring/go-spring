@@ -32,7 +32,7 @@ import (
 
 // noopFn is the operation handed to the executor: returns nil immediately so
 // the benchmark isolates framework overhead, not downstream work.
-func noopFn(context.Context) error { return nil }
+func noopFn(context.Context, *chain.Round) error { return nil }
 
 // benchExec builds the policy-free executor for "svc".
 func benchExec(b *testing.B) chain.Executor {
@@ -50,7 +50,7 @@ func benchExec(b *testing.B) chain.Executor {
 }
 
 // faultWrapped puts the injector around raw, armed with conf.
-func faultWrapped(raw chain.Executor, conf kfault.Config) chain.Executor {
+func faultWrapped(raw chain.Executor, conf fault.ClientConfig) chain.Executor {
 	inj := fault.NewManager()
 	inj.Refresh(conf)
 	return inj.WrapClientExecutor(raw)
@@ -71,7 +71,7 @@ func BenchmarkExecutor_Baseline(b *testing.B) {
 // is inert (no rate, no latency) — the steady-state cost a production config
 // pays.
 func BenchmarkFaultExecutor_Inert(b *testing.B) {
-	exec := faultWrapped(benchExec(b), kfault.Config{})
+	exec := faultWrapped(benchExec(b), fault.ClientConfig{})
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
@@ -82,8 +82,9 @@ func BenchmarkFaultExecutor_Inert(b *testing.B) {
 // BenchmarkFaultExecutor_Injecting measures cost when every call is injected
 // (Rate 1) — exercises the decision + error path per attempt.
 func BenchmarkFaultExecutor_Injecting(b *testing.B) {
-	conf := kfault.Config{Rules: []kfault.Rule{{
-		Name: "bench", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic",
+	conf := fault.ClientConfig{Rules: []fault.ClientRule{{
+		RuleCore: kfault.RuleCore{Name: "bench", Service: "svc", Rate: 1},
+		Class:    kfault.ClassTransient, Error: "generic",
 	}}}
 	exec := faultWrapped(benchExec(b), conf)
 	ctx := context.Background()
